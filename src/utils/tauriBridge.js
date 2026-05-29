@@ -250,8 +250,18 @@ export function setupTauriBridge() {
       // Tauri 下暂不实现
     },
 
-    // ── 下载管理（后续 Phase 4 sidecar 实现） ──
-    download: (_url) => {},
+    // ── 下载管理（sidecar HTTP API） ──
+    _sidecarBase: (function() {
+      if (isTauri()) {
+        invoke('get_sidecar_url').then(url => { window.__sidecarUrl = url }).catch(() => {})
+      }
+      return function() { return window.__sidecarUrl || 'http://127.0.0.1:36531' }
+    })(),
+    _scUrl: function() {
+      return window.__sidecarUrl || 'http://127.0.0.1:36531'
+    },
+    download: (_url) => {
+    },
     downloadNext: (callback) => { if (typeof callback === 'function') callback() },
     downloadProgress: (_callback) => {},
     downloadPause: () => {},
@@ -259,21 +269,100 @@ export function setupTauriBridge() {
     downloadCancel: () => {},
     startDownload: () => {},
 
-    // ── 本地音乐（后续 Phase 4 sidecar 实现） ──
-    scanLocalMusic: (_type) => {},
-    localMusicFiles: (_callback) => {},
-    localMusicCount: (_callback) => {},
-    getLocalMusicImage: (_filePath) => Promise.resolve(null),
-    getLocalMusicLyric: (_filePath, _options) => Promise.resolve(null),
-    openLocalFolder: (_path) => {},
-    clearLocalMusicData: (_type) => {},
-    getRequestData: (_request) => Promise.reject(new Error('getRequestData not available in Tauri yet')),
-    getBiliVideo: (_request) => Promise.reject(new Error('getBiliVideo not available in Tauri yet')),
-    musicVideoIsExists: (_obj) => Promise.resolve(false),
-    clearUnusedVideo: (_state) => Promise.resolve(null),
-    deleteMusicVideo: (_id) => Promise.resolve(null),
-    downloadVideoProgress: (_callback) => {},
-    cancelDownloadMusicVideo: () => {},
+    // ── 本地音乐（sidecar HTTP API） ──
+    _localMusicCountCb: null,
+    _localMusicFilesCb: null,
+    localMusicCount: (callback) => {
+      api._localMusicCountCb = typeof callback === 'function' ? callback : null
+    },
+    localMusicFiles: (callback) => {
+      api._localMusicFilesCb = typeof callback === 'function' ? callback : null
+    },
+    scanLocalMusic: async (params) => {
+      if (!isTauri()) return
+      try {
+        const dirPath = params?.type || params?.dirPath || ''
+        if (!dirPath) return
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const resp = await fetch(`${baseUrl}/local/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dirPath, recursive: true }),
+        })
+        const result = await resp.json()
+        if (result.files && api._localMusicCountCb) {
+          api._localMusicCountCb(null, result.total)
+        }
+        if (result.files && api._localMusicFilesCb) {
+          api._localMusicFilesCb(null, {
+            type: params?.type || 'local',
+            locaFilesMetadata: result.files,
+            dirTree: null,
+            count: result.total,
+          })
+        }
+      } catch (_) {}
+    },
+    getLocalMusicImage: async (filePath) => {
+      if (!isTauri()) return Promise.resolve(null)
+      try {
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const resp = await fetch(`${baseUrl}/local/image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath, size: 400 }),
+        })
+        if (!resp.ok) return null
+        const data = await resp.json()
+        return data.data || null
+      } catch (_) {
+        return null
+      }
+    },
+    getLocalMusicLyric: async (filePath, _options) => {
+      if (!isTauri()) return Promise.resolve(null)
+      try {
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const resp = await fetch(`${baseUrl}/local/lyric`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath }),
+        })
+        if (!resp.ok) return null
+        const data = await resp.json()
+        return data.lyric || null
+      } catch (_) {
+        return null
+      }
+    },
+    openLocalFolder: async (folderPath) => {
+      if (!isTauri()) return
+      try {
+        const { open } = await import('@tauri-apps/plugin-shell')
+        open(folderPath)
+      } catch (_) {}
+    },
+    clearLocalMusicData: (_type) => {
+    },
+    getRequestData: async (request) => {
+      if (!isTauri()) return Promise.reject(new Error('getRequestData not available'))
+      try {
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const resp = await fetch(`${baseUrl}/proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: request.url || request,
+            option: request.option || {},
+          }),
+        })
+        if (!resp.ok) throw new Error('Proxy request failed')
+        const result = await resp.json()
+        return result.data
+      } catch (e) {
+        throw e
+      }
+    },
 
     // ── 设置（tauri-plugin-store 实现） ──
     getSettings: async () => {
@@ -345,10 +434,11 @@ export function setupTauriBridge() {
       }
     },
     toRegister: (url) => {
-      ensureTauriModules().then(mod => {
-        if (mod.shell) { mod.shell.open(url); return }
+      if (isTauri()) {
+        import('@tauri-apps/plugin-shell').then(mod => mod.open(url)).catch(() => window.open(url, '_blank'))
+      } else {
         window.open(url, '_blank')
-      }).catch(() => window.open(url, '_blank'))
+      }
     },
 
     // ── 快捷键（tauri-plugin-global-shortcut 实现） ──

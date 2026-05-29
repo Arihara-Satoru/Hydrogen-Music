@@ -7,12 +7,9 @@ use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
+mod backend;
 mod tray;
 mod shortcuts;
-
-/// KuGou API 后端进程句柄（后续 Phase 4 使用）
-#[allow(dead_code)]
-struct KugouBackend(std::process::Child);
 
 /// 全局快捷键注册表：Shortcut → (事件名, 事件负载)
 static SHORTCUT_REGISTRY: std::sync::OnceLock<Mutex<HashMap<String, (String, Option<serde_json::Value>)>>> =
@@ -175,6 +172,11 @@ fn update_dock_menu(_app: tauri::AppHandle, _song: Option<DockMenuSong>) -> Resu
     Ok(())
 }
 
+#[tauri::command]
+fn get_sidecar_url() -> String {
+    backend::sidecar_url()
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 全局快捷键命令
 // ═══════════════════════════════════════════════════════════════
@@ -320,6 +322,29 @@ pub fn run() {
                 eprintln!("[tray] Failed to create tray: {}", e);
             }
 
+            // ── 启动 sidecar 进程（文件 I/O + KuGou API） ──
+            let sidecar_state: std::sync::Mutex<backend::SidecarState> = Mutex::new(backend::SidecarState::new());
+            app.manage(sidecar_state);
+
+            let sidecar_handle = app.state::<Mutex<backend::SidecarState>>();
+            match backend::start_sidecar() {
+                Ok(child) => {
+                    if let Ok(mut guard) = sidecar_handle.lock() {
+                        guard.process = Some(child);
+                    }
+                    // 等待 sidecar 就绪（最长 15 秒）
+                    let ready = backend::wait_for_sidecar(15000);
+                    if ready {
+                        println!("[backend] Sidecar ready on {}", backend::sidecar_url());
+                    } else {
+                        eprintln!("[backend] Sidecar did not become ready within timeout");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[backend] Failed to start sidecar: {}", e);
+                }
+            }
+
             // ── 延迟显示窗口 ──
             let win = main_window.clone();
             std::thread::spawn(move || {
@@ -342,20 +367,24 @@ pub fn run() {
             register_shortcuts,
             unregister_shortcuts,
             update_dock_menu,
+            get_sidecar_url,
         ]);
 
-    // ── 窗口关闭行为 ──
     let builder = builder.on_window_event(|window, event| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             let label = window.label().to_string();
             if label == "main" {
-                // 主窗口：根据设置决定隐藏还是退出
-                // 默认隐藏到托盘
                 window.hide().ok();
                 api.prevent_close();
             } else if label == "lyric" {
-                // 歌词窗口：通知前端关闭
                 let _ = window.emit("desktop-lyric-closed", ());
+            }
+        } else if let tauri::WindowEvent::Destroyed = event {
+            // 窗口销毁时停止 sidecar
+            if window.label() == "main" {
+                if let Some(state) = window.try_state::<Mutex<backend::SidecarState>>() {
+                    backend::stop_sidecar(&state);
+                }
             }
         }
     });
