@@ -1,7 +1,8 @@
 /**
  * Tauri API 桥接层
  *
- * 提供与 Electron `window.windowApi` 兼容的接口，底层使用 Tauri invoke()。
+ * 提供与 Electron `window.windowApi`/`window.electronAPI` 兼容的接口，
+ * 底层使用 Tauri invoke() + Tauri Plugin API。
  * 在 Tauri 环境下使用 @tauri-apps/api 的 invoke/listen 调用 Rust 命令。
  * 在 Electron 环境下回退到 window.windowApi，保障迁移过程中的兼容性。
  *
@@ -9,13 +10,96 @@
  *   1. 在 main.js 中调用 setupTauriBridge() 初始化
  *   2. 现有代码中的 windowApi.xxx() 调用自动生效
  *   3. 新代码可 import { xxx } from './tauriBridge'
+ *
+ * 注意：Tauri 插件（plugin-store/plugin-dialog 等）在非 Tauri 环境不可用，
+ *       因此采用动态 import() 懒加载，避免阻塞 Vue 挂载。
  */
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
 
+// ── 默认设置（首次使用时写入 Store） ──
+const DEFAULT_SETTINGS = {
+  music: { level: 'high', lyricSize: 17, tlyricSize: 14, rlyricSize: 14, lyricInterlude: 2, searchAssistLimit: 8, showSongTranslation: true, coverSize: 400 },
+  local: { downloadFolder: '', localFolder: [] },
+  other: { quitApp: 'minimize', enableUpdate: false },
+  shortcuts: {}
+}
+
 /** 判断当前是否运行在 Tauri 环境 */
 const isTauri = () => typeof window !== 'undefined' && window.__TAURI__ !== undefined
+
+/** 动态获取 Tauri 插件模块（非 Tauri 环境返回 fallback） */
+let _tauriModules = null
+async function ensureTauriModules() {
+  if (_tauriModules) return _tauriModules
+  if (!isTauri()) {
+    _tauriModules = { store: null, dialog: null, shell: null, ww: null, dpi: null }
+    return _tauriModules
+  }
+  try {
+    const [storeMod, dialogMod, shellMod, wwMod, dpiMod] = await Promise.all([
+      import('@tauri-apps/plugin-store'),
+      import('@tauri-apps/plugin-dialog'),
+      import('@tauri-apps/plugin-shell'),
+      import('@tauri-apps/api/webviewWindow'),
+      import('@tauri-apps/api/dpi'),
+    ])
+    _tauriModules = {
+      store: storeMod,
+      dialog: dialogMod,
+      shell: shellMod,
+      ww: wwMod,
+      dpi: dpiMod,
+    }
+  } catch (e) {
+    console.warn('[tauriBridge] Failed to load Tauri plugin modules:', e)
+    _tauriModules = { store: null, dialog: null, shell: null, ww: null, dpi: null }
+  }
+  return _tauriModules
+}
+
+/** 懒加载获取 Store 实例 */
+let _settingsStore = null
+let _lastPlaylistStore = null
+let _musicVideoStore = null
+
+async function getStore(name) {
+  const mod = await ensureTauriModules()
+  if (!mod.store) return null
+  if (name === 'settings' && !_settingsStore) _settingsStore = await mod.store.Store.load('settings.json')
+  if (name === 'lastPlaylist' && !_lastPlaylistStore) _lastPlaylistStore = await mod.store.Store.load('lastPlaylist.json')
+  if (name === 'musicVideo' && !_musicVideoStore) _musicVideoStore = await mod.store.Store.load('musicVideo.json')
+  if (name === 'settings') return _settingsStore
+  if (name === 'lastPlaylist') return _lastPlaylistStore
+  if (name === 'musicVideo') return _musicVideoStore
+  return null
+}
+
+/** 获取 lyric 窗口的 WebviewWindow 实例（可能为 null） */
+async function getLyricWin() {
+  try {
+    const mod = await ensureTauriModules()
+    if (!mod.ww) return null
+    return mod.ww.getWebviewWindow('lyric')
+  } catch (_) {
+    return null
+  }
+}
+
+/** 创建 LogicalSize */
+async function makeSize(w, h) {
+  const mod = await ensureTauriModules()
+  if (!mod.dpi) return null
+  return new mod.dpi.LogicalSize(Math.round(w), Math.round(h))
+}
+
+/** 创建 LogicalPosition */
+async function makePos(x, y) {
+  const mod = await ensureTauriModules()
+  if (!mod.dpi) return null
+  return new mod.dpi.LogicalPosition(Math.round(x), Math.round(y))
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 桥接初始化：将 Tauri 实现挂载到 window.windowApi
@@ -25,8 +109,10 @@ export function setupTauriBridge() {
   // 非 Tauri 环境无需初始化（Electron contextBridge 已提供）
   if (!isTauri()) return
 
+  // 注意：由于插件模块需要动态 import()，将异步初始化推迟到微任务
+  // 同步部分先挂载基本的 invoke 封装，不会阻塞 Vue 挂载
   const api = {
-    // ── 窗口控制 ──
+    // ── 窗口控制（纯 invoke，不依赖插件模块） ──
     windowMin: () => invoke('window_min'),
     windowMax: () => invoke('window_max'),
     windowClose: () => invoke('window_close'),
@@ -50,12 +136,10 @@ export function setupTauriBridge() {
     },
     copyTxt: (txt) => navigator.clipboard.writeText(txt).catch(() => {}),
     setWindowTile: (title) => {
-      try {
-        document.title = title
-      } catch (_) {}
+      try { document.title = title } catch (_) {}
     },
 
-    // ── 播放/事件监听（注册监听器，返回取消函数） ──
+    // ── 播放/事件监听 ──
     playOrPauseMusic: (callback) => {
       if (typeof callback === 'function') {
         listen('music-playing-control', () => callback())
@@ -137,18 +221,48 @@ export function setupTauriBridge() {
     downloadVideoProgress: (_callback) => {},
     cancelDownloadMusicVideo: () => {},
 
-    // ── 设置（后续 Phase 3/4 实现） ──
-    getSettings: () => Promise.resolve({
-      music: { level: 'high', lyricSize: 17, tlyricSize: 14, rlyricSize: 14, lyricInterlude: 2, searchAssistLimit: 8, showSongTranslation: true, coverSize: 400 },
-      local: { downloadFolder: '', localFolder: [] },
-      other: { quitApp: 'minimize', enableUpdate: false },
-      shortcuts: {}
-    }),
-    setSettings: (_settings) => {},
-    getLastPlaylist: () => Promise.resolve(null),
-    saveLastPlaylist: (_playlist) => {},
+    // ── 设置（tauri-plugin-store 实现） ──
+    getSettings: async () => {
+      try {
+        const store = await getStore('settings')
+        if (!store) return DEFAULT_SETTINGS
+        const saved = await store.get('settings')
+        if (saved) return saved
+        await store.set('settings', DEFAULT_SETTINGS)
+        await store.save()
+        return DEFAULT_SETTINGS
+      } catch (_) {
+        return DEFAULT_SETTINGS
+      }
+    },
+    setSettings: async (settings) => {
+      try {
+        const parsed = typeof settings === 'string' ? JSON.parse(settings) : settings
+        const store = await getStore('settings')
+        if (!store) return
+        await store.set('settings', parsed)
+        await store.save()
+      } catch (_) {}
+    },
+    getLastPlaylist: async () => {
+      try {
+        const store = await getStore('lastPlaylist')
+        if (!store) return null
+        return await store.get('lastPlaylist') || null
+      } catch (_) {
+        return null
+      }
+    },
+    saveLastPlaylist: async (playlist) => {
+      try {
+        const store = await getStore('lastPlaylist')
+        if (!store) return
+        await store.set('lastPlaylist', playlist)
+        await store.save()
+      } catch (_) {}
+    },
 
-    // ── 更新（后续 Phase 5 实现） ──
+    // ── 更新（后续 Phase 5 实现，保留空 operation 保证不报错） ──
     checkUpdate: (_callback) => {},
     manualUpdateAvailable: (_callback) => {},
     updateNotAvailable: (_callback) => {},
@@ -160,13 +274,36 @@ export function setupTauriBridge() {
     installUpdate: () => {},
     cancelUpdate: () => {},
 
-    // ── 对话框（后续 Phase 4 实现） ──
-    openFile: () => Promise.resolve(null),
-    toRegister: (url) => { window.open(url, '_blank') },
+    // ── 对话框（tauri-plugin-dialog 实现） ──
+    openFile: async () => {
+      try {
+        const mod = await ensureTauriModules()
+        if (!mod.dialog) return null
+        // Settings.vue 用 openFile 选择文件夹，此处默认打开目录选择器
+        const result = await mod.dialog.open({
+          multiple: false,
+          directory: true,
+          title: '选择文件夹',
+        })
+        return result || null
+      } catch (_) {
+        return null
+      }
+    },
+    toRegister: (url) => {
+      ensureTauriModules().then(mod => {
+        if (mod.shell) { mod.shell.open(url); return }
+        window.open(url, '_blank')
+      }).catch(() => window.open(url, '_blank'))
+    },
 
-    // ── 快捷键（后续 Phase 3 实现） ──
-    registerShortcuts: () => {},
-    unregisterShortcuts: () => {},
+    // ── 快捷键（tauri-plugin-global-shortcut 实现） ──
+    registerShortcuts: () => {
+      // Phase 3 完整实现
+    },
+    unregisterShortcuts: () => {
+      // Phase 3 完整实现
+    },
   }
 
   window.windowApi = api
@@ -177,6 +314,7 @@ export function setupTauriBridge() {
     closeLyricWindow: api.closeLyricWindow,
     setLyricWindowMovable: api.setLyricWindowMovable,
     isLyricWindowVisible: api.isLyricWindowVisible,
+
     // 监听歌词数据更新（歌词窗口侧）
     onLyricUpdate: (callback) => {
       if (typeof callback === 'function') {
@@ -185,7 +323,7 @@ export function setupTauriBridge() {
     },
     // 请求当前歌词数据（歌词窗口 → 主窗口）
     requestLyricData: () => emit('request-lyric-data'),
-    // 发送歌词数据到歌词窗口（主窗口 → 全局，歌词窗口监听 lyric-update）
+    // 发送歌词数据到歌词窗口（主窗口 → 歌词窗口）
     updateLyricData: (data) => emit('lyric-update', data),
     // 获取当前歌词数据请求（主窗口侧监听）
     getCurrentLyricData: (callback) => {
@@ -193,20 +331,89 @@ export function setupTauriBridge() {
         listen('request-lyric-data', () => callback())
       }
     },
-    getLyricWindowBounds: () => Promise.resolve({ x: 0, y: 0, width: 500, height: 350 }),
-    moveLyricWindow: (_x, _y) => {},
-    resizeWindow: (_w, _h) => {},
-    lyricWindowReady: () => {},
-    onDesktopLyricClosed: () => {},
-    notifyLyricWindowClosed: () => {},
-    getLyricWindowContentBounds: () => Promise.resolve({ x: 0, y: 0, width: 500, height: 350 }),
-    setLyricWindowResizable: () => {},
-    getLyricWindowMinMax: () => Promise.resolve({ minWidth: 250, minHeight: 100, maxWidth: 500, maxHeight: 800 }),
-    setLyricWindowMinMax: () => {},
-    moveLyricWindowContentTo: () => {},
+    // 歌词窗口就绪通知
+    lyricWindowReady: () => emit('lyric-window-ready'),
+
+    // ── 歌词窗口操作（通过 Tauri WebviewWindow API 操作 lyric 窗口） ──
+    getLyricWindowBounds: async () => {
+      try {
+        const win = await getLyricWin()
+        if (!win) return { x: 0, y: 0, width: 500, height: 350 }
+        const [pos, size] = await Promise.all([win.outerPosition(), win.outerSize()])
+        return { x: pos.x, y: pos.y, width: size.width, height: size.height }
+      } catch (_) {
+        return { x: 0, y: 0, width: 500, height: 350 }
+      }
+    },
+    getLyricWindowContentBounds: async () => {
+      try {
+        const win = await getLyricWin()
+        if (!win) return { x: 0, y: 0, width: 500, height: 350 }
+        const [pos, size] = await Promise.all([win.innerPosition(), win.innerSize()])
+        return { x: pos.x, y: pos.y, width: size.width, height: size.height }
+      } catch (_) {
+        return { x: 0, y: 0, width: 500, height: 350 }
+      }
+    },
+    resizeWindow: async (width, height) => {
+      try {
+        const win = await getLyricWin()
+        const sz = await makeSize(width, height)
+        if (win && sz) await win.setSize(sz)
+      } catch (_) {}
+    },
+    moveLyricWindow: async (x, y) => {
+      try {
+        const win = await getLyricWin()
+        const pos = await makePos(x, y)
+        if (win && pos) await win.setPosition(pos)
+      } catch (_) {}
+    },
+    moveLyricWindowContentTo: async (x, y, width, height) => {
+      try {
+        const win = await getLyricWin()
+        if (!win) return
+        const [pos, sz] = await Promise.all([makePos(x, y), makeSize(width, height)])
+        if (pos && sz) await Promise.all([win.setPosition(pos), win.setSize(sz)])
+      } catch (_) {}
+    },
+    setLyricWindowResizable: (resizable) => {
+      getLyricWin().then(win => { if (win) win.setResizable(resizable) }).catch(() => {})
+    },
+    getLyricWindowMinMax: async () => {
+      try {
+        const win = await getLyricWin()
+        if (!win) return { minWidth: 250, minHeight: 100, maxWidth: 500, maxHeight: 800 }
+        const [minSize, maxSize] = await Promise.all([win.minSize(), win.maxSize()])
+        return {
+          minWidth: minSize?.width ?? 250,
+          minHeight: minSize?.height ?? 100,
+          maxWidth: maxSize?.width ?? 500,
+          maxHeight: maxSize?.height ?? 800,
+        }
+      } catch (_) {
+        return { minWidth: 250, minHeight: 100, maxWidth: 500, maxHeight: 800 }
+      }
+    },
+    setLyricWindowMinMax: async (minW, minH, maxW, maxH) => {
+      try {
+        const win = await getLyricWin()
+        if (!win) return
+        const [minSz, maxSz] = await Promise.all([makeSize(minW, minH), makeSize(maxW, maxH)])
+        if (minSz && maxSz) await Promise.all([win.setMinSize(minSz), win.setMaxSize(maxSz)])
+      } catch (_) {}
+    },
+
+    // ── 歌词窗口关闭通知（事件通信） ──
+    onDesktopLyricClosed: (callback) => {
+      if (typeof callback === 'function') {
+        listen('desktop-lyric-closed', () => callback())
+      }
+    },
+    notifyLyricWindowClosed: () => emit('desktop-lyric-closed'),
   }
 
-  // playerApi 别名（供 MPRIS/MediaSession 使用）
+  // playerApi 别名（供 MPRIS/MediaSession 使用，Tauri 下为空存根）
   window.playerApi = {
     sendMetaData: (_metadata) => {},
     onSetPosition: (_callback) => {},
@@ -278,15 +485,18 @@ export function setWindowTile(title) {
 }
 export function toFileUrl(filePathOrUrl) {
   if (isTauri()) {
-    if (!filePathOrUrl || typeof filePathOrUrl !== 'string') return ''
-    if (filePathOrUrl.startsWith('file://')) return filePathOrUrl
-    const normalized = String(filePathOrUrl).replace(/\\/g, '/')
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(normalized)) return normalized
-    const withLeadingSlash = /^[a-zA-Z]:\//.test(normalized) ? `/${normalized}` : normalized
-    const encoded = encodeURI(withLeadingSlash).replace(/#/g, '%23').replace(/\?/g, '%3F')
-    return encoded.startsWith('/') ? `file://${encoded}` : `file:///${encoded}`
+    return _toFileUrlImpl(filePathOrUrl)
   }
   return window.windowApi?.toFileUrl(filePathOrUrl)
+}
+function _toFileUrlImpl(filePathOrUrl) {
+  if (!filePathOrUrl || typeof filePathOrUrl !== 'string') return ''
+  if (filePathOrUrl.startsWith('file://')) return filePathOrUrl
+  const normalized = String(filePathOrUrl).replace(/\\/g, '/')
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(normalized)) return normalized
+  const withLeadingSlash = /^[a-zA-Z]:\//.test(normalized) ? `/${normalized}` : normalized
+  const encoded = encodeURI(withLeadingSlash).replace(/#/g, '%23').replace(/\?/g, '%3F')
+  return encoded.startsWith('/') ? `file://${encoded}` : `file:///${encoded}`
 }
 export function copyTxt(txt) {
   if (isTauri()) {
@@ -294,4 +504,45 @@ export function copyTxt(txt) {
     return
   }
   return window.windowApi?.copyTxt(txt)
+}
+
+// 设置
+export async function getSettings() {
+  if (isTauri()) {
+    try {
+      const store = await getStore('settings')
+      if (!store) return DEFAULT_SETTINGS
+      const saved = await store.get('settings')
+      if (saved) return saved
+      await store.set('settings', DEFAULT_SETTINGS)
+      await store.save()
+      return DEFAULT_SETTINGS
+    } catch (_) { return DEFAULT_SETTINGS }
+  }
+  return window.windowApi?.getSettings?.()
+}
+export async function setSettings(settings) {
+  if (isTauri()) {
+    try {
+      const parsed = typeof settings === 'string' ? JSON.parse(settings) : settings
+      const store = await getStore('settings')
+      if (!store) return
+      await store.set('settings', parsed)
+      await store.save()
+    } catch (_) {}
+    return
+  }
+  return window.windowApi?.setSettings?.(settings)
+}
+
+// 对话框
+export async function openFileDialog() {
+  if (isTauri()) {
+    try {
+      const mod = await ensureTauriModules()
+      if (!mod.dialog) return null
+      return await mod.dialog.open({ multiple: false, directory: true, title: '选择文件夹' }) || null
+    } catch (_) { return null }
+  }
+  return window.windowApi?.openFile?.()
 }
