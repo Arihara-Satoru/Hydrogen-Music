@@ -1,10 +1,26 @@
+use std::collections::HashMap;
+use std::sync::Mutex;
 use tauri::{
     Emitter, Listener, Manager, WebviewUrl, WebviewWindowBuilder,
 };
+use tauri_plugin_global_shortcut::{
+    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+};
+
+mod tray;
+mod shortcuts;
 
 /// KuGou API 后端进程句柄（后续 Phase 4 使用）
 #[allow(dead_code)]
 struct KugouBackend(std::process::Child);
+
+/// 全局快捷键注册表：Shortcut → (事件名, 事件负载)
+static SHORTCUT_REGISTRY: std::sync::OnceLock<Mutex<HashMap<String, (String, Option<serde_json::Value>)>>> =
+    std::sync::OnceLock::new();
+
+fn shortcut_registry() -> &'static Mutex<HashMap<String, (String, Option<serde_json::Value>)>> {
+    SHORTCUT_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 窗口控制命令
@@ -113,6 +129,127 @@ fn set_lyric_window_movable(app: tauri::AppHandle, movable: bool) -> Result<(), 
     Ok(())
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DockMenuSong {
+    name: String,
+    artist: String,
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Dock 菜单命令（macOS）
+// ═══════════════════════════════════════════════════════════════
+
+#[tauri::command]
+fn update_dock_menu(_app: tauri::AppHandle, _song: Option<DockMenuSong>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+
+        let app = &_app;
+        let mut builder = MenuBuilder::new(app);
+
+        if let Some(ref s) = _song {
+            let song_item = MenuItemBuilder::with_id("song_info", &format!("{} - {}", s.name, s.artist))
+                .enabled(false)
+                .build(app)
+                .map_err(|e| e.to_string())?;
+            builder = builder.item(&song_item);
+            builder = builder.item(&PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?);
+        }
+
+        let play_pause = MenuItemBuilder::with_id("dock_play_pause", "播放/暂停")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let prev = MenuItemBuilder::with_id("dock_prev", "上一首")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+        let next = MenuItemBuilder::with_id("dock_next", "下一首")
+            .build(app)
+            .map_err(|e| e.to_string())?;
+
+        builder = builder.item(&play_pause).item(&prev).item(&next);
+        let menu = builder.build().map_err(|e| e.to_string())?;
+        app.set_menu(menu).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 全局快捷键命令
+// ═══════════════════════════════════════════════════════════════
+
+#[tauri::command]
+fn register_shortcuts(app: tauri::AppHandle, shortcuts: Vec<ShortcutConfig>) -> Result<(), String> {
+    let global_shortcut = app.global_shortcut();
+
+    // 先注销所有已有的快捷键
+    let _ = global_shortcut.unregister_all();
+    let mut registry = shortcut_registry().lock().map_err(|e| e.to_string())?;
+    registry.clear();
+    drop(registry);
+
+    for sc in &shortcuts {
+        // 只注册全局快捷键（globalShortcut 字段）
+        let shortcut_str = match sc.global_shortcut.as_deref() {
+            Some(s) if !s.is_empty() => s,
+            _ => continue,
+        };
+
+        // 解析快捷键字符串
+        let (modifiers, code) = match shortcuts::parse_electron_shortcut(shortcut_str) {
+            Some(v) => v,
+            None => {
+                eprintln!("[shortcuts] Failed to parse: {}", shortcut_str);
+                continue;
+            }
+        };
+
+        let combined = modifiers.iter().fold(Modifiers::empty(), |acc, m| acc | *m);
+        let shortcut = Shortcut::new(Some(combined), code);
+        let id = sc.id.clone();
+        let event_name = shortcuts::shortcut_id_to_event(&id).to_string();
+        let payload = shortcuts::shortcut_id_to_payload(&id);
+
+        // 注册快捷键
+        match global_shortcut.register(shortcut) {
+            Ok(()) => {
+                // 存入注册表
+                let mut registry = shortcut_registry().lock().map_err(|e| e.to_string())?;
+                registry.insert(shortcut_str.to_string(), (event_name, payload));
+                let shortcut_key = shortcut_str.to_string();
+                println!("[shortcuts] Registered: {} → {} ({})", shortcut_str, registry.get(shortcut_key.as_str()).unwrap().0, id);
+            }
+            Err(e) => {
+                eprintln!("[shortcuts] Failed to register {}: {}", shortcut_str, e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn unregister_shortcuts(app: tauri::AppHandle) -> Result<(), String> {
+    app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
+    let mut registry = shortcut_registry().lock().map_err(|e| e.to_string())?;
+    registry.clear();
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct ShortcutConfig {
+    id: String,
+    name: String,
+    #[serde(default)]
+    shortcut: Option<String>,
+    #[serde(default)]
+    global_shortcut: Option<String>,
+    #[serde(default)]
+    r#type: bool,
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 应用入口
 // ═══════════════════════════════════════════════════════════════
@@ -123,7 +260,25 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    // 查找快捷键对应的注册事件
+                    let shortcut_str = shortcut_to_string(shortcut);
+                    if event.state == ShortcutState::Pressed {
+                        if let Ok(registry) = shortcut_registry().lock() {
+                            if let Some((event_name, payload)) = registry.get(shortcut_str.as_str()) {
+                                if let Some(p) = payload {
+                                    let _ = app.emit(event_name, p.clone());
+                                } else {
+                                    let _ = app.emit(event_name, ());
+                                }
+                            }
+                        }
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
@@ -154,6 +309,11 @@ pub fn run() {
                 }
             });
 
+            // ── 创建系统托盘 ──
+            if let Err(e) = tray::create_tray(app.handle()) {
+                eprintln!("[tray] Failed to create tray: {}", e);
+            }
+
             // ── 延迟显示窗口 ──
             let win = main_window.clone();
             std::thread::spawn(move || {
@@ -173,18 +333,114 @@ pub fn run() {
             close_lyric_window,
             is_lyric_window_visible,
             set_lyric_window_movable,
+            register_shortcuts,
+            unregister_shortcuts,
+            update_dock_menu,
         ]);
 
-    // ── macOS: close 请求时隐藏而非退出 ──
-    #[cfg(target_os = "macos")]
+    // ── 窗口关闭行为 ──
     let builder = builder.on_window_event(|window, event| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            window.hide().ok();
-            api.prevent_close();
+            let label = window.label().to_string();
+            if label == "main" {
+                // 主窗口：根据设置决定隐藏还是退出
+                // 默认隐藏到托盘
+                window.hide().ok();
+                api.prevent_close();
+            } else if label == "lyric" {
+                // 歌词窗口：通知前端关闭
+                let _ = window.emit("desktop-lyric-closed", ());
+            }
         }
     });
 
     builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 将 Shortcut 转换为可读字符串，用于注册表查找
+fn shortcut_to_string(shortcut: &Shortcut) -> String {
+    let mut parts = Vec::new();
+    let m = shortcut.mods;
+    if m.contains(Modifiers::CONTROL) {
+        parts.push("CommandOrControl");
+    }
+    if m.contains(Modifiers::ALT) {
+        parts.push("Alt");
+    }
+    if m.contains(Modifiers::SHIFT) {
+        parts.push("Shift");
+    }
+    if m.contains(Modifiers::SUPER) {
+        parts.push("Super");
+    }
+
+    let code_str = code_to_string(shortcut.key);
+    parts.push(&code_str);
+    parts.join("+")
+}
+
+fn code_to_string(code: Code) -> String {
+    match code {
+        Code::KeyA => "A".into(),
+        Code::KeyB => "B".into(),
+        Code::KeyC => "C".into(),
+        Code::KeyD => "D".into(),
+        Code::KeyE => "E".into(),
+        Code::KeyF => "F".into(),
+        Code::KeyG => "G".into(),
+        Code::KeyH => "H".into(),
+        Code::KeyI => "I".into(),
+        Code::KeyJ => "J".into(),
+        Code::KeyK => "K".into(),
+        Code::KeyL => "L".into(),
+        Code::KeyM => "M".into(),
+        Code::KeyN => "N".into(),
+        Code::KeyO => "O".into(),
+        Code::KeyP => "P".into(),
+        Code::KeyQ => "Q".into(),
+        Code::KeyR => "R".into(),
+        Code::KeyS => "S".into(),
+        Code::KeyT => "T".into(),
+        Code::KeyU => "U".into(),
+        Code::KeyV => "V".into(),
+        Code::KeyW => "W".into(),
+        Code::KeyX => "X".into(),
+        Code::KeyY => "Y".into(),
+        Code::KeyZ => "Z".into(),
+        Code::Digit0 => "0".into(),
+        Code::Digit1 => "1".into(),
+        Code::Digit2 => "2".into(),
+        Code::Digit3 => "3".into(),
+        Code::Digit4 => "4".into(),
+        Code::Digit5 => "5".into(),
+        Code::Digit6 => "6".into(),
+        Code::Digit7 => "7".into(),
+        Code::Digit8 => "8".into(),
+        Code::Digit9 => "9".into(),
+        Code::ArrowLeft => "Left".into(),
+        Code::ArrowRight => "Right".into(),
+        Code::ArrowUp => "Up".into(),
+        Code::ArrowDown => "Down".into(),
+        Code::BracketRight => "]".into(),
+        Code::BracketLeft => "[".into(),
+        Code::Space => "Space".into(),
+        Code::Enter => "Enter".into(),
+        Code::Escape => "Escape".into(),
+        Code::Tab => "Tab".into(),
+        Code::F1 => "F1".into(),
+        Code::F2 => "F2".into(),
+        Code::F3 => "F3".into(),
+        Code::F4 => "F4".into(),
+        Code::F5 => "F5".into(),
+        Code::F6 => "F6".into(),
+        Code::F7 => "F7".into(),
+        Code::F8 => "F8".into(),
+        Code::F9 => "F9".into(),
+        Code::F10 => "F10".into(),
+        Code::F11 => "F11".into(),
+        Code::F12 => "F12".into(),
+        _ => "Unknown".into(),
+    }
 }

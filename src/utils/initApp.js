@@ -44,6 +44,10 @@ export const initSettings = () => {
             localStore.localMusicClassify = null
             windowApi.clearLocalMusicData('local')
         }
+        // 注册全局快捷键（设置加载完成后）
+        if (typeof windowApi.registerShortcuts === 'function') {
+            windowApi.registerShortcuts()
+        }
     })
 }
 export const resolveImageUrl = (url) => {

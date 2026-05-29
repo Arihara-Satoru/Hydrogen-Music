@@ -2156,6 +2156,12 @@ function setupWindowApiListeners() {
         setTimeout(setupWindowApiListeners, 100)
         return
     }
+    // Tauri 环境下需要等待 setupTauriBridge() 完成再注册
+    // 存根的 playOrPauseMusic 是 noop（length===0），真实函数有回调参数（length===1）
+    if (typeof windowApi.playOrPauseMusic === 'function' && windowApi.playOrPauseMusic.length === 0) {
+        setTimeout(setupWindowApiListeners, 100)
+        return
+    }
     windowApi.playOrPauseMusic((event) => {
         if (playing.value) pauseMusic()
         else startMusic()
@@ -2193,6 +2199,11 @@ function setupWindowApiListeners() {
 // 延迟初始化需要 windowApi 的模块级代码
 function setupModuleLevelApiCalls() {
     if (typeof windowApi === 'undefined') {
+        setTimeout(setupModuleLevelApiCalls, 100)
+        return
+    }
+    // Tauri 环境下需要等待 setupTauriBridge() 完成
+    if (typeof windowApi.playOrPauseMusic === 'function' && windowApi.playOrPauseMusic.length === 0) {
         setTimeout(setupModuleLevelApiCalls, 100)
         return
     }

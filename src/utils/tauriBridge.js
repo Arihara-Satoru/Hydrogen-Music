@@ -183,8 +183,17 @@ export function setupTauriBridge() {
         return () => unlisten.then((fn) => fn())
       }
     },
-    updateDockMenu: (_songInfo) => {
-      // Tauri 下 Dock 菜单暂不实现
+    updateDockMenu: (songInfo) => {
+      if (!isTauri()) return
+      if (!songInfo || typeof songInfo !== 'object') {
+        invoke('update_dock_menu', { song: null }).catch(() => {})
+        return
+      }
+      const payload = {
+        name: String(songInfo.name || ''),
+        artist: String(songInfo.artist || ''),
+      }
+      invoke('update_dock_menu', { song: payload }).catch(() => {})
     },
     updatePlaylistStatus: (_status) => {
       // Tauri 下暂不实现
@@ -298,11 +307,29 @@ export function setupTauriBridge() {
     },
 
     // ── 快捷键（tauri-plugin-global-shortcut 实现） ──
-    registerShortcuts: () => {
-      // Phase 3 完整实现
+    registerShortcuts: async () => {
+      if (!isTauri()) return
+      try {
+        // 从 store 读取快捷键配置
+        const settings = await api.getSettings()
+        const shortcuts = settings?.shortcuts
+        if (!shortcuts || !Array.isArray(shortcuts) || shortcuts.length === 0) return
+        // 转换为 Rust 命令需要的格式
+        const configs = shortcuts.map(sc => ({
+          id: sc.id,
+          name: sc.name || '',
+          shortcut: sc.shortcut || null,
+          global_shortcut: sc.globalShortcut || null,
+          type: !!sc.type,
+        }))
+        await invoke('register_shortcuts', { shortcuts: configs })
+      } catch (_) {
+        // ignore
+      }
     },
     unregisterShortcuts: () => {
-      // Phase 3 完整实现
+      if (!isTauri()) return
+      invoke('unregister_shortcuts').catch(() => {})
     },
   }
 
