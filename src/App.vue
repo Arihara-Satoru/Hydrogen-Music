@@ -45,10 +45,18 @@ onUnmounted(() => {
     destroyLyricRuntime();
 });
 
-windowApi.checkUpdate((event, version) => {
-    otherStore.toUpdate = true;
-    otherStore.newVersion = version;
-});
+// 延迟初始化，等待 Tauri bridge 挂载
+const setupAppListeners = () => {
+    if (typeof windowApi === 'undefined') {
+        setTimeout(setupAppListeners, 100)
+        return
+    }
+    windowApi.checkUpdate((event, version) => {
+        otherStore.toUpdate = true;
+        otherStore.newVersion = version;
+    });
+}
+setupAppListeners()
 
 // 双击标题栏最大化窗口的处理函数
 const handleTitleBarDoubleClick = () => {

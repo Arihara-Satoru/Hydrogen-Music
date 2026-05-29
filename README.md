@@ -43,6 +43,11 @@
 npm run dist
 ```
 
+本地打包只生成安装包，不会自动上传。
+
+正式 Release 由 GitHub Actions + semantic-release 自动完成：推送到 `KuGou` 分支后，会根据 Conventional Commits 生成版本号、Release 说明并上传安装包到 GitHub Releases。运行时需要仓库的 `GITHUB_TOKEN`/`GH_TOKEN` 权限。
+提交信息建议使用 `feat:`、`fix:` 这类 Conventional Commits 前缀，否则 semantic-release 可能不会判断出需要发版。
+
 ## :computer: 配置开发环境
 
 运行本项目

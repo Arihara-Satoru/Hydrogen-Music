@@ -123,11 +123,16 @@ export function scanMusic(params) {
     windowApi.scanLocalMusic(params)
 }
 
-windowApi.localMusicCount((event, count) => {
-    noticeOpen('已扫描' + count + '首', 2)
-})
+function setupLocalMusicListeners() {
+    if (typeof windowApi === 'undefined') {
+        setTimeout(setupLocalMusicListeners, 100)
+        return
+    }
+    windowApi.localMusicCount((event, count) => {
+        noticeOpen('已扫描' + count + '首', 2)
+    })
 
-windowApi.localMusicFiles((event, localData) => {
+    windowApi.localMusicFiles((event, localData) => {
     if(localData.type == 'downloaded') {
         downloadedMusicFolder.value = localData.dirTree
         downloadedFiles.value = localData.locaFilesMetadata
@@ -166,4 +171,7 @@ windowApi.localMusicFiles((event, localData) => {
         }
         isRefreshLocalFile.value = false
     }
-})
+    })
+}
+
+setupLocalMusicListeners()

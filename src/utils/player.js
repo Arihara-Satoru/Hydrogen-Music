@@ -2149,92 +2149,98 @@ window.addEventListener('click', (e) => {
     else if (otherStore.videoIsBlur && otherStore.videoPlayerShow && document.getElementById('videoPlayer').contains(e.target) == true && document.getElementsByClassName('plyr__controls')[0].contains(e.target) != true) otherStore.videoIsBlur = false
     if (userStore.appOptionShow && document.getElementsByClassName('user-head')[0].contains(e.target) != true) userStore.appOptionShow = false
 })
-windowApi.playOrPauseMusic((event) => {
-    if (playing.value) pauseMusic()
-    else startMusic()
-})
-windowApi.lastOrNextMusic((event, option) => {
-    if (option == 'last') playLast()
-    else if (option == 'next') playNext()
-})
-windowApi.changeMusicPlaymode((event, mode) => {
-    applyPlayMode(mode)
-})
-windowApi.volumeUp(() => {
-    if (volume.value + 0.1 < 1) volume.value += 0.1
-    else volume.value = 1
-    currentMusic.value.volume(volume.value)
-})
-windowApi.volumeDown(() => {
-    if (volume.value - 0.1 > 0) volume.value -= 0.1
-    else volume.value = 0
-    currentMusic.value.volume(volume.value)
-})
-windowApi.musicProcessControl((event, mode) => {
-    if (mode == 'forward') {
-        if (progress.value + 3 < currentMusic.value.duration()) progress.value += 3
-        else progress.value = currentMusic.value.duration()
-    } else if (mode == 'back') {
-        if (progress.value - 3 > 0) progress.value -= 3
-        else progress.value = 0
+// 初始化窗口事件监听（Tauri 环境下由 tauriBridge 延迟设置）
+function setupWindowApiListeners() {
+    if (typeof windowApi === 'undefined') {
+        // 可能还未挂载，延迟重试
+        setTimeout(setupWindowApiListeners, 100)
+        return
     }
-    // 统一使用 changeProgress，确保歌词、视频等状态同步
-    changeProgress(progress.value)
-})
-windowApi.playOrPauseMusicCheck(playing.value)
-windowApi.changeTrayMusicPlaymode(playMode.value)
-syncWindowsTaskbarPlaybackState()
-windowApi.beforeQuit(() => {
-    //关闭之前清除下载管理中的状态
-    windowApi.downloadPause('shutdown')
-    let list = {
-        songList: songList.value,
-        shuffledList: shuffledList.value
+    windowApi.playOrPauseMusic((event) => {
+        if (playing.value) pauseMusic()
+        else startMusic()
+    })
+    windowApi.lastOrNextMusic((event, option) => {
+        if (option == 'last') playLast()
+        else if (option == 'next') playNext()
+    })
+    windowApi.changeMusicPlaymode((event, mode) => {
+        applyPlayMode(mode)
+    })
+    windowApi.volumeUp(() => {
+        if (volume.value + 0.1 < 1) volume.value += 0.1
+        else volume.value = 1
+        currentMusic.value.volume(volume.value)
+    })
+    windowApi.volumeDown(() => {
+        if (volume.value - 0.1 > 0) volume.value -= 0.1
+        else volume.value = 0
+        currentMusic.value.volume(volume.value)
+    })
+    windowApi.musicProcessControl((event, mode) => {
+        if (mode == 'forward') {
+            if (progress.value + 3 < currentMusic.value.duration()) progress.value += 3
+            else progress.value = currentMusic.value.duration()
+        } else if (mode == 'back') {
+            if (progress.value - 3 > 0) progress.value -= 3
+            else progress.value = 0
+        }
+        // 统一使用 changeProgress，确保歌词、视频等状态同步
+        changeProgress(progress.value)
+    })
+}
+
+// 延迟初始化需要 windowApi 的模块级代码
+function setupModuleLevelApiCalls() {
+    if (typeof windowApi === 'undefined') {
+        setTimeout(setupModuleLevelApiCalls, 100)
+        return
     }
-    windowApi.exitApp(JSON.stringify(list))
-})
+    windowApi.playOrPauseMusicCheck(playing.value)
+    windowApi.changeTrayMusicPlaymode(playMode.value)
+    syncWindowsTaskbarPlaybackState()
+    windowApi.beforeQuit(() => {
+        //关闭之前清除下载管理中的状态
+        windowApi.downloadPause('shutdown')
+        let list = {
+            songList: songList.value,
+            shuffledList: shuffledList.value
+        }
+        windowApi.exitApp(JSON.stringify(list))
+    })
 
-window.playerApi.onSetPosition((positionSeconds) => {
-  changeProgress(positionSeconds)
-})
-window.playerApi.onPlayPause(() => {
-  if (playing.value) pauseMusic()
-  else startMusic()
-})
+    window.playerApi?.onSetPosition?.((positionSeconds) => {
+      changeProgress(positionSeconds)
+    })
+    window.playerApi?.onPlayPause?.(() => {
+        if (playing.value) pauseMusic()
+        else startMusic()
+    })
+    window.playerApi?.onNext?.(() => {
+        playNext()
+    })
+    window.playerApi?.onPrevious?.(() => {
+        playLast()
+    })
+    window.playerApi?.onPlayM?.(() => {
+        startMusic()
+    })
+    window.playerApi?.onPauseM?.(() => {
+        pauseMusic()
+    })
+    window.playerApi?.onRepeat?.(() => {
+        if (playMode.value == 0) applyPlayMode(2)
+        else if (playMode.value == 2) applyPlayMode(1)
+        else applyPlayMode(0)
+    })
+    window.playerApi?.onShuffle?.(() => {
+        applyPlayMode(playMode.value == 3 ? 0 : 3)
+    })
+    window.playerApi?.onVolumeChanged?.((v) => {
+        volume.value = v
+    })
+}
 
-// 播放下一首
-window.playerApi.onNext(() => {
-  playNext() // 你自己实现的渲染端播放下一首逻辑
-})
-
-// 播放上一首
-window.playerApi.onPrevious(() => {
-  playLast()
-})
-
-// 播放/暂停
-window.playerApi.onPlayM(() => {
-  startMusic()
-})
-window.playerApi.onPauseM(() => {
-  pauseMusic()
-})
-
-//循环模式切换
-window.playerApi.onRepeat(() => {
-  changePlayMode()
-})
-
-// 随机播放切换
-window.playerApi.onShuffle(() => {
-  if (isPersonalFMContext()) {
-    applyPlayMode(playMode.value === 2 ? 3 : 2, { inFM: true })
-    return
-  }
-  applyPlayMode(playMode.value !== 3 ? 3 : 0, { inFM: false })
-})
-
-window.playerApi.onVolumeChanged((v) => {
-    setVolumeForPlay(v)
-  }
-)
+// 立即初始化监听器和模块级 API 调用
+setupWindowApiListeners()
+setupModuleLevelApiCalls()

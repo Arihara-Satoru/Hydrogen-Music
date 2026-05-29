@@ -12,6 +12,73 @@
 
 <body>
   <div id="app"></div>
+  <!-- 预先定义 windowApi 存根，防止 Vite 模块加载时序问题导致 ReferenceError -->
+  <script>
+    window.__defineEmptyApi = function() {
+      if (typeof windowApi !== 'undefined') return;
+      var noop = function() {};
+      var stub = function() { return Promise.resolve(null); };
+      var settingsStub = function() { return Promise.resolve({
+        music: { level: 'lossless', lyricSize: 20, tlyricSize: 14, rlyricSize: 12, lyricInterlude: 13, searchAssistLimit: 8, showSongTranslation: true, coverSize: 400 },
+        local: { videoFolder: null, downloadFolder: null, downloadCreateSongFolder: false, downloadSaveLyricFile: false, localFolder: [] },
+        other: { quitApp: 'minimize', enableUpdate: false },
+        shortcuts: []
+      }); };
+      window.windowApi = {
+        windowMin: noop, windowMax: noop, windowClose: noop,
+        getWindowMaximizedState: stub,
+        toFileUrl: function(p) { return p || ''; },
+        copyTxt: noop, setWindowTile: noop,
+        playOrPauseMusic: noop, lastOrNextMusic: noop,
+        changeMusicPlaymode: noop, volumeUp: noop, volumeDown: noop,
+        musicProcessControl: noop, hidePlayer: noop,
+        updateDockMenu: noop, updatePlaylistStatus: noop,
+        changeTrayMusicPlaymode: noop, playOrPauseMusicCheck: noop,
+        download: noop, downloadNext: noop, downloadProgress: noop,
+        downloadPause: noop, downloadResume: noop, downloadCancel: noop,
+        startDownload: noop, scanLocalMusic: noop,
+        localMusicFiles: noop, localMusicCount: noop,
+        getLocalMusicImage: stub, getLocalMusicLyric: stub,
+        openLocalFolder: noop, clearLocalMusicData: noop,
+        getRequestData: stub, getBiliVideo: stub,
+        musicVideoIsExists: stub, clearUnusedVideo: stub,
+        deleteMusicVideo: stub, downloadVideoProgress: noop,
+        cancelDownloadMusicVideo: noop,
+        getSettings: settingsStub, setSettings: noop,
+        getLastPlaylist: stub, saveLastPlaylist: noop,
+        checkUpdate: noop, manualUpdateAvailable: noop,
+        updateNotAvailable: noop, updateDownloadProgress: noop,
+        updateDownloaded: noop, updateError: noop,
+        checkForUpdate: noop, downloadUpdate: noop,
+        installUpdate: noop, cancelUpdate: noop,
+        openFile: stub, toRegister: noop,
+        registerShortcuts: noop, unregisterShortcuts: noop,
+        onWindowMaximizedChange: function() { return function() {}; },
+        beforeQuit: noop, exitApp: noop, lyricControl: noop,
+      };
+      window.electronAPI = {
+        createLyricWindow: noop, closeLyricWindow: noop,
+        setLyricWindowMovable: noop, isLyricWindowVisible: stub,
+        onLyricUpdate: noop, requestLyricData: noop,
+        updateLyricData: noop, getCurrentLyricData: noop,
+        getLyricWindowBounds: stub, moveLyricWindow: noop,
+        resizeWindow: noop, lyricWindowReady: noop,
+        onDesktopLyricClosed: noop, notifyLyricWindowClosed: noop,
+        getLyricWindowContentBounds: stub, setLyricWindowResizable: noop,
+        getLyricWindowMinMax: stub, setLyricWindowMinMax: noop,
+        moveLyricWindowContentTo: noop,
+      };
+      window.playerApi = {
+        sendMetaData: noop, onSetPosition: noop,
+        onNext: noop, onPrevious: noop, onPlayPause: noop,
+        onPlayM: noop, onPauseM: noop, onRepeat: noop,
+        onShuffle: noop, onVolumeChanged: noop,
+        setVolume: noop, switchRepeatMode: noop,
+        switchShuffle: noop, sendPlayerCurrentTrackTime: noop,
+      };
+    };
+    window.__defineEmptyApi();
+  </script>
   <script type="module" src="/src/main.js"></script>
 </body>
 

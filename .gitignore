@@ -23,3 +23,7 @@ dist/*
 *.njsproj
 *.sln
 *.sw?
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/

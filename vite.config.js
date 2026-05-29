@@ -52,9 +52,7 @@ export default defineConfig({
       'howler'
     ],
     exclude: [
-      // 排除 Electron 相关包避免预构建问题
-      'electron',
-      'fs-extra'
+      // Tauri 下无需排除 Electron 相关包
     ]
   },
   // CSS 优化
@@ -72,10 +70,16 @@ export default defineConfig({
   },
   // 开发服务器优化
   server: {
+    // Tauri 需要固定的开发服务器端口
+    port: 1420,
+    strictPort: true,
     // 启用 gzip 压缩
-    open: false,
-    cors: true
+    cors: true,
+    // Tauri 开发模式下不要自动打开浏览器
+    open: false
   },
+  // 清理控制台输出，Tauri 开发时更清爽
+  clearScreen: false,
   // 预览服务器配置
   preview: {
     port: 4173,

@@ -10,6 +10,11 @@ import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
+import { setupTauriBridge } from './utils/tauriBridge'
+
+// 初始化 Tauri API 桥接层（替换 Electron contextBridge 的 windowApi）
+setupTauriBridge()
+
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
@@ -29,7 +34,9 @@ app.mount('#app')
 
 // 延迟到空闲时再注册 MediaSession，避免阻塞首屏
 const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500))
-if (window.process?.platform !== 'win32') {
+// Tauri 环境下不注册 MediaSession（由 WebView 原生处理）
+const isTauriEnv = typeof window !== 'undefined' && window.__TAURI__ !== undefined
+if (!isTauriEnv && window.process?.platform !== 'win32') {
   idle(async () => {
     try {
       const { initMediaSession } = await import('./utils/mediaSession')
