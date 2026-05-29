@@ -2176,12 +2176,12 @@ function setupWindowApiListeners() {
     windowApi.volumeUp(() => {
         if (volume.value + 0.1 < 1) volume.value += 0.1
         else volume.value = 1
-        currentMusic.value.volume(volume.value)
+        if (currentMusic.value) currentMusic.value.volume(volume.value)
     })
     windowApi.volumeDown(() => {
         if (volume.value - 0.1 > 0) volume.value -= 0.1
         else volume.value = 0
-        currentMusic.value.volume(volume.value)
+        if (currentMusic.value) currentMusic.value.volume(volume.value)
     })
     windowApi.musicProcessControl((event, mode) => {
         if (mode == 'forward') {

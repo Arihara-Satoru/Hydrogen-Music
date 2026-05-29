@@ -18,12 +18,70 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
 
+// ── Tauri 事件回调存储（解耦 listen 注册与回调设置时机） ──
+let _playPauseCb = null
+let _songControlCb = null
+let _playmodeCb = null
+let _volumeUpCb = null
+let _volumeDownCb = null
+let _processControlCb = null
+let _hidePlayerCb = null
+let _windowMaximizedCb = null
+let _listenersReady = false
+
+/**
+ * 在 setupTauriBridge 中直接注册 Tauri 事件监听器，
+ * 避免 player.js 模块级代码因加载时序早于 setupTauriBridge() 而丢失回调。
+ */
+function ensureTauriListeners() {
+  if (_listenersReady) return
+  _listenersReady = true
+
+  listen('music-playing-control', () => {
+    if (typeof _playPauseCb === 'function') _playPauseCb()
+  })
+  listen('music-song-control', (event) => {
+    if (typeof _songControlCb === 'function') _songControlCb(null, event.payload)
+  })
+  listen('music-playmode-control', (event) => {
+    if (typeof _playmodeCb === 'function') _playmodeCb(null, event.payload)
+  })
+  listen('music-volume-up', () => {
+    if (typeof _volumeUpCb === 'function') _volumeUpCb()
+  })
+  listen('music-volume-down', () => {
+    if (typeof _volumeDownCb === 'function') _volumeDownCb()
+  })
+  listen('music-process-control', (event) => {
+    if (typeof _processControlCb === 'function') _processControlCb(event.payload)
+  })
+  listen('hide-player', () => {
+    if (typeof _hidePlayerCb === 'function') _hidePlayerCb()
+  })
+  listen('window-maximized-changed', (event) => {
+    if (typeof _windowMaximizedCb === 'function') {
+      _windowMaximizedCb(null, Boolean(event.payload))
+    }
+  })
+}
+
+// ── 默认快捷键 ──
+const DEFAULT_SHORTCUTS = [
+  { id: 'play', name: '播放/暂停', shortcut: 'CommandOrControl+P', globalShortcut: 'CommandOrControl+Alt+P' },
+  { id: 'last', name: '上一首', shortcut: 'CommandOrControl+Left', globalShortcut: 'CommandOrControl+Alt+Left' },
+  { id: 'next', name: '下一首', shortcut: 'CommandOrControl+Right', globalShortcut: 'CommandOrControl+Alt+Right' },
+  { id: 'volumeUp', name: '增加音量', shortcut: 'CommandOrControl+Up', globalShortcut: 'CommandOrControl+Alt+Up' },
+  { id: 'volumeDown', name: '减少音量', shortcut: 'CommandOrControl+Down', globalShortcut: 'CommandOrControl+Alt+Down' },
+  { id: 'processForward', name: '快进(3s)', shortcut: 'CommandOrControl+]', globalShortcut: 'CommandOrControl+Alt+]' },
+  { id: 'processBack', name: '后退(3s)', shortcut: 'CommandOrControl+[', globalShortcut: 'CommandOrControl+Alt+[' },
+]
+
 // ── 默认设置（首次使用时写入 Store） ──
 const DEFAULT_SETTINGS = {
   music: { level: 'high', lyricSize: 17, tlyricSize: 14, rlyricSize: 14, lyricInterlude: 2, searchAssistLimit: 8, showSongTranslation: true, coverSize: 400 },
   local: { downloadFolder: '', localFolder: [] },
-  other: { quitApp: 'minimize', enableUpdate: false },
-  shortcuts: {}
+  other: { quitApp: 'minimize', enableUpdate: false, globalShortcuts: false },
+  shortcuts: DEFAULT_SHORTCUTS
 }
 
 /** 判断当前是否运行在 Tauri 环境 */
@@ -109,6 +167,9 @@ export function setupTauriBridge() {
   // 非 Tauri 环境无需初始化（Electron contextBridge 已提供）
   if (!isTauri()) return
 
+  // 直接注册 Tauri 事件监听器（与回调存储解耦）
+  ensureTauriListeners()
+
   // 注意：由于插件模块需要动态 import()，将异步初始化推迟到微任务
   // 同步部分先挂载基本的 invoke 封装，不会阻塞 Vue 挂载
   const api = {
@@ -139,48 +200,32 @@ export function setupTauriBridge() {
       try { document.title = title } catch (_) {}
     },
 
-    // ── 播放/事件监听 ──
+    // ── 播放/事件监听（回调由 ensureTauriListeners 中的 Tauri 事件驱动） ──
     playOrPauseMusic: (callback) => {
-      if (typeof callback === 'function') {
-        listen('music-playing-control', () => callback())
-      }
+      if (typeof callback === 'function') _playPauseCb = callback
     },
     lastOrNextMusic: (callback) => {
-      if (typeof callback === 'function') {
-        listen('music-song-control', (event) => callback(null, event.payload))
-      }
+      if (typeof callback === 'function') _songControlCb = callback
     },
     changeMusicPlaymode: (callback) => {
-      if (typeof callback === 'function') {
-        listen('music-playmode-control', (event) => callback(null, event.payload))
-      }
+      if (typeof callback === 'function') _playmodeCb = callback
     },
     volumeUp: (callback) => {
-      if (typeof callback === 'function') {
-        listen('music-volume-up', () => callback())
-      }
+      if (typeof callback === 'function') _volumeUpCb = callback
     },
     volumeDown: (callback) => {
-      if (typeof callback === 'function') {
-        listen('music-volume-down', () => callback())
-      }
+      if (typeof callback === 'function') _volumeDownCb = callback
     },
     musicProcessControl: (callback) => {
-      if (typeof callback === 'function') {
-        listen('music-process-control', (event) => callback(event.payload))
-      }
+      if (typeof callback === 'function') _processControlCb = callback
     },
     hidePlayer: (callback) => {
-      if (typeof callback === 'function') {
-        listen('hide-player', () => callback())
-      }
+      if (typeof callback === 'function') _hidePlayerCb = callback
     },
     onWindowMaximizedChange: (callback) => {
       if (typeof callback === 'function') {
-        const unlisten = listen('window-maximized-changed', (event) => {
-          callback(null, Boolean(event.payload))
-        })
-        return () => unlisten.then((fn) => fn())
+        _windowMaximizedCb = callback
+        return () => { _windowMaximizedCb = null }
       }
     },
     updateDockMenu: (songInfo) => {
@@ -312,8 +357,11 @@ export function setupTauriBridge() {
       try {
         // 从 store 读取快捷键配置
         const settings = await api.getSettings()
-        const shortcuts = settings?.shortcuts
-        if (!shortcuts || !Array.isArray(shortcuts) || shortcuts.length === 0) return
+        let shortcuts = settings?.shortcuts
+        // 未配置快捷键时使用默认值
+        if (!shortcuts || !Array.isArray(shortcuts) || shortcuts.length === 0) {
+          shortcuts = DEFAULT_SHORTCUTS
+        }
         // 转换为 Rust 命令需要的格式
         const configs = shortcuts.map(sc => ({
           id: sc.id,

@@ -190,38 +190,44 @@ fn register_shortcuts(app: tauri::AppHandle, shortcuts: Vec<ShortcutConfig>) -> 
     drop(registry);
 
     for sc in &shortcuts {
-        // 只注册全局快捷键（globalShortcut 字段）
-        let shortcut_str = match sc.global_shortcut.as_deref() {
-            Some(s) if !s.is_empty() => s,
-            _ => continue,
-        };
+        // 收集需要注册的快捷键字符串（shortcut + global_shortcut）
+        let keys_to_register: Vec<&str> = [
+            sc.shortcut.as_deref(),
+            sc.global_shortcut.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .collect();
 
-        // 解析快捷键字符串
-        let (modifiers, code) = match shortcuts::parse_electron_shortcut(shortcut_str) {
-            Some(v) => v,
-            None => {
-                eprintln!("[shortcuts] Failed to parse: {}", shortcut_str);
-                continue;
-            }
-        };
-
-        let combined = modifiers.iter().fold(Modifiers::empty(), |acc, m| acc | *m);
-        let shortcut = Shortcut::new(Some(combined), code);
         let id = sc.id.clone();
         let event_name = shortcuts::shortcut_id_to_event(&id).to_string();
         let payload = shortcuts::shortcut_id_to_payload(&id);
 
-        // 注册快捷键
-        match global_shortcut.register(shortcut) {
-            Ok(()) => {
-                // 存入注册表
-                let mut registry = shortcut_registry().lock().map_err(|e| e.to_string())?;
-                registry.insert(shortcut_str.to_string(), (event_name, payload));
-                let shortcut_key = shortcut_str.to_string();
-                println!("[shortcuts] Registered: {} → {} ({})", shortcut_str, registry.get(shortcut_key.as_str()).unwrap().0, id);
-            }
-            Err(e) => {
-                eprintln!("[shortcuts] Failed to register {}: {}", shortcut_str, e);
+        for shortcut_str in keys_to_register {
+            // 解析快捷键字符串
+            let (modifiers, code) = match shortcuts::parse_electron_shortcut(shortcut_str) {
+                Some(v) => v,
+                None => {
+                    eprintln!("[shortcuts] Failed to parse: {}", shortcut_str);
+                    continue;
+                }
+            };
+
+            let combined = modifiers.iter().fold(Modifiers::empty(), |acc, m| acc | *m);
+            let shortcut = Shortcut::new(Some(combined), code);
+
+            // 注册快捷键
+            match global_shortcut.register(shortcut) {
+                Ok(()) => {
+                    // 存入注册表
+                    let mut registry = shortcut_registry().lock().map_err(|e| e.to_string())?;
+                    registry.insert(shortcut_str.to_string(), (event_name.clone(), payload.clone()));
+                    println!("[shortcuts] Registered: {} → {} ({})", shortcut_str, event_name, id);
+                }
+                Err(e) => {
+                    eprintln!("[shortcuts] Failed to register {}: {}", shortcut_str, e);
+                }
             }
         }
     }
