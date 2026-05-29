@@ -17,7 +17,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "node scripts/release-build.cjs ${nextRelease.version}"
+        "prepareCmd": "npm run tauri:build"
       }
     ],
     [
@@ -27,10 +27,9 @@
         "failComment": false,
         "releasedLabels": false,
         "assets": [
-          "release/*.exe",
-          "release/*.zip",
-          "release/*.blockmap",
-          "release/latest.yml"
+          "src-tauri/target/release/bundle/nsis/*.exe",
+          "src-tauri/target/release/bundle/msi/*.msi",
+          "src-tauri/target/release/bundle/wix/*.msi"
         ]
       }
     ]

@@ -96,12 +96,13 @@ async function ensureTauriModules() {
     return _tauriModules
   }
   try {
-    const [storeMod, dialogMod, shellMod, wwMod, dpiMod] = await Promise.all([
+    const [storeMod, dialogMod, shellMod, wwMod, dpiMod, updaterMod] = await Promise.all([
       import('@tauri-apps/plugin-store'),
       import('@tauri-apps/plugin-dialog'),
       import('@tauri-apps/plugin-shell'),
       import('@tauri-apps/api/webviewWindow'),
       import('@tauri-apps/api/dpi'),
+      import('@tauri-apps/plugin-updater'),
     ])
     _tauriModules = {
       store: storeMod,
@@ -109,10 +110,11 @@ async function ensureTauriModules() {
       shell: shellMod,
       ww: wwMod,
       dpi: dpiMod,
+      updater: updaterMod,
     }
   } catch (e) {
     console.warn('[tauriBridge] Failed to load Tauri plugin modules:', e)
-    _tauriModules = { store: null, dialog: null, shell: null, ww: null, dpi: null }
+    _tauriModules = { store: null, dialog: null, shell: null, ww: null, dpi: null, updater: null }
   }
   return _tauriModules
 }
@@ -405,17 +407,117 @@ export function setupTauriBridge() {
       } catch (_) {}
     },
 
-    // ── 更新（后续 Phase 5 实现，保留空 operation 保证不报错） ──
-    checkUpdate: (_callback) => {},
-    manualUpdateAvailable: (_callback) => {},
-    updateNotAvailable: (_callback) => {},
-    updateDownloadProgress: (_callback) => {},
-    updateDownloaded: (_callback) => {},
-    updateError: (_callback) => {},
-    checkForUpdate: () => {},
-    downloadUpdate: () => {},
-    installUpdate: () => {},
-    cancelUpdate: () => {},
+    // ── Tauri updater 集成 ──
+    // 更新回调存储（支持多个监听器，兼容 Electron 习惯）
+    _updateCallbacks: {
+      manualUpdateAvailable: [],
+      updateNotAvailable: [],
+      updateDownloadProgress: [],
+      updateDownloaded: [],
+      updateError: [],
+    },
+    // 当前更新实例引用（供 download/install 使用）
+    _currentUpdate: null,
+
+    // 注册更新相关回调（支持多个监听器）
+    manualUpdateAvailable: function (callback) {
+      if (typeof callback === 'function' && !this._updateCallbacks.manualUpdateAvailable.includes(callback)) {
+        this._updateCallbacks.manualUpdateAvailable.push(callback)
+      }
+    },
+    updateNotAvailable: function (callback) {
+      if (typeof callback === 'function' && !this._updateCallbacks.updateNotAvailable.includes(callback)) {
+        this._updateCallbacks.updateNotAvailable.push(callback)
+      }
+    },
+    updateDownloadProgress: function (callback) {
+      if (typeof callback === 'function' && !this._updateCallbacks.updateDownloadProgress.includes(callback)) {
+        this._updateCallbacks.updateDownloadProgress.push(callback)
+      }
+    },
+    updateDownloaded: function (callback) {
+      if (typeof callback === 'function' && !this._updateCallbacks.updateDownloaded.includes(callback)) {
+        this._updateCallbacks.updateDownloaded.push(callback)
+      }
+    },
+    updateError: function (callback) {
+      if (typeof callback === 'function' && !this._updateCallbacks.updateError.includes(callback)) {
+        this._updateCallbacks.updateError.push(callback)
+      }
+    },
+
+    // 检查更新
+    checkForUpdate: async function () {
+      try {
+        const mod = await ensureTauriModules()
+        if (!mod.updater) {
+          console.warn('[tauriBridge] updater plugin not available')
+          this._updateCallbacks.updateError.forEach(cb => cb('更新模块不可用'))
+          return
+        }
+
+        const update = await mod.updater.check()
+        if (update) {
+          this._currentUpdate = update
+          this._updateCallbacks.manualUpdateAvailable.forEach(cb => cb(update.version))
+        } else {
+          this._currentUpdate = null
+          this._updateCallbacks.updateNotAvailable.forEach(cb => cb())
+        }
+      } catch (err) {
+        console.error('[tauriBridge] checkForUpdate error:', err)
+        this._currentUpdate = null
+        this._updateCallbacks.updateError.forEach(cb => cb(String(err)))
+      }
+    },
+
+    // 下载更新（向 UI 报告进度）
+    downloadUpdate: async function () {
+      const update = this._currentUpdate
+      if (!update) {
+        console.warn('[tauriBridge] No update to download')
+        return
+      }
+
+      try {
+        await update.download((progressEvent) => {
+          if (progressEvent.event === 'Finished') {
+            this._updateCallbacks.updateDownloadProgress.forEach(cb => cb(100))
+            this._updateCallbacks.updateDownloaded.forEach(cb => cb())
+          }
+          // Progress 事件由 Update 内部跟踪，Finished 时一次性上报 100%
+        })
+      } catch (err) {
+        console.error('[tauriBridge] downloadUpdate error:', err)
+        this._updateCallbacks.updateError.forEach(cb => cb(String(err)))
+      }
+    },
+
+    // 安装更新
+    installUpdate: async function () {
+      const update = this._currentUpdate
+      if (!update) {
+        console.warn('[tauriBridge] No update to install')
+        return
+      }
+
+      try {
+        await update.install()
+      } catch (err) {
+        console.error('[tauriBridge] installUpdate error:', err)
+        this._updateCallbacks.updateError.forEach(cb => cb(String(err)))
+      }
+    },
+
+    // 取消下载 - Tauri updater 不直接支持取消，close() 释放 Update 资源
+    cancelUpdate: async function () {
+      if (this._currentUpdate) {
+        try {
+          await this._currentUpdate.close()
+        } catch (_) {}
+        this._currentUpdate = null
+      }
+    },
 
     // ── 对话框（tauri-plugin-dialog 实现） ──
     openFile: async () => {

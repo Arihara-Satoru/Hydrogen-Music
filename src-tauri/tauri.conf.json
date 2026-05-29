@@ -51,8 +51,12 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
-      "endpoints": []
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNBNEUyMTM2MUU2ODNFMwpSV1RqZytaaEUrS2tBejh2bzg2RTI2V2VMczNpQTRjbk9acmIxcDQyVk9wNVJoOC9aN2N2R3VUbAo=",
+      "endpoints": [
+        "https://github.com/Arihara-Satoru/Hydrogen-Music/releases/latest/download/update.json",
+        "https://github.com/Arihara-Satoru/Hydrogen-Music/releases/download/v0.5.9/update.json"
+      ],
+      "dialog": false
     }
   }
 }

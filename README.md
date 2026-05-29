@@ -59,8 +59,14 @@ npm install
 # 运行Vue服务
 npm run dev
 
-# 运行Electron客户端
-npm start
+# 运行Tauri客户端（开发模式）
+npm run tauri:dev
+
+# 构建Tauri安装包
+npm run tauri:build
+
+# 生成更新签名（首次使用需要）
+# npx tauri signer generate -w .tauri/hydrogen-music.key
 ```
 
 ## 📜 开源许可

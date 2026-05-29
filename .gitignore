@@ -27,3 +27,8 @@ dist/*
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
+
+# Tauri updater signing private key (KEEP SECRET!)
+.tauri/hydrogen-music.key
+# 公开的公钥文件可以追踪
+# .tauri/hydrogen-music.key.pub
