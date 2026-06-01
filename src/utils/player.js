@@ -42,9 +42,6 @@ const levelFieldMap = {
     hires: 'hr',
 }
 
-watch(volume, (v) => {
-  window.playerApi?.setVolume?.(v)
-})
 watch(showSongTranslation, () => {
     updateWindowTitleDock()
 })
@@ -461,23 +458,6 @@ function normalizePlayMode(mode, inFM = isPersonalFMContext()) {
 function syncPlayModeExternalState(mode) {
     windowApi.changeTrayMusicPlaymode(mode)
     syncWindowsTaskbarPlaybackState()
-
-    // 通知 MPRIS 循环模式
-    switch (mode) {
-        case 0: // 顺序播放
-        case 3: // 随机播放
-            window.playerApi.switchRepeatMode('off')
-            break
-        case 1: // 列表循环
-            window.playerApi.switchRepeatMode('on')
-            break
-        case 2: // 单曲循环
-            window.playerApi.switchRepeatMode('one')
-            break
-    }
-
-    // 通知 MPRIS 随机状态
-    window.playerApi.switchShuffle(mode === 3)
 }
 
 function applyPlayMode(mode, options = {}) {
@@ -758,8 +738,6 @@ export function play(url, autoplay, resumeSeek = null) {
         currentMusic.value.unload()
         Howler.unload()
     }
-    // 播放前更新音量
-    window.playerApi?.setVolume?.(volume.value)
     // 每次播放新音乐时，检查当前歌曲是否有对应的视频
     checkAndLoadVideoForCurrentSong()
 
@@ -2220,36 +2198,7 @@ function setupModuleLevelApiCalls() {
         windowApi.exitApp(JSON.stringify(list))
     })
 
-    window.playerApi?.onSetPosition?.((positionSeconds) => {
-      changeProgress(positionSeconds)
-    })
-    window.playerApi?.onPlayPause?.(() => {
-        if (playing.value) pauseMusic()
-        else startMusic()
-    })
-    window.playerApi?.onNext?.(() => {
-        playNext()
-    })
-    window.playerApi?.onPrevious?.(() => {
-        playLast()
-    })
-    window.playerApi?.onPlayM?.(() => {
-        startMusic()
-    })
-    window.playerApi?.onPauseM?.(() => {
-        pauseMusic()
-    })
-    window.playerApi?.onRepeat?.(() => {
-        if (playMode.value == 0) applyPlayMode(2)
-        else if (playMode.value == 2) applyPlayMode(1)
-        else applyPlayMode(0)
-    })
-    window.playerApi?.onShuffle?.(() => {
-        applyPlayMode(playMode.value == 3 ? 0 : 3)
-    })
-    window.playerApi?.onVolumeChanged?.((v) => {
-        volume.value = v
-    })
+    // MPRIS/MediaSession 回调注册已移除（Tauri 迁移后不需要）
 }
 
 // 立即初始化监听器和模块级 API 调用

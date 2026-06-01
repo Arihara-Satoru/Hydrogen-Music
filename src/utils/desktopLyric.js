@@ -3,6 +3,8 @@ import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
 import { getSongDisplayName } from './songName';
+import { invoke } from '@tauri-apps/api/core';
+import { emit, listen } from '@tauri-apps/api/event';
 
 let lyricProgressInterval = null;
 let songChangeTimer = null;
@@ -72,7 +74,7 @@ function serializePayload(payload) {
 }
 
 function pushPayload(payload, { force = false } = {}) {
-    if (!window.electronAPI || !payload || !payload.type) return;
+    if (!payload || !payload.type) return;
 
     const serialized = serializePayload(payload);
     let lastSnapshot = null;
@@ -87,7 +89,7 @@ function pushPayload(payload, { force = false } = {}) {
     if (payload.type === 'lyric-progress') lastProgressPayload = serialized;
     if (payload.type === 'play-state') lastPlayStatePayload = serialized;
 
-    window.electronAPI.updateLyricData(payload);
+    emit('lyric-update', payload).catch(() => {});
 }
 
 function buildSongChangePayload() {
@@ -134,17 +136,17 @@ function buildLyricProgressPayload() {
 }
 
 function sendCurrentLyricData(options = {}) {
-    if (!isDesktopLyricOpen.value || !window.electronAPI) return;
+    if (!isDesktopLyricOpen.value) return;
     pushPayload(buildSongChangePayload(), options);
 }
 
 function sendPlayState(options = {}) {
-    if (!isDesktopLyricOpen.value || !window.electronAPI) return;
+    if (!isDesktopLyricOpen.value) return;
     pushPayload(buildPlayStatePayload(), options);
 }
 
 function sendLyricProgress(options = {}) {
-    if (!isDesktopLyricOpen.value || !window.electronAPI) return;
+    if (!isDesktopLyricOpen.value) return;
     pushPayload(buildLyricProgressPayload(), options);
 }
 
@@ -169,18 +171,16 @@ function scheduleProgressPush(delayMs = 0, options = {}) {
 }
 
 export const toggleDesktopLyric = async () => {
-    if (!window.electronAPI) return;
-
     try {
         if (isDesktopLyricOpen.value) {
-            const result = await window.electronAPI.closeLyricWindow();
+            const result = await invoke('close_lyric_window');
             if (result?.success) {
                 playerStore.isDesktopLyricOpen = false;
             }
             return;
         }
 
-        const result = await window.electronAPI.createLyricWindow();
+        const result = await invoke('create_lyric_window');
         if (result?.success) {
             playerStore.isDesktopLyricOpen = true;
             setTimeout(() => {
@@ -198,21 +198,22 @@ export const initDesktopLyric = () => {
     if (bridgeInitialized) return;
     bridgeInitialized = true;
 
-    if (window.electronAPI) {
-        window.electronAPI.isLyricWindowVisible().then(isVisible => {
-            playerStore.isDesktopLyricOpen = isVisible;
-        });
+    // 恢复歌词窗口状态
+    invoke('is_lyric_window_visible').then(isVisible => {
+        playerStore.isDesktopLyricOpen = isVisible;
+    }).catch(() => {});
 
-        window.electronAPI.getCurrentLyricData(() => {
-            sendCurrentLyricData({ force: true });
-            sendPlayState({ force: true });
-            sendLyricProgress({ force: true });
-        });
+    // 监听主窗口请求当前歌词数据
+    listen('request-lyric-data', () => {
+        sendCurrentLyricData({ force: true });
+        sendPlayState({ force: true });
+        sendLyricProgress({ force: true });
+    });
 
-        window.electronAPI.onDesktopLyricClosed(() => {
-            playerStore.isDesktopLyricOpen = false;
-        });
-    }
+    // 监听桌面歌词窗口关闭事件
+    listen('desktop-lyric-closed', () => {
+        playerStore.isDesktopLyricOpen = false;
+    });
 
     unwatchPlaying = watch(
         () => playing.value,

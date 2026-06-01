@@ -208,7 +208,7 @@ fn register_shortcuts(app: tauri::AppHandle, shortcuts: Vec<ShortcutConfig>) -> 
 
         for shortcut_str in keys_to_register {
             // 解析快捷键字符串
-            let (modifiers, code) = match shortcuts::parse_electron_shortcut(shortcut_str) {
+            let (modifiers, code) = match shortcuts::parse_shortcut(shortcut_str) {
                 Some(v) => v,
                 None => {
                     eprintln!("[shortcuts] Failed to parse: {}", shortcut_str);

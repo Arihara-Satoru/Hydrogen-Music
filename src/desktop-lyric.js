@@ -5,6 +5,7 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme, setTheme } from './utils/theme'
 import { setupTauriBridge } from './utils/tauriBridge'
+import { emit } from '@tauri-apps/api/event'
 
 // 初始化 Tauri API 桥接层（仅在 Tauri 歌词窗口中生效）
 setupTauriBridge()
@@ -25,12 +26,6 @@ window.addEventListener('storage', (e) => {
 
 // 通知主窗口歌词窗口已就绪
 const notifyReady = () => {
-  if (window.electronAPI?.lyricWindowReady) {
-    window.electronAPI.lyricWindowReady()
-  } else {
-    // 兜底：通过事件系统通知
-    const emit = window.__TAURI__?.event?.emit
-    if (emit) emit('lyric-window-ready', {})
-  }
+  emit('lyric-window-ready', {}).catch(() => {})
 }
 notifyReady()

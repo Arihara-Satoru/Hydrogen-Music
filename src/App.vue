@@ -51,10 +51,22 @@ const setupAppListeners = () => {
         setTimeout(setupAppListeners, 100)
         return
     }
-    windowApi.checkUpdate((event, version) => {
-        otherStore.toUpdate = true;
-        otherStore.newVersion = version;
-    });
+    try {
+        if (typeof windowApi.checkForUpdate === 'function') {
+            windowApi.checkForUpdate()
+        }
+    } catch (e) {
+        // 静默处理 - 更新检查失败不影响主界面渲染
+    }
+    // 手动检查更新可用回调注册
+    try {
+        if (typeof windowApi.manualUpdateAvailable === 'function') {
+            windowApi.manualUpdateAvailable((version) => {
+                otherStore.toUpdate = true;
+                otherStore.newVersion = version;
+            });
+        }
+    } catch (_) {}
 }
 setupAppListeners()
 

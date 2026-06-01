@@ -1,6 +1,6 @@
 use tauri_plugin_global_shortcut::{Code, Modifiers};
 
-/// Electron 风格快捷键 → Tauri Shortcut 解析
+/// 快捷键字符串 → Tauri Shortcut 解析
 ///
 /// 支持的格式:
 /// - `CommandOrControl+P` → CmdOrCtrl + KeyP
@@ -10,8 +10,8 @@ use tauri_plugin_global_shortcut::{Code, Modifiers};
 /// - `CommandOrControl+[` → CmdOrCtrl + BracketLeft
 /// - `CommandOrControl+Up` → CmdOrCtrl + ArrowUp
 /// - `CommandOrControl+Down` → CmdOrCtrl + ArrowDown
-pub fn parse_electron_shortcut(electron_shortcut: &str) -> Option<(Vec<Modifiers>, Code)> {
-    let parts: Vec<&str> = electron_shortcut.split('+').collect();
+pub fn parse_shortcut(shortcut_str: &str) -> Option<(Vec<Modifiers>, Code)> {
+    let parts: Vec<&str> = shortcut_str.split('+').collect();
     if parts.is_empty() {
         return None;
     }

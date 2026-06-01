@@ -48,7 +48,7 @@ export function setCookies(data) {
   persistAuthCookies(cookieMap)
 }
 
-//获取Cookie - 优先从localStorage读取，确保在Electron中的可靠性
+//获取Cookie - 优先从localStorage读取
 export function getCookie(key) {
   // 直接从localStorage读取，这是更可靠的方式
   const localStorageValue = localStorage.getItem('cookie:' + key)

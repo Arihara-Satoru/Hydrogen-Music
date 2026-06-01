@@ -72,7 +72,6 @@ export function initMediaSession() {
         duration = Number(override && typeof override.duration === 'number' ? override.duration : 0)
         position = 0
       }
-      playerApi.sendPlayerCurrentTrackTime(position)
       lastDur = duration
       lastPos = position
       lastTs = Date.now()
@@ -121,8 +120,7 @@ export function initMediaSession() {
       }
 
       navigator.mediaSession.metadata = new window.MediaMetadata({ title, artist, album, artwork: metadata.artwork })
-      // 发送给 mpris（Linux）桥接
-      try { playerApi && playerApi.sendMetaData && windowApi.sendMetaData(metadata) } catch (_) {}
+      // mpris 桥接已迁移（Tauri 下不需要）
     } catch (_) {}
     updatePlaybackState()
     // 换曲瞬间：强制把位置归零，避免系统控件保留上一首进度

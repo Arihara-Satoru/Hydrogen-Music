@@ -190,6 +190,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watchEffect } from 'vue';
 import { getSongDisplayName } from '../utils/songName';
+import { invoke } from '@tauri-apps/api/core';
+import { listen, emit } from '@tauri-apps/api/event';
 
 // 响应式数据
 const currentSong = ref(null);
@@ -301,7 +303,7 @@ const applyLyricAutoExpand = async () => {
         // 首次初始化：记录“若为单行时的窗口外部高度”与当前窗口宽度
         if (!baselineWindowHeightOneLine || !baselineWindowWidth) {
             try {
-                const bounds = await window.electronAPI?.getLyricWindowBounds?.();
+                const bounds = await invoke('get_lyric_window_bounds');
                 if (bounds && typeof bounds.width === 'number' && typeof bounds.height === 'number') {
                     baselineWindowWidth = bounds.width;
                     // 计算“单行基线外部高度”：扣除当前与NEXT的增量
@@ -328,7 +330,7 @@ const applyLyricAutoExpand = async () => {
             if (Math.abs(desiredWindowHeight - lastAppliedHeight) >= 2) {
                 lastAppliedHeight = desiredWindowHeight;
                 // 仅调整高度，宽度保持不变
-                window.electronAPI?.resizeWindow?.(baselineWindowWidth, desiredWindowHeight);
+                invoke('resize_lyric_window', { width: baselineWindowWidth, height: desiredWindowHeight }).catch(() => {});
             }
         }
     } catch (_) {}
@@ -354,10 +356,10 @@ const onDragStart = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         // 记录起点与初始窗口尺寸/位置
-        const bounds = await window.electronAPI?.getLyricWindowBounds?.();
+        const bounds = await invoke('get_lyric_window_bounds');
         if (!bounds) return;
         // 使用内容区域尺寸与位置，避免外框差异导致的尺寸漂移
-        const contentBounds = await window.electronAPI?.getLyricWindowContentBounds?.();
+        const contentBounds = await invoke('get_lyric_window_content_bounds');
         const useBounds = contentBounds || bounds;
         dragStartSize.value = { width: useBounds.width, height: useBounds.height };
         dragCurrentPos.value = { x: useBounds.x, y: useBounds.y };
@@ -367,15 +369,15 @@ const onDragStart = async (e) => {
         // 防止选中文本
         document.body.style.userSelect = 'none';
         // 拖拽期间禁用窗口 resize，避免误判为调整大小
-        window.electronAPI?.setLyricWindowResizable?.(false);
+        invoke('set_lyric_window_resizable', { resizable: false }).catch(() => {});
         // 读取并保存原始最小/最大尺寸，然后把 min/max 都锁到初始尺寸，彻底杜绝尺寸变化
-        originalMinMax.value = await window.electronAPI?.getLyricWindowMinMax?.();
-        await window.electronAPI?.setLyricWindowMinMax?.(
-            dragStartSize.value.width,
-            dragStartSize.value.height,
-            dragStartSize.value.width,
-            dragStartSize.value.height
-        );
+        originalMinMax.value = await invoke('get_lyric_window_min_max');
+        await invoke('set_lyric_window_min_max', {
+            minW: dragStartSize.value.width,
+            minH: dragStartSize.value.height,
+            maxW: dragStartSize.value.width,
+            maxH: dragStartSize.value.height
+        }).catch(() => {});
         // 监听全局移动/松开，避免移出手柄就终止
         document.addEventListener('mousemove', onDragMove);
         document.addEventListener('mouseup', onDragEnd);
@@ -400,7 +402,7 @@ const onDragMove = (e) => {
 
     // 强制保持初始尺寸
     // 用内容区域移动，进一步隔离外框差异
-    window.electronAPI?.moveLyricWindowContentTo?.(newX, newY, dragStartSize.value.width, dragStartSize.value.height);
+    invoke('move_lyric_window_content_to', { x: newX, y: newY, width: dragStartSize.value.width, height: dragStartSize.value.height }).catch(() => {});
 };
 
 const onDragEnd = () => {
@@ -410,9 +412,9 @@ const onDragEnd = () => {
     // 恢复窗口 min/max 限制与可调整大小
     if (originalMinMax.value) {
         const { minWidth, minHeight, maxWidth, maxHeight } = originalMinMax.value;
-        window.electronAPI?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight);
+        invoke('set_lyric_window_min_max', { minW: minWidth, minH: minHeight, maxW: maxWidth, maxH: maxHeight }).catch(() => {});
     }
-    window.electronAPI?.setLyricWindowResizable?.(true);
+    invoke('set_lyric_window_resizable', { resizable: true }).catch(() => {});
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
 };
@@ -651,9 +653,7 @@ const handleClick = () => {
 // 菜单功能
 const toggleLock = () => {
     locked.value = !locked.value;
-    if (window.electronAPI) {
-        window.electronAPI.setLyricWindowMovable(!locked.value);
-    }
+    invoke('set_lyric_window_movable', { movable: !locked.value }).catch(() => {});
     hideContextMenu();
 };
 
@@ -663,12 +663,10 @@ const adjustFontSize = delta => {
 };
 
 const closeLyric = () => {
-    if (window.electronAPI) {
-        // 先通知主窗口桌面歌词即将关闭
-        window.electronAPI.notifyLyricWindowClosed();
-        // 然后关闭窗口
-        window.electronAPI.closeLyricWindow();
-    }
+    // 先通知主窗口桌面歌词即将关闭
+    emit('desktop-lyric-closed').catch(() => {});
+    // 然后关闭窗口
+    invoke('close_lyric_window').catch(() => {});
     hideContextMenu();
 };
 
@@ -718,15 +716,15 @@ const hasLyricType = (type) => {
 };
 
 // 生命周期
+let unlistenLyricUpdate = null;
+
 onMounted(() => {
-    if (window.electronAPI) {
-        try {
-            window.electronAPI.onLyricUpdate(handleLyricUpdate);
-            window.electronAPI.requestLyricData();
-        } catch (error) {
-            // 静默处理错误
-        }
-    }
+    // 监听来自主窗口的歌词数据更新
+    listen('lyric-update', (event) => {
+        handleLyricUpdate(event.payload);
+    }).then(fn => { unlistenLyricUpdate = fn; }).catch(() => {});
+    // 请求当前歌词数据
+    emit('request-lyric-data').catch(() => {});
 
     document.addEventListener('click', hideContextMenu);
     document.addEventListener('contextmenu', e => {
@@ -754,6 +752,11 @@ onMounted(() => {
 
 onUnmounted(() => {
     document.removeEventListener('click', hideContextMenu);
+
+    // 清理 Tauri 事件监听
+    if (typeof unlistenLyricUpdate === 'function') {
+        unlistenLyricUpdate();
+    }
 
     // 清理动画
     if (scanAnimationRef.value) {

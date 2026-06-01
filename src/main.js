@@ -12,7 +12,7 @@ import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { setupTauriBridge } from './utils/tauriBridge'
 
-// 初始化 Tauri API 桥接层（替换 Electron contextBridge 的 windowApi）
+// 初始化 Tauri API 桥接层
 setupTauriBridge()
 
 const app = createApp(App)

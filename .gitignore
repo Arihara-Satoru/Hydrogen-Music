@@ -27,6 +27,7 @@ dist/*
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
+src-tauri/resources/
 
 # Tauri updater signing private key (KEEP SECRET!)
 .tauri/hydrogen-music.key

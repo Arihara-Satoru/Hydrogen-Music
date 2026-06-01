@@ -1,17 +1,15 @@
 /**
  * Tauri API 桥接层
  *
- * 提供与 Electron `window.windowApi`/`window.electronAPI` 兼容的接口，
- * 底层使用 Tauri invoke() + Tauri Plugin API。
- * 在 Tauri 环境下使用 @tauri-apps/api 的 invoke/listen 调用 Rust 命令。
- * 在 Electron 环境下回退到 window.windowApi，保障迁移过程中的兼容性。
+ * 将 `window.windowApi`/`window.electronAPI` 接口映射到 Tauri invoke() + Plugin API。
+ * 仅 Tauri 环境生效；非 Tauri 环境（浏览器开发）下静默降级。
  *
  * 使用方法：
  *   1. 在 main.js 中调用 setupTauriBridge() 初始化
  *   2. 现有代码中的 windowApi.xxx() 调用自动生效
  *   3. 新代码可 import { xxx } from './tauriBridge'
  *
- * 注意：Tauri 插件（plugin-store/plugin-dialog 等）在非 Tauri 环境不可用，
+ * 注意：Tauri 插件（plugin-store/plugin-dialog 等）仅在 Tauri 环境下可用，
  *       因此采用动态 import() 懒加载，避免阻塞 Vue 挂载。
  */
 
@@ -166,7 +164,7 @@ async function makePos(x, y) {
 // ═══════════════════════════════════════════════════════════════
 
 export function setupTauriBridge() {
-  // 非 Tauri 环境无需初始化（Electron contextBridge 已提供）
+  // 非 Tauri 环境无需初始化
   if (!isTauri()) return
 
   // 直接注册 Tauri 事件监听器（与回调存储解耦）
@@ -408,7 +406,7 @@ export function setupTauriBridge() {
     },
 
     // ── Tauri updater 集成 ──
-    // 更新回调存储（支持多个监听器，兼容 Electron 习惯）
+    // 更新回调存储（支持多个监听器）
     _updateCallbacks: {
       manualUpdateAvailable: [],
       updateNotAvailable: [],
@@ -575,7 +573,7 @@ export function setupTauriBridge() {
 
   window.windowApi = api
 
-  // 同时暴露 electronAPI 别名（供桌面歌词相关代码使用）
+  // 暴露 electronAPI 兼容接口（供桌面歌词相关代码使用）
   window.electronAPI = {
     createLyricWindow: api.createLyricWindow,
     closeLyricWindow: api.closeLyricWindow,
@@ -680,15 +678,6 @@ export function setupTauriBridge() {
     notifyLyricWindowClosed: () => emit('desktop-lyric-closed'),
   }
 
-  // playerApi 别名（供 MPRIS/MediaSession 使用，Tauri 下为空存根）
-  window.playerApi = {
-    sendMetaData: (_metadata) => {},
-    onSetPosition: (_callback) => {},
-    onNext: (_callback) => {},
-    onPrevious: (_callback) => {},
-    onPlayPause: (_callback) => {},
-    onRepeat: (_callback) => {},
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -697,66 +686,53 @@ export function setupTauriBridge() {
 
 // 窗口控制
 export function windowMin() {
-  return isTauri() ? invoke('window_min') : window.windowApi?.windowMin()
+  return invoke('window_min')
 }
 export function windowMax() {
-  return isTauri() ? invoke('window_max') : window.windowApi?.windowMax()
+  return invoke('window_max')
 }
 export function windowClose() {
-  return isTauri() ? invoke('window_close') : window.windowApi?.windowClose()
+  return invoke('window_close')
 }
 export async function getWindowMaximizedState() {
-  return isTauri() ? invoke('window_is_maximized') : window.windowApi?.getWindowMaximizedState()
+  return invoke('window_is_maximized')
 }
 export function onWindowMaximizedChange(callback) {
-  if (isTauri()) {
-    const unlisten = listen('window-maximized-changed', (event) => callback?.(null, Boolean(event.payload)))
-    return () => unlisten.then((fn) => fn())
-  }
-  return window.windowApi?.onWindowMaximizedChange(callback)
+  if (!isTauri()) return () => {}
+  const unlisten = listen('window-maximized-changed', (event) => callback?.(null, Boolean(event.payload)))
+  return () => unlisten.then((fn) => fn())
 }
 
 // 桌面歌词
 export function createLyricWindow() {
-  return isTauri() ? invoke('create_lyric_window') : window.electronAPI?.createLyricWindow()
+  return invoke('create_lyric_window')
 }
 export function closeLyricWindow() {
-  return isTauri() ? invoke('close_lyric_window') : window.electronAPI?.closeLyricWindow()
+  return invoke('close_lyric_window')
 }
 export function isLyricWindowVisible() {
-  return isTauri() ? invoke('is_lyric_window_visible') : window.electronAPI?.isLyricWindowVisible()
+  return invoke('is_lyric_window_visible')
 }
 export function setLyricWindowMovable(movable) {
-  return isTauri() ? invoke('set_lyric_window_movable', { movable }) : window.electronAPI?.setLyricWindowMovable(movable)
+  return invoke('set_lyric_window_movable', { movable })
 }
 
 // 事件
 export function onEvent(eventName, callback) {
-  if (isTauri()) {
-    const unlisten = listen(eventName, (event) => callback(event.payload))
-    return () => unlisten.then((fn) => fn())
-  }
-  return () => {}
+  if (!isTauri()) return () => {}
+  const unlisten = listen(eventName, (event) => callback(event.payload))
+  return () => unlisten.then((fn) => fn())
 }
 export function emitEvent(eventName, payload) {
-  if (isTauri()) return emit(eventName, payload)
+  if (!isTauri()) return
+  return emit(eventName, payload)
 }
 
 // 工具
 export function setWindowTile(title) {
-  if (isTauri()) {
-    document.title = title
-    return
-  }
-  return window.windowApi?.setWindowTile(title)
+  document.title = title
 }
 export function toFileUrl(filePathOrUrl) {
-  if (isTauri()) {
-    return _toFileUrlImpl(filePathOrUrl)
-  }
-  return window.windowApi?.toFileUrl(filePathOrUrl)
-}
-function _toFileUrlImpl(filePathOrUrl) {
   if (!filePathOrUrl || typeof filePathOrUrl !== 'string') return ''
   if (filePathOrUrl.startsWith('file://')) return filePathOrUrl
   const normalized = String(filePathOrUrl).replace(/\\/g, '/')
@@ -766,50 +742,39 @@ function _toFileUrlImpl(filePathOrUrl) {
   return encoded.startsWith('/') ? `file://${encoded}` : `file:///${encoded}`
 }
 export function copyTxt(txt) {
-  if (isTauri()) {
-    navigator.clipboard.writeText(txt).catch(() => {})
-    return
-  }
-  return window.windowApi?.copyTxt(txt)
+  navigator.clipboard.writeText(txt).catch(() => {})
 }
 
 // 设置
 export async function getSettings() {
-  if (isTauri()) {
-    try {
-      const store = await getStore('settings')
-      if (!store) return DEFAULT_SETTINGS
-      const saved = await store.get('settings')
-      if (saved) return saved
-      await store.set('settings', DEFAULT_SETTINGS)
-      await store.save()
-      return DEFAULT_SETTINGS
-    } catch (_) { return DEFAULT_SETTINGS }
-  }
-  return window.windowApi?.getSettings?.()
+  if (!isTauri()) return DEFAULT_SETTINGS
+  try {
+    const store = await getStore('settings')
+    if (!store) return DEFAULT_SETTINGS
+    const saved = await store.get('settings')
+    if (saved) return saved
+    await store.set('settings', DEFAULT_SETTINGS)
+    await store.save()
+    return DEFAULT_SETTINGS
+  } catch (_) { return DEFAULT_SETTINGS }
 }
 export async function setSettings(settings) {
-  if (isTauri()) {
-    try {
-      const parsed = typeof settings === 'string' ? JSON.parse(settings) : settings
-      const store = await getStore('settings')
-      if (!store) return
-      await store.set('settings', parsed)
-      await store.save()
-    } catch (_) {}
-    return
-  }
-  return window.windowApi?.setSettings?.(settings)
+  if (!isTauri()) return
+  try {
+    const parsed = typeof settings === 'string' ? JSON.parse(settings) : settings
+    const store = await getStore('settings')
+    if (!store) return
+    await store.set('settings', parsed)
+    await store.save()
+  } catch (_) {}
 }
 
 // 对话框
 export async function openFileDialog() {
-  if (isTauri()) {
-    try {
-      const mod = await ensureTauriModules()
-      if (!mod.dialog) return null
-      return await mod.dialog.open({ multiple: false, directory: true, title: '选择文件夹' }) || null
-    } catch (_) { return null }
-  }
-  return window.windowApi?.openFile?.()
+  if (!isTauri()) return null
+  try {
+    const mod = await ensureTauriModules()
+    if (!mod.dialog) return null
+    return await mod.dialog.open({ multiple: false, directory: true, title: '选择文件夹' }) || null
+  } catch (_) { return null }
 }
