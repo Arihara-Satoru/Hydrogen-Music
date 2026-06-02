@@ -255,10 +255,10 @@ export function setupTauriBridge() {
       if (isTauri()) {
         invoke('get_sidecar_url').then(url => { window.__sidecarUrl = url }).catch(() => {})
       }
-      return function() { return window.__sidecarUrl || 'http://127.0.0.1:36531' }
+      return function() { return window.__sidecarUrl || 'http://127.0.0.1:36530' }
     })(),
     _scUrl: function() {
-      return window.__sidecarUrl || 'http://127.0.0.1:36531'
+      return window.__sidecarUrl || 'http://127.0.0.1:36530'
     },
     download: (_url) => {
     },
@@ -283,7 +283,7 @@ export function setupTauriBridge() {
       try {
         const dirPath = params?.type || params?.dirPath || ''
         if (!dirPath) return
-        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36530'
         const resp = await fetch(`${baseUrl}/local/scan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -306,7 +306,7 @@ export function setupTauriBridge() {
     getLocalMusicImage: async (filePath) => {
       if (!isTauri()) return Promise.resolve(null)
       try {
-        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36530'
         const resp = await fetch(`${baseUrl}/local/image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -322,7 +322,7 @@ export function setupTauriBridge() {
     getLocalMusicLyric: async (filePath, _options) => {
       if (!isTauri()) return Promise.resolve(null)
       try {
-        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36530'
         const resp = await fetch(`${baseUrl}/local/lyric`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -347,7 +347,7 @@ export function setupTauriBridge() {
     getRequestData: async (request) => {
       if (!isTauri()) return Promise.reject(new Error('getRequestData not available'))
       try {
-        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36531'
+        const baseUrl = window.__sidecarUrl || 'http://127.0.0.1:36530'
         const resp = await fetch(`${baseUrl}/proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

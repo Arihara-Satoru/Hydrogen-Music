@@ -322,12 +322,12 @@ pub fn run() {
                 eprintln!("[tray] Failed to create tray: {}", e);
             }
 
-            // ── 启动 sidecar 进程（文件 I/O + KuGou API） ──
+            // ── 启动 sidecar 进程（合并的 KuGou API + 文件 I/O） ──
             let sidecar_state: std::sync::Mutex<backend::SidecarState> = Mutex::new(backend::SidecarState::new());
             app.manage(sidecar_state);
 
             let sidecar_handle = app.state::<Mutex<backend::SidecarState>>();
-            match backend::start_sidecar() {
+            match backend::start_sidecar(app.handle()) {
                 Ok(child) => {
                     if let Ok(mut guard) = sidecar_handle.lock() {
                         guard.process = Some(child);
