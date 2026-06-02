@@ -15,9 +15,7 @@
     "release:dry": "semantic-release --dry-run",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
     "tauri:icon": "tauri icon",
-    "build:sidecar": "node scripts/build-kugou-api.cjs",
     "build:sidecar": "node scripts/build-kugou-api.cjs",
     "tauri:build": "npm run build:sidecar && tauri build",
     "start:sidecar": "node src-tauri/sidecar/merged-server.js"

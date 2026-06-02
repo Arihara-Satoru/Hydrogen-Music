@@ -5,21 +5,58 @@
  *
  * 合并 KuGou Music API + 文件 I/O 服务为单一进程，运行在 36530 端口。
  * 使用 pkg 编译为独立二进制，作为 Tauri sidecar 运行，用户无需安装 Node.js。
+ *
+ * 启动方式（开发模式）:
+ *   node src-tauri/sidecar/merged-server.js
+ * 或者通过 Tauri sidecar 自动启动（生产模式）:
+ *   Tauri 会自动从 binaries/sidecar-server-{triple}.exe 启动
  */
 
 const path = require('path');
 const fs = require('fs-extra');
 
-// ── 确保 process.cwd() 指向正确的资源目录 ──
-// 在 pkg 编译后的环境下，__dirname 指向二进制内部的虚拟路径
-// 我们需要将 CWD 设为资源目录以便 dotenv 和静态文件能正确加载
-const pkgResolve = (p) => {
-  // pkg 环境下 __dirname 是虚拟路径，path.join 应正常工作
-  return path.join(__dirname, p);
-};
-
 // ── 加载 KuGou API 服务 ──
-const { startService } = require('./server');
+// esbuild 打包时会内联 require('./server')，使其在 pkg 二进制中可用
+// 开发模式下，此路径通过 module.paths 注入解析
+let serverModule;
+try {
+  serverModule = require('./server');
+} catch (_) {
+  // 开发模式：查找 KuGouMusicApi 源码
+  const apiCandidates = [
+    path.join(__dirname, '..', '..', '..', 'KuGouMusicApi'),
+    path.join(__dirname, '..', '..', 'KuGouMusicApi'),
+  ];
+  let found = false;
+  for (const apiDir of apiCandidates) {
+    const serverPath = path.join(apiDir, 'server.js');
+    if (fs.existsSync(apiDir) && fs.existsSync(serverPath)) {
+      // 将 KuGouMusicApi 目录加入模块搜索路径
+      module.paths.unshift(path.join(apiDir, 'node_modules'));
+      module.paths.unshift(apiDir);
+      // 也把 bin/api_js 加入（如果有预构建）
+      const apiJsDir = path.join(apiDir, 'bin', 'api_js');
+      if (fs.existsSync(apiJsDir)) {
+        module.paths.unshift(apiJsDir);
+      }
+      try {
+        serverModule = require(serverPath);
+        found = true;
+        break;
+      } catch (e) {
+        module.paths = module.paths.slice(3); // 恢复
+      }
+    }
+  }
+  if (!found) {
+    throw new Error(
+      '无法找到 KuGou Music API 服务器模块。\n' +
+      '请先运行构建脚本: node scripts/build-kugou-api.cjs\n' +
+      '或确保 KuGouMusicApi 目录存在于项目同级。'
+    );
+  }
+}
+const { startService } = serverModule;
 
 // ═══════════════════════════════════════════════════════════════
 // 主入口

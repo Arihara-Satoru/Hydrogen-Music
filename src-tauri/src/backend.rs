@@ -2,6 +2,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use tauri::Manager;
 
 const SIDECAR_PORT: u16 = 36530;
 
@@ -140,7 +141,7 @@ fn find_sidecar_script() -> Option<std::path::PathBuf> {
 }
 
 /// 创建隐藏窗口的 Command（Windows）
-fn new_hidden_command(program: impl AsRef<std::path::Path>) -> Command {
+fn new_hidden_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
