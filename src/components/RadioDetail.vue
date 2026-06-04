@@ -215,7 +215,7 @@ export default { name: 'RadioDetail' }
       position: relative;
       justify-content: space-between;
       .introduce{
-        width: calc(100% - 130Px);
+        width: calc(100% - 160Px);
         display: flex;
         flex-direction: row;
         .introduce-img{
@@ -297,21 +297,23 @@ export default { name: 'RadioDetail' }
         }
       }
       .introduce-other{
-        width: 130Px;
+        width: 160Px;
         div{
           width: 100%;
-          height: 16Px;
+          height: 24Px;
         }
         .introduce-1{
           border: 1Px solid black;
-          font: 10Px SourceHanSansCN-Bold;
+          font: 13Px SourceHanSansCN-Bold;
           color: black;
+          line-height: 22Px;
         }
         .introduce-2{
-          margin-top: 6Px;
+          margin-top: 8Px;
           background-color: black;
-          font: 10Px SourceHanSansCN-Bold;
+          font: 13Px SourceHanSansCN-Bold;
           color: white;
+          line-height: 22Px;
           transition: 0.2s;
           &:hover{
             cursor: pointer;

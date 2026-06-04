@@ -27,6 +27,10 @@ export const initSettings = () => {
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp
+        // 同步关闭行为到 Rust 后端
+        if (typeof windowApi.setQuitOnClose === 'function') {
+            windowApi.setQuitOnClose(settings.other.quitApp === 'quit')
+        }
         if(localStore.downloadedFolderSettings && !localStore.downloadedMusicFolder) {
             scanMusic({type:'downloaded',refresh:false})
         }

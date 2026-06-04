@@ -499,30 +499,30 @@ onUnmounted(() => {
 $boderpx: 2 + Px;
 $boderPosition: -1px;
 .search-container {
-    width: 130px;
-    height: 20px;
+    width: 170px;
+    height: 28px;
     position: relative;
     bottom: -3px;
     display: flex;
     transition: 0.3s cubic-bezier(0.24, 0.97, 0.59, 1);
     .search-input {
         width: 100%;
-        padding: 0 10px;
+        padding: 0 12px;
         color: black;
         border: none;
         border-style: none;
         background: none;
         outline: none;
         text-align: center;
-        font: 12px SourceHanSansCN-Bold;
+        font: 14px SourceHanSansCN-Bold;
         &::-webkit-input-placeholder {
-            font: 12px Geometos;
+            font: 14px Geometos;
             color: black;
         }
     }
     .search-border {
-        width: 7px;
-        height: 7px;
+        width: 9px;
+        height: 9px;
         position: absolute;
     }
     .search-border1 {
@@ -558,8 +558,8 @@ $boderPosition: -1px;
         }
     }
     .search-border-2 {
-        width: 4px;
-        height: 4px;
+        width: 5px;
+        height: 5px;
         background-color: black;
         position: absolute;
     }
@@ -594,10 +594,10 @@ $boderPosition: -1px;
         --assist-status: rgba(45, 64, 71, 0.66);
         --assist-shadow: 0 12px 24px rgba(43, 61, 68, 0.14);
 
-        width: 260px;
-        max-height: 364px;
+        width: 300px;
+        max-height: 420px;
         position: absolute;
-        top: 30px;
+        top: 36px;
         left: 50%;
         transform: translateX(-50%);
         background: var(--assist-bg);

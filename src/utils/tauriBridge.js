@@ -176,6 +176,7 @@ export function setupTauriBridge() {
     // ── 窗口控制（纯 invoke，不依赖插件模块） ──
     windowMin: () => invoke('window_min'),
     windowMax: () => invoke('window_max'),
+    setQuitOnClose: (quit) => invoke('set_quit_on_close', { quit }),
     windowClose: () => invoke('window_close'),
     getWindowMaximizedState: () => invoke('window_is_maximized'),
 
@@ -690,6 +691,9 @@ export function windowMin() {
 }
 export function windowMax() {
   return invoke('window_max')
+}
+export function setQuitOnClose(quit) {
+  return invoke('set_quit_on_close', { quit })
 }
 export function windowClose() {
   return invoke('window_close')

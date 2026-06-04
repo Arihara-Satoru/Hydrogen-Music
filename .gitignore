@@ -24,6 +24,9 @@ dist/*
 *.sln
 *.sw?
 
+# 便携版打包输出
+dist_portable/
+
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/

@@ -80,13 +80,13 @@ $pointOffset: -1px;
         background: transparent !important;
         background-color: transparent !important;
         color: var(--text) !important;
-        font: 12px SourceHanSansCN-Bold;
+        font: 13px SourceHanSansCN-Bold;
         letter-spacing: 0.2px;
         text-align: left;
 
         &::placeholder {
             color: var(--muted-text) !important;
-            font: 10px Geometos;
+            font: 12px Geometos;
             letter-spacing: 1px;
         }
     }
@@ -98,8 +98,8 @@ $pointOffset: -1px;
     }
 
     .search-border {
-        width: 8px;
-        height: 8px;
+        width: 10px;
+        height: 10px;
     }
 
     .search-border1 {
@@ -131,8 +131,8 @@ $pointOffset: -1px;
     }
 
     .search-point {
-        width: 4px;
-        height: 4px;
+        width: 5px;
+        height: 5px;
         background: var(--text);
     }
 
@@ -160,9 +160,9 @@ $pointOffset: -1px;
         position: absolute;
         top: 50%;
         left: 10px;
-        width: 7px;
-        height: 7px;
-        border: 1.5px solid var(--text);
+        width: 9px;
+        height: 9px;
+        border: 2px solid var(--text);
         border-radius: 50%;
         transform: translateY(-58%);
         pointer-events: none;
@@ -171,10 +171,10 @@ $pointOffset: -1px;
         &::after {
             content: '';
             position: absolute;
-            right: -3px;
-            bottom: -2px;
-            width: 5px;
-            height: 1.5px;
+            right: -4px;
+            bottom: -3px;
+            width: 6px;
+            height: 2px;
             background: var(--text);
             transform: rotate(45deg);
             transform-origin: center;
@@ -186,8 +186,8 @@ $pointOffset: -1px;
     --compact-notch: 6px;
     --compact-line: var(--border);
 
-    height: 24px;
-    padding: 0 10px;
+    height: 32px;
+    padding: 0 12px;
     border: 1px solid var(--compact-line);
     background: transparent;
     clip-path: polygon(0 0, calc(100% - var(--compact-notch)) 0, 100% var(--compact-notch), 100% 100%, var(--compact-notch) 100%, 0 calc(100% - var(--compact-notch)));

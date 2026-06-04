@@ -1022,8 +1022,8 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
     --ld-secondary: rgb(78, 78, 78);
     --ld-line: rgb(154, 154, 154);
     --ld-border: #000000;
-    --ld-side-width: 130px;
-    --ld-search-width: 130px;
+    --ld-side-width: 160px;
+    --ld-search-width: 200px;
     --ld-btn-bg: #000000;
     --ld-btn-text: #ffffff;
     --ld-btn-hover-bg: rgb(40, 40, 40);
@@ -1202,18 +1202,20 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             width: var(--ld-side-width);
             div {
                 width: 100%;
-                height: 16px;
+                height: 24px;
             }
             .introduce-1 {
                 border: 1px solid var(--ld-border);
-                font: 10px SourceHanSansCN-Bold;
+                font: 13px SourceHanSansCN-Bold;
                 color: var(--ld-text);
+                line-height: 22px;
             }
             .introduce-2 {
-                margin-top: 6px;
+                margin-top: 8px;
                 background-color: var(--ld-btn-bg);
-                font: 10px SourceHanSansCN-Bold;
+                font: 13px SourceHanSansCN-Bold;
                 color: var(--ld-btn-text);
+                line-height: 22px;
                 transition: 0.2s;
                 &:hover {
                     cursor: pointer;

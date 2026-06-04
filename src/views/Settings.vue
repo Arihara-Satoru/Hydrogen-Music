@@ -236,6 +236,10 @@ const setAppSettings = () => {
     }
     playerStore.quality = musicLevel.value
     windowApi.setSettings(JSON.stringify(settings))
+    // 同步关闭行为到 Rust 后端
+    if (typeof windowApi.setQuitOnClose === 'function') {
+        windowApi.setQuitOnClose(quitApp.value === 'quit')
+    }
 }
 
 // apply theme immediately when user changes

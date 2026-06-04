@@ -17,7 +17,8 @@
     "tauri:dev": "tauri dev",
     "tauri:icon": "tauri icon",
     "build:sidecar": "node scripts/build-kugou-api.cjs",
-    "tauri:build": "npm run build:sidecar && tauri build",
+    "tauri:build": "npm run build:sidecar && tauri build && node scripts/build-portable.cjs",
+    "build:portable": "node scripts/build-portable.cjs",
     "start:sidecar": "node src-tauri/sidecar/merged-server.js"
   },
   "dependencies": {

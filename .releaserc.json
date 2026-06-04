@@ -17,7 +17,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "npm run tauri:build"
+        "prepareCmd": "node scripts/sync-version.cjs && npm run tauri:build"
       }
     ],
     [
