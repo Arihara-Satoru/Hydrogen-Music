@@ -29,7 +29,8 @@
         "assets": [
           "src-tauri/target/release/bundle/nsis/*.exe",
           "src-tauri/target/release/bundle/msi/*.msi",
-          "src-tauri/target/release/bundle/wix/*.msi"
+          "src-tauri/target/release/bundle/wix/*.msi",
+          "dist_portable/*.zip"
         ]
       }
     ]
