@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     Emitter, Listener, Manager, WebviewUrl, WebviewWindowBuilder,
 };
@@ -17,6 +18,23 @@ static SHORTCUT_REGISTRY: std::sync::OnceLock<Mutex<HashMap<String, (String, Opt
 
 fn shortcut_registry() -> &'static Mutex<HashMap<String, (String, Option<serde_json::Value>)>> {
     SHORTCUT_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 关闭行为偏好（由前端 quitApp 设置同步）
+// ═══════════════════════════════════════════════════════════════
+
+struct CloseBehavior {
+    quit_on_close: AtomicBool,
+}
+
+#[tauri::command]
+fn set_quit_on_close(app: tauri::AppHandle, quit: bool) -> Result<(), String> {
+    if let Some(state) = app.try_state::<CloseBehavior>() {
+        state.quit_on_close.store(quit, Ordering::Relaxed);
+        println!("[close] Quit on close: {}", quit);
+    }
+    Ok(())
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,10 +57,25 @@ fn window_max(window: tauri::Window) -> Result<(), String> {
 
 #[tauri::command]
 fn window_close(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window.hide().map_err(|e| e.to_string())
-    } else {
+    let should_quit = app
+        .try_state::<CloseBehavior>()
+        .map(|s| s.quit_on_close.load(Ordering::Relaxed))
+        .unwrap_or(false);
+
+    if should_quit {
+        println!("[close] Quit app on close button");
+        // 先通知前端保存状态
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.emit("player-save", ());
+        }
+        app.exit(0);
         Ok(())
+    } else {
+        if let Some(window) = app.get_webview_window("main") {
+            window.hide().map_err(|e| e.to_string())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -322,6 +355,11 @@ pub fn run() {
                 eprintln!("[tray] Failed to create tray: {}", e);
             }
 
+            // ── 关闭行为偏好（默认在用户设置同步前为 false，即隐藏到托盘） ──
+            app.manage(CloseBehavior {
+                quit_on_close: AtomicBool::new(false),
+            });
+
             // ── 启动 sidecar 进程（合并的 KuGou API + 文件 I/O） ──
             let sidecar_state: std::sync::Mutex<backend::SidecarState> = Mutex::new(backend::SidecarState::new());
             app.manage(sidecar_state);
@@ -356,6 +394,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            set_quit_on_close,
             window_min,
             window_max,
             window_close,
@@ -374,8 +413,20 @@ pub fn run() {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             let label = window.label().to_string();
             if label == "main" {
-                window.hide().ok();
-                api.prevent_close();
+                // 检查用户偏好：是退出还是隐藏到托盘
+                let should_quit = window
+                    .try_state::<CloseBehavior>()
+                    .map(|s| s.quit_on_close.load(Ordering::Relaxed))
+                    .unwrap_or(false);
+
+                if should_quit {
+                    println!("[close] Quit app on native close request");
+                    let _ = window.emit("player-save", ());
+                    // 不 prevent_close，让窗口自然关闭 → 触发 Destroyed → 停止 sidecar
+                } else {
+                    window.hide().ok();
+                    api.prevent_close();
+                }
             } else if label == "lyric" {
                 let _ = window.emit("desktop-lyric-closed", ());
             }

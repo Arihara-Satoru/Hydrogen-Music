@@ -3,6 +3,24 @@ const fs = require('fs');
 const path = require('path');
 
 const projectDir = path.resolve(__dirname, '..');
+
+// ═══════════════════════════════════════════════════════════════
+// 检测：如果 sidecar 二进制已存在，跳过整个构建流程
+// 在 CI 中，预编译的二进制通常由 release.yml 提前下载到该目录
+// 如需强制重新编译，删除 src-tauri/binaries/ 下的文件即可
+// ═══════════════════════════════════════════════════════════════
+const binariesDir = path.join(projectDir, 'src-tauri', 'binaries');
+const buildArch = process.argv.includes('--arm64') ? 'aarch64-pc-windows-msvc' : 'x86_64-pc-windows-msvc';
+const ext = process.platform === 'win32' ? '.exe' : '';
+const expectedBinary = path.join(binariesDir, `sidecar-server-${buildArch}${ext}`);
+
+if (fs.existsSync(expectedBinary)) {
+  const sizeMB = (fs.statSync(expectedBinary).size / 1024 / 1024).toFixed(1);
+  console.log(`[build-kugou-api] ✅ Sidecar binary already exists: sidecar-server-${buildArch}${ext} (${sizeMB} MB)`);
+  console.log('[build-kugou-api] Skipping full build. Delete the file to force recompile.');
+  process.exit(0);
+}
+
 const apiCandidates = [
   path.resolve(projectDir, 'KuGouMusicApi'),
   path.resolve(projectDir, '..', 'KuGouMusicApi'),
