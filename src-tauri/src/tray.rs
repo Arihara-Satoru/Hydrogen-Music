@@ -3,6 +3,9 @@ use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+use std::sync::Mutex;
+
+use crate::backend;
 
 /// 创建系统托盘
 pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), tauri::Error> {
@@ -76,7 +79,11 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), tauri::Error> {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("player-save", ());
                     }
-                    // 退出前清理
+                    // 显式停止 sidecar 进程
+                    if let Some(state) = app.try_state::<Mutex<crate::backend::SidecarState>>() {
+                        backend::stop_sidecar(&state);
+                    }
+                    // 退出应用
                     #[cfg(not(target_os = "macos"))]
                     {
                         app.exit(0);

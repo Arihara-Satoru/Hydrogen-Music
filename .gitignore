@@ -36,3 +36,4 @@ src-tauri/resources/
 .tauri/hydrogen-music.key
 # 公开的公钥文件可以追踪
 # .tauri/hydrogen-music.key.pub
+src-tauri/binaries/sidecar-server-x86_64-pc-windows-msvc.exe

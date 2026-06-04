@@ -68,6 +68,10 @@ fn window_close(app: tauri::AppHandle) -> Result<(), String> {
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.emit("player-save", ());
         }
+        // 显式停止 sidecar，防止 app.exit(0) 跳过 Destroyed 事件
+        if let Some(state) = app.try_state::<Mutex<backend::SidecarState>>() {
+            backend::stop_sidecar(&state);
+        }
         app.exit(0);
         Ok(())
     } else {
@@ -422,7 +426,10 @@ pub fn run() {
                 if should_quit {
                     println!("[close] Quit app on native close request");
                     let _ = window.emit("player-save", ());
-                    // 不 prevent_close，让窗口自然关闭 → 触发 Destroyed → 停止 sidecar
+                    // 显式停止 sidecar，再让窗口自然关闭
+                    if let Some(state) = window.try_state::<Mutex<backend::SidecarState>>() {
+                        backend::stop_sidecar(&state);
+                    }
                 } else {
                     window.hide().ok();
                     api.prevent_close();
