@@ -130,7 +130,7 @@ Hydrogen Music 是一个第三方桌面音乐播放器。当前仓库在原 Hydr
 
 ## 安装使用
 
-前往 [Releases](https://github.com/ldx123000/Hydrogen-Music/releases) 下载对应平台的安装包。
+前往 [Releases](https://github.com/Arihara-Satoru/Hydrogen-Music/releases) 下载对应平台的安装包。
 
 当前构建配置支持：
 
