@@ -11,7 +11,7 @@
     <br />
     ⚠️ 如果原作者觉得不妥可以与我联系，我将删除该仓库
     <br />
-    <a href="#%EF%B8%8F-安装" target="blank"><strong>📦️ 下载 Windows 安装包</strong></a>
+    <a href="#%EF%B8%8F-安装" target="blank"><strong>📦️ 下载 Windows、macOS 或 Linux 安装包</strong></a>
     <br />
     <br />
   </p>
@@ -21,7 +21,7 @@
 
 这是基于原作者 [Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music) 修改而来的版本，主要改动是将原有后端能力切换为 **酷狗概念版后端**。
 
-由于原项目部分功能依赖旧后端接口，本项目不是原版功能的完整复刻。有些功能已经适配酷狗概念版能力，有些功能暂未移植或只能部分可用。目前仅维护 Windows 版。
+由于原项目部分功能依赖旧后端接口，本项目不是原版功能的完整复刻。有些功能已经适配酷狗概念版能力，有些功能暂未移植或只能部分可用。
 
 ## 🌟 当前可用功能
 
@@ -35,7 +35,7 @@
 - 支持 **评论区浏览**，播放器界面可切换显示歌词/评论区
 - 支持 **电台/频道**，目前主要用于收听已收藏的电台节目
 - 支持 **深色模式**，可在设置中切换浅色/深色模式
-- 仅提供 Windows 版本安装包
+- 提供 Windows、macOS（Apple Silicon/Intel）和 Linux x64 安装包
 
 ## ⚠️ 当前限制
 
@@ -51,14 +51,24 @@
   
 ## 📦️ 安装
 
-访问 [Releases](https://github.com/ldx123000/Hydrogen-Music/releases)
-页面下载 Windows 安装包。
+访问 [Releases](https://github.com/ldx123000/Hydrogen-Music/releases) 页面下载对应平台的安装包：
+
+- Windows：`.exe` 安装包、便携版或 `.zip`
+- macOS：Apple Silicon（arm64）或 Intel（x64）的 `.dmg`
+- Linux x64：`.AppImage`、`.deb` 或 `.rpm`
+
+macOS 包目前未使用 Apple Developer 证书签名，首次启动时可能需要在“系统设置 → 隐私与安全性”中确认打开。
 
 ## 👷‍♂️ 打包客户端
 
 ```shell
-# 打包
-npm run dist
+# 在当前系统打包对应平台
+pnpm run dist
+
+# 也可以显式指定目标（macOS 包仍需在 macOS 上生成）
+pnpm run dist -- --win
+pnpm run dist -- --mac
+pnpm run dist -- --linux
 ```
 
 ## :computer: 配置开发环境
@@ -67,13 +77,13 @@ npm run dist
 
 ```shell
 # 安装依赖
-npm install
+pnpm install
 
 # 运行Vue服务
-npm run dev
+pnpm run dev
 
 # 运行Electron客户端
-npm start
+pnpm start
 ```
 
 ## 📜 开源许可
