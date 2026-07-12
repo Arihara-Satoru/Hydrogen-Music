@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
@@ -103,6 +103,119 @@ const currentSong = computed(() => songList.value?.[currentIndex.value] || null)
 const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren');
 const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '加载中...', showSongTranslation.value));
 const canSelectLyrics = computed(() => !!currentSong.value && currentSong.value.type !== 'local' && !isCurrentSirenSong.value && !isDjMode.value);
+const songInfoShow = ref(false);
+const songInfoLayer = ref(null);
+
+const hasInfoValue = value => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
+const firstInfoValue = (...values) => values.find(hasInfoValue);
+const formatInfoList = value => (Array.isArray(value) ? value : [value])
+    .map(item => (typeof item === 'object' ? item?.name || item?.author_name || item?.singername : item))
+    .filter(hasInfoValue)
+    .join(' / ');
+const formatInfoDate = value => {
+    if (!hasInfoValue(value)) return '';
+    if (Number(value) === 0) return '';
+    if (typeof value === 'number' || /^\d{10,13}$/.test(String(value))) {
+        const timestamp = Number(value) < 1e12 ? Number(value) * 1000 : Number(value);
+        const date = new Date(timestamp);
+        if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+    }
+    return String(value).slice(0, 10);
+};
+const formatInfoDuration = value => {
+    const duration = Number(value);
+    if (!Number.isFinite(duration) || duration <= 0) return '';
+    return songTime2(duration);
+};
+const formatInfoBitrate = value => {
+    const bitrate = Number(value);
+    if (!Number.isFinite(bitrate) || bitrate <= 0) return '';
+    return `${Math.round(bitrate)} kbps`;
+};
+const formatInfoSampleRate = value => {
+    const sampleRate = Number(value);
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return '';
+    return `${Number((sampleRate >= 1000 ? sampleRate / 1000 : sampleRate).toFixed(1))} kHz`;
+};
+const formatTempo = (bpmValue, typeValue) => {
+    const bpm = Number(bpmValue);
+    if (!Number.isFinite(bpm) || bpm <= 0) return '';
+    const type = Number(typeValue);
+    const description = { 1: '缓慢', 2: '舒缓', 3: '明快' }[type]
+        || (bpm < 67 ? '缓慢' : bpm < 98 ? '舒缓' : '明快');
+    return `${description}（每分钟 ${Math.round(bpm)} 拍）`;
+};
+const formatInfoFileSize = value => {
+    const size = Number(value);
+    if (!Number.isFinite(size) || size <= 0) return '';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / 1024 ** 2).toFixed(1)} MB`;
+};
+
+const songInfoGroups = computed(() => {
+    const song = currentSong.value;
+    if (!song) return [];
+
+    const actualLevel = String(song.actualLevel || song.quality || '').toLowerCase();
+    const streamLevel = song.level || {};
+    const album = song.al || song.album || song.albuminfo || song.album_info || {};
+    const common = song.common || {};
+    const format = song.format || {};
+    const artists = firstInfoValue(song.ar, song.artists, song.authors, song.singerinfo, song.author_name, song.singername, common.artists);
+    const rawDuration = Number(firstInfoValue(song.dt, song.duration, song.timelen));
+    const duration = Number(time.value) || (song.type === 'local' ? Number(format.duration) : rawDuration > 1000 ? rawDuration / 1000 : rawDuration);
+    const bitrate = streamLevel.br
+        ? Number(streamLevel.br) / 1000
+        : format.bitrate
+            ? Number(format.bitrate) / 1000
+            : firstInfoValue(actualLevel && song[`bitrate_${actualLevel}`], song.bitrate);
+    const bitsPerSample = firstInfoValue(streamLevel.bitsPerSample, song.bitsPerSample, format.bitsPerSample);
+    const fileSize = firstInfoValue(
+        streamLevel.size,
+        actualLevel && song[`filesize_${actualLevel}`],
+        song.filesize,
+        song.size,
+    );
+    const addGroup = (title, items) => ({ title, items: items.filter(item => hasInfoValue(item.value)) });
+
+    return [
+        addGroup('基本信息', [
+            { label: '歌曲', value: currentSongDisplayName.value },
+            { label: '歌手', value: formatInfoList(artists) },
+            { label: '专辑', value: firstInfoValue(album.name, album.album_name, song.album_name, common.album, song.belong) },
+            { label: '发行日期', value: formatInfoDate(firstInfoValue(song.publish_date, song.publishTime, song.publish_time, common.date, common.year)) },
+            { label: '语言', value: firstInfoValue(song.language, song.trans_param?.language) },
+            { label: '流派', value: formatInfoList(firstInfoValue(song.genre, common.genre)) },
+            { label: '别名', value: formatInfoList(firstInfoValue(song.alia, song.alias, song.ori_song_name, song.remark)) },
+        ]),
+        addGroup('音频信息', [
+            { label: '时长', value: formatInfoDuration(duration) },
+            { label: '节奏速度', value: formatTempo(song.bpm, song.bpm_type) },
+            { label: '当前音质', value: (song.actualLevel || song.quality || '').toString().toUpperCase() },
+            { label: '格式', value: firstInfoValue(song.extname, format.container) },
+            { label: '码率', value: formatInfoBitrate(bitrate) },
+            { label: '采样率', value: formatInfoSampleRate(firstInfoValue(streamLevel.sr, song.sampleRate, format.sampleRate)) },
+            { label: '位深', value: bitsPerSample ? `${bitsPerSample} bit` : '' },
+            { label: '文件大小', value: formatInfoFileSize(fileSize) },
+        ]),
+        addGroup('平台信息', [
+            { label: '歌曲 ID', value: song.id },
+            { label: '音频 ID', value: song.audio_id },
+            { label: '专辑音频 ID', value: firstInfoValue(song.album_audio_id, song.mixsongid, song.mixsong_id) },
+            { label: '文件 ID', value: song.fileid },
+            { label: '专辑 ID', value: firstInfoValue(album.id, album.album_id, song.album_id) },
+            { label: '文件 Hash', value: firstInfoValue(song.hash, song.FileHash, song.file_hash) },
+            { label: 'MV', value: firstInfoValue(song.mv, song.mvhash, song.video_id, song.mvdata?.id) },
+            { label: '来源', value: song.source || song.type },
+            { label: '可播放', value: typeof song.playable === 'boolean' ? (song.playable ? '是' : '否') : '' },
+            { label: '发布状态', value: song.is_publish === 1 ? '已发布' : song.is_publish === 0 ? '未发布' : '' },
+            { label: '付费类型代码', value: firstInfoValue(song.media_pay_type, song.pay_type) },
+        ]),
+    ].filter(group => group.items.length > 0);
+});
+
+const closeSongInfo = () => (songInfoShow.value = false);
 
 const toggleCommentPanel = () => {
     switchRightPanel(props.rightPanelMode === 1 ? 0 : 1);
@@ -131,6 +244,13 @@ watch(
     },
     { immediate: true },
 );
+
+watch(songId, closeSongInfo);
+watch(songInfoShow, async visible => {
+    if (!visible) return;
+    await nextTick();
+    songInfoLayer.value?.focus();
+});
 
 const sliderDuration = computed(() => {
     const currentTime = Number(time.value);
@@ -402,6 +522,25 @@ const addToPlaylist = () => {
             </div>
 
             <div class="song-control">
+                <svg
+                    v-if="currentSong"
+                    @click="songInfoShow = true"
+                    v-delayed-tooltip="'歌曲信息'"
+                    class="icon song-info-button"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="32"
+                    height="32"
+                    role="button"
+                    tabindex="0"
+                    aria-label="查看歌曲信息"
+                    @keydown.enter.prevent="songInfoShow = true"
+                    @keydown.space.prevent="songInfoShow = true"
+                >
+                    <circle cx="12" cy="12" r="9" />
+                    <line x1="12" y1="10.5" x2="12" y2="17" />
+                    <circle class="song-info-dot" cx="12" cy="7.2" r="0.8" />
+                </svg>
                 <svg
                     t="1673355036226"
                     v-if="musicVideo"
@@ -753,6 +892,38 @@ const addToPlaylist = () => {
                 </svg>
             </div>
         </div>
+
+        <Teleport to="body">
+            <transition name="song-info-metro">
+                <div ref="songInfoLayer" v-if="songInfoShow && currentSong" class="song-info-layer" tabindex="-1" @click.self="closeSongInfo" @keydown.esc="closeSongInfo">
+                    <div class="song-info-dialog" role="dialog" aria-modal="true" aria-label="歌曲信息">
+                        <div class="song-info-content">
+                            <div class="song-info-title">歌曲信息</div>
+                            <div class="song-info-groups">
+                                <section class="song-info-group" v-for="group in songInfoGroups" :key="group.title">
+                                    <h3>{{ group.title }}</h3>
+                                    <dl>
+                                        <template v-for="item in group.items" :key="item.label">
+                                            <dt>{{ item.label }}</dt>
+                                            <dd>{{ item.value }}</dd>
+                                        </template>
+                                    </dl>
+                                </section>
+                            </div>
+                        </div>
+                        <div class="song-info-close" role="button" tabindex="0" aria-label="关闭歌曲信息" @click="closeSongInfo" @keydown.enter.prevent="closeSongInfo" @keydown.space.prevent="closeSongInfo">
+                            <svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+                                <path d="M576 512l277.333333 277.333333-64 64-277.333333-277.333333L234.666667 853.333333 170.666667 789.333333l277.333333-277.333333L170.666667 234.666667 234.666667 170.666667l277.333333 277.333333L789.333333 170.666667 853.333333 234.666667 576 512z" />
+                            </svg>
+                        </div>
+                        <span class="song-info-corner song-info-corner1"></span>
+                        <span class="song-info-corner song-info-corner2"></span>
+                        <span class="song-info-corner song-info-corner3"></span>
+                        <span class="song-info-corner song-info-corner4"></span>
+                    </div>
+                </div>
+            </transition>
+        </Teleport>
 
         <PlayList class="playlist-widget-player" :class="{ 'playlist-widget-open': playlistWidgetShow }"></PlayList>
 
@@ -1314,5 +1485,202 @@ const addToPlaylist = () => {
             transform: scale(0.95);
         }
     }
+
+    .song-info-button {
+        overflow: visible;
+        color: #8a8a8a;
+
+        circle,
+        line {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .song-info-dot {
+            fill: currentColor;
+            stroke: none;
+        }
+
+        &:hover {
+            color: #000000;
+        }
+    }
+
+}
+
+.song-info-layer {
+    --song-info-width: min(700px, calc(100vw - 200px));
+    --song-info-height: min(400px, calc(100vh - 140px));
+    position: fixed;
+    z-index: 10000;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.08);
+    outline: none;
+}
+
+.song-info-dialog {
+    position: relative;
+    width: var(--song-info-width);
+    height: var(--song-info-height);
+    padding: 30px 60px;
+    background: rgba(0, 0, 0, 0.66);
+    -webkit-backdrop-filter: blur(18px) saturate(120%);
+    backdrop-filter: blur(18px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.92);
+    text-align: left;
+    clip-path: inset(-5px);
+}
+
+.song-info-content {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.song-info-title {
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    font: 18px SourceHanSansCN-Bold;
+    letter-spacing: 0.08em;
+}
+
+.song-info-groups {
+    height: calc(100% - 42px);
+    padding: 16px 2px 4px;
+    overflow: auto;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+.song-info-group {
+    & + & {
+        margin-top: 22px;
+    }
+
+    h3 {
+        margin: 0 0 10px;
+        color: rgba(255, 255, 255, 0.66);
+        font: 11px Bender-Bold;
+        letter-spacing: 0.16em;
+    }
+
+    dl {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 8px 18px;
+        margin: 0;
+        font: 13px Source Han Sans;
+        text-align: left;
+    }
+
+    dt {
+        color: rgba(255, 255, 255, 0.62);
+    }
+
+    dd {
+        min-width: 0;
+        margin: 0;
+        color: rgba(255, 255, 255, 0.94);
+        overflow-wrap: anywhere;
+        user-select: text;
+    }
+}
+
+.song-info-close {
+    width: 25px;
+    height: 25px;
+    position: absolute;
+    z-index: 2;
+    top: 15px;
+    right: 15px;
+    opacity: 0;
+    animation: song-info-close-in 0.1s 0.6s forwards;
+
+    &:hover {
+        cursor: pointer;
+        opacity: 0.8 !important;
+    }
+
+    svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    path {
+        fill: #ffffff !important;
+    }
+}
+
+.song-info-corner {
+    width: 9px;
+    height: 9px;
+    background-color: rgba(247, 247, 247, 0.9);
+    position: absolute;
+    opacity: 0;
+    animation: song-info-corner-in 0.4s forwards;
+}
+
+.song-info-corner1 { top: -4px; left: -4px; }
+.song-info-corner2 { top: -4px; right: -4px; }
+.song-info-corner3 { bottom: -4px; right: -4px; }
+.song-info-corner4 { bottom: -4px; left: -4px; }
+
+.song-info-metro-enter-active {
+    animation: song-info-layer-timer 0.9s;
+
+    .song-info-dialog {
+        animation: song-info-dialog-in 0.6s 0.3s both;
+    }
+}
+
+.song-info-metro-leave-active {
+    animation: song-info-layer-timer 0.7s reverse;
+
+    .song-info-dialog {
+        animation: song-info-dialog-in 0.6s 0.1s reverse both;
+    }
+
+    .song-info-close {
+        display: none;
+    }
+}
+
+@keyframes song-info-dialog-in {
+    0% {
+        clip-path: inset(50% 50% 50% 50%);
+    }
+    50% {
+        clip-path: inset(50% -5px 50% -5px);
+    }
+    100% {
+        clip-path: inset(-5px);
+    }
+}
+
+@keyframes song-info-layer-timer {
+    from { opacity: 0.999; }
+    to { opacity: 1; }
+}
+
+@keyframes song-info-close-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes song-info-corner-in {
+    0%, 20%, 40%, 60%, 80%, 90% { opacity: 0; }
+    10%, 30%, 50%, 70%, 100% { opacity: 1; }
 }
 </style>

@@ -1753,6 +1753,8 @@ export function localMusicHandle(list, isToNext) {
       name: song.common.title,
       localName: song.common.localTitle,
       type: "local",
+      common: song.common,
+      format: song.format,
       sampleRate: song.format.sampleRate / 1000,
       bitsPerSample: song.format.bitsPerSample,
       bitrate: Math.round(song.format.bitrate / 1000),
