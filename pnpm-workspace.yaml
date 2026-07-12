@@ -7,5 +7,9 @@ allowBuilds:
   ffmpeg-static: true
   lzma-native: set this to true or false
   sharp: true
-  usocket: true
 nodeLinker: hoisted
+
+ignoredOptionalDependencies:
+  # ponytail: desktop D-Bus uses unix:path; replace the old MPRIS stack if abstract sockets become necessary.
+  - abstract-socket
+  - usocket

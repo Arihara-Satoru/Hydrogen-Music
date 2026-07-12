@@ -6,11 +6,16 @@ const path = require('node:path');
 const projectDir = path.resolve(__dirname, '..');
 const config = require(path.join(projectDir, 'electron-builder.config.cjs'));
 const workflow = fs.readFileSync(path.join(projectDir, '.github/workflows/release.yml'), 'utf8');
+const workspace = fs.readFileSync(path.join(projectDir, 'pnpm-workspace.yaml'), 'utf8');
 
 assert.deepEqual(config.mac.target, ['dmg']);
 assert.deepEqual(
   config.linux.target.map(({ target }) => target),
   ['AppImage', 'deb', 'rpm'],
+);
+assert.match(
+  workspace,
+  /ignoredOptionalDependencies:\r?\n(?:\s+#.*\r?\n)*\s+- abstract-socket\r?\n\s+- usocket(?:\r?\n|$)/,
 );
 
 for (const expected of [
