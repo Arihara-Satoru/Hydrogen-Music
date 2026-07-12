@@ -10,14 +10,51 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-latest
+            target: --win
+            artifact: windows-x64
+            paths: |
+              release/*.exe
+              release/*.zip
+              release/*.blockmap
+              release/latest.yml
+          - name: macOS arm64
+            runner: macos-latest
+            target: --mac
+            artifact: macos-arm64
+            paths: |
+              release/*.dmg
+              release/*.blockmap
+          - name: macOS x64
+            runner: macos-15-intel
+            target: --mac
+            artifact: macos-x64
+            paths: |
+              release/*.dmg
+              release/*.blockmap
+          - name: Linux x64
+            runner: ubuntu-latest
+            target: --linux
+            artifact: linux-x64
+            paths: |
+              release/*.AppImage
+              release/*.deb
+              release/*.rpm
+              release/*.blockmap
+              release/latest-linux.yml
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ github.token }}
           fetch-depth: 0
 
       - name: Checkout KuGouMusicApi
@@ -41,35 +78,62 @@ jobs:
 
       - name: Get pnpm store directory
         shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - name: Setup pnpm cache
         uses: actions/cache@v4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+            ${{ runner.os }}-${{ runner.arch }}-pnpm-store-
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
 
       - name: Install KuGouMusicApi dependencies
         working-directory: KuGouMusicApi
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      - name: Build KuGouMusicApi JS bundle
-        run: node scripts/build-kugou-api.cjs
-
       - name: Setup MSVC build tools
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Check platform build configuration
+        run: pnpm run check:platform-builds
+
       - name: Build application
-        run: pnpm run dist
+        run: pnpm run dist -- ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
 
       - name: Create GitHub Release
         env:
@@ -78,9 +142,11 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
-          echo "Creating release for ${TAG}"
-          gh release create "${TAG}" \
-            --title "${TAG}" \
-            --generate-notes \
-            release/*.exe release/*.zip release/*.blockmap release/latest.yml || \
-            echo "Release ${TAG} already exists or creation failed"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" release/* --clobber
+          else
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --generate-notes \
+              release/*
+          fi
