@@ -185,17 +185,12 @@ export async function initializeCurrentAccountSession() {
     await clearAccountScopedState({ clearCookies: false, clearSessionCookies: true })
     invalidateNcmApiCookieCache()
 
-    try {
-        await refreshLoginToken({ token: getCookie('token'), userid: getCookie('userid') }).catch(() => {})
-        invalidateNcmApiCookieCache()
-        const profile = await hydrateAccountSession(token)
-        // 启动时如果已经登录，顺手尝试领取当天 VIP，失败也不阻塞主流程。
-        void runDailyVipAutoClaim('startup')
-        return profile
-    } catch (error) {
-        await clearCurrentAccountSessionState(token)
-        throw error
-    }
+    await refreshLoginToken({ token: getCookie('token'), userid: getCookie('userid') }).catch(() => {})
+    invalidateNcmApiCookieCache()
+    const profile = await hydrateAccountSession(token)
+    // 启动时如果已经登录，顺手尝试领取当天 VIP，失败也不阻塞主流程。
+    void runDailyVipAutoClaim('startup')
+    return profile
 }
 
 export async function applyLoginSession(data) {
@@ -208,15 +203,10 @@ export async function applyLoginSession(data) {
     setCookies(data)
     invalidateNcmApiCookieCache()
 
-    try {
-        const profile = await hydrateAccountSession(token)
-        // 登录成功后补一次自动领取，覆盖“启动时未登录”的场景。
-        void runDailyVipAutoClaim('login')
-        return profile
-    } catch (error) {
-        await clearCurrentAccountSessionState(token)
-        throw error
-    }
+    const profile = await hydrateAccountSession(token)
+    // 登录成功后补一次自动领取，覆盖“启动时未登录”的场景。
+    void runDailyVipAutoClaim('login')
+    return profile
 }
 
 export async function logoutCurrentAccountSession() {

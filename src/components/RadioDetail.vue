@@ -93,9 +93,8 @@ async function loadDetailFor(radioId) {
 }
 
 onMounted(async () => { await loadDetailFor(rid.value) })
-onBeforeRouteUpdate(async (to, from, next) => {
+onBeforeRouteUpdate(async (to) => {
   await loadDetailFor(to.params.id)
-  next()
   const scroller = document.getElementById('libraryScroll')
   if (scroller) scroller.scrollTop = 0
 })

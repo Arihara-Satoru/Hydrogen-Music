@@ -340,7 +340,7 @@ const applyPendingScrollPolicy = async () => {
 
 libraryTypeCheck(router.currentRoute.value.name);
 
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave((to, from) => {
     saveCurrentDetailScroll(from);
     resetSongSearch();
     const toRouteName = normalizeRouteName(to.name);
@@ -354,10 +354,9 @@ onBeforeRouteLeave((to, from, next) => {
         libraryInfo.value = null;
     }
     libraryTypeCheck(to.name);
-    next();
 });
 
-onBeforeRouteUpdate(async (to, from, next) => {
+onBeforeRouteUpdate(async (to, from) => {
     saveCurrentDetailScroll(from);
     resetSongSearch();
     setPendingScrollPolicyForRoute(to);
@@ -369,8 +368,7 @@ onBeforeRouteUpdate(async (to, from, next) => {
     artistPageType.value = 0;
     libraryAlbum.value = null;
     libraryMV.value = null;
-    next();
-    await applyPendingScrollPolicy();
+    void applyPendingScrollPolicy();
 });
 
 const routerChange = operation => {

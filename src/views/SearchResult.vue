@@ -21,13 +21,11 @@
   onActivated(() => {
     searchScroll.value.scrollTop = scrollTop.value
   })
-  onBeforeRouteUpdate((to, from, next) => {
+  onBeforeRouteUpdate((to) => {
       getSearchInfo(to.query.keywords)
-      next()
   })
-  onBeforeRouteLeave((to, from, next) => {
+  onBeforeRouteLeave(() => {
     scrollTop.value = searchScroll.value.scrollTop
-    next()
   })
 </script>
 

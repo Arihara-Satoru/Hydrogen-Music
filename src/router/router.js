@@ -34,19 +34,19 @@ const routes = [
         path: '/',
         name: 'homepage',
         component: HomePage,
-        beforeEnter: (to, from, next) => {
-            if(!userStore.homePage) next({name: 'mymusic'})
-            else next()
+        beforeEnter: () => {
+            if(!userStore.homePage) return {name: 'mymusic'}
         },
     },
     {
         path: '/cloud',
         name: 'clouddisk',
         component: CloudDisk,
-        beforeEnter: (to, from, next) => {
-            if(!userStore.cloudDiskPage) next({name: 'mymusic'})
-            else if(isLogin()) next()
-            else {next({name: 'login'});noticeOpen("请先登录", 2)}
+        beforeEnter: () => {
+            if(!userStore.cloudDiskPage) return {name: 'mymusic'}
+            if(isLogin()) return
+            noticeOpen("请先登录", 2)
+            return {name: 'login'}
         },
     },
     {
@@ -73,7 +73,7 @@ const routes = [
                 path: '/mymusic/playlist/:id',
                 name: 'playlist',
                 component: LibraryDetail,
-                beforeEnter: (to, from, next) => {
+                beforeEnter: (to, from) => {
                     const needReload = !libraryInfo.value || from.name != 'playlist' || hasDifferentLibraryId(to, from)
                     if (needReload) {
                         // 先切路由，再异步补数据，避免首页点击后被接口等待阻塞。
@@ -82,14 +82,13 @@ const routes = [
                                 console.error('加载歌单详情失败:', error)
                             })
                     }
-                    next()
                 }
             },
             {
                 path: '/mymusic/album/:id',
                 name: 'album',
                 component: LibraryDetail,
-                beforeEnter: (to, from, next) => {
+                beforeEnter: (to, from) => {
                     const needReload = !libraryInfo.value || from.name != 'album' || hasDifferentLibraryId(to, from)
                     if (needReload) {
                         // 专辑详情同样改为异步补数据，减少点击到页面出现的等待感。
@@ -99,14 +98,13 @@ const routes = [
                                 console.error('加载专辑详情失败:', detail)
                             })
                     }
-                    next()
                 }
             },
             {
                 path: '/mymusic/artist/:id',
                 name: 'artist',
                 component: LibraryDetail,
-                beforeEnter: (to, from, next) => {
+                beforeEnter: (to, from) => {
                     const needReload = !libraryInfo.value || from.name != 'artist' || hasDifferentLibraryId(to, from)
                     if (needReload) {
                         // 歌手页也不要阻塞切页，热门单曲和歌手信息到达后再渲染。
@@ -115,20 +113,16 @@ const routes = [
                                 console.error('加载歌手详情失败:', error)
                             })
                     }
-                    next()
                 }
             },
             {
                 path: '/mymusic/playlist/rec',
                 name: 'rec',
                 component: RecommendSongs,
-                beforeEnter: (to, from, next) => {
-                    if(isLogin()) {
-                        next()
-                    } else {
-                        noticeOpen("请先登录", 2)
-                        next({name: 'login'})
-                    }
+                beforeEnter: () => {
+                    if(isLogin()) return
+                    noticeOpen("请先登录", 2)
+                    return {name: 'login'}
                 }
             },
             {
@@ -140,47 +134,39 @@ const routes = [
                 path: '/mymusic/local/files',
                 name: 'localFiles',
                 component: LocalMusicDetail,
-                beforeEnter: (to, from, next) => {
+                beforeEnter: (to, from) => {
                     if(from.name != 'localFiles') localStore.updateLocalMusicDetail(to.name, to.query)
-                    next()
                 }
             },
             {
                 path: '/mymusic/local/album/:id',
                 name: 'localAlbum',
                 component: LocalMusicDetail,
-                beforeEnter: (to, from, next) => {
+                beforeEnter: (to, from) => {
                     if(from.name != 'localAlbum') localStore.updateLocalMusicDetail(to.name, null, to.params.id)
-                    next()
                 }
             },
             {
                 path: '/mymusic/local/artist/:id',
                 name: 'localArtist',
                 component: LocalMusicDetail,
-                beforeEnter: (to, from, next) => {
+                beforeEnter: (to, from) => {
                     if(from.name != 'localArtist') localStore.updateLocalMusicDetail(to.name, null, to.params.id)
-                    next()
                 }
             },
         ],
-        beforeEnter: (to, from, next) => {
-            if(isLogin()) next()
-            else if((from.name == 'homepage' || from.name == 'search') && to.fullPath != '/mymusic') next()
-            else next({name: 'login'})
+        beforeEnter: (to, from) => {
+            if(!isLogin() && !((from.name == 'homepage' || from.name == 'search') && to.fullPath != '/mymusic')) return {name: 'login'}
         },
     },
     {
         path: '/personalfm',
         name: 'personalfm',
         component: PersonalFMPage,
-        beforeEnter: (to, from, next) => {
-            if(isLogin()) {
-                next()
-            } else {
-                noticeOpen("请先登录", 2)
-                next({name: 'login'})
-            }
+        beforeEnter: () => {
+            if(isLogin()) return
+            noticeOpen("请先登录", 2)
+            return {name: 'login'}
         }
     },
     {
@@ -197,18 +183,14 @@ const routes = [
         path: '/search',
         name: 'search',
         component: SearchResult,
-        beforeEnter: (to, from, next) => {
+        beforeEnter: (to) => {
             otherStore.getSearchInfo(to.query.keywords)
-            next()
         }
     },
     {
         path: '/settings',
         name: 'settings',
         component: Settings,
-        beforeEnter: (to, from, next) => {
-            next()
-        }
     },
 ]
 
