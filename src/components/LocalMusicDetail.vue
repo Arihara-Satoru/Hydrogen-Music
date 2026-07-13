@@ -28,11 +28,10 @@
     if (localList) localList.scrollTop = 0
   }
 
-  onBeforeRouteUpdate((to, from, next) => {
+  onBeforeRouteUpdate((to) => {
     localSearchKeyword.value = ''
     updateLocalMusicDetail(to.name, to.query, to.params.id)
     currentType.value = to.name
-    next()
     void resetLocalResultScroll()
   })
   const routerChange = (operation) => {

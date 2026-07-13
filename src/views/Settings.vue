@@ -378,10 +378,9 @@ const loadSystemFonts = async () => {
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
 
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave(() => {
   setAppSettings();
   initSettings();
-  next();
   noticeOpen("设置已保存", 2);
 });
 

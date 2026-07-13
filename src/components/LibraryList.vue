@@ -61,7 +61,7 @@
     if(document.getElementById('libraryListScroll'))
       document.getElementById('libraryListScroll').scrollTop = scrollTop.value || 0
   })
-  onBeforeRouteLeave((to, from, next) => {
+  onBeforeRouteLeave((to, from) => {
     const fromRouteName = normalizeRouteName(from.name)
     if(isRestorableLibraryRouteName(fromRouteName)) {
       lastLibraryRoute.value = {
@@ -78,7 +78,6 @@
     if(document.getElementById('libraryListScroll'))
       scrollTop.value = document.getElementById('libraryListScroll').scrollTop
     playerStore.forbidLastRouter = false
-    next()
   })
   const openMenu = (e, item) => {
     e.preventDefault()

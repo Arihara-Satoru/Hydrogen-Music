@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getCookie, isLogin, setCookies } from '../utils/authority'
+import { getCookie, isLogin, updateStoredAuthCookies } from '../utils/authority'
 import pinia from "../store/pinia";
 import { useLibraryStore } from '../store/libraryStore'
 import { useUserStore } from '../store/userStore'
@@ -82,7 +82,9 @@ function persistSetCookieHeader(response) {
   if (!setCookieHeader) return
   const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
   const cookieString = cookies.map(c => c.split(';')[0]).join('; ')
-  if (cookieString) setCookies({ cookie: cookieString })
+  if (cookieString && Object.keys(updateStoredAuthCookies({ cookie: cookieString })).length) {
+    invalidateNcmApiCookieCache()
+  }
 }
 
 request.interceptors.response.use(function (response) {
