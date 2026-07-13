@@ -104,6 +104,7 @@ const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren')
 const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '加载中...', showSongTranslation.value));
 const canSelectLyrics = computed(() => !!currentSong.value && currentSong.value.type !== 'local' && !isCurrentSirenSong.value && !isDjMode.value);
 const songInfoShow = ref(false);
+const songInfoShowDelay = ref(false);
 const songInfoLayer = ref(null);
 
 const hasInfoValue = value => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
@@ -216,6 +217,8 @@ const songInfoGroups = computed(() => {
 });
 
 const closeSongInfo = () => (songInfoShow.value = false);
+const onSongInfoAfterEnter = () => (songInfoShowDelay.value = true);
+const onSongInfoAfterLeave = () => (songInfoShowDelay.value = false);
 
 const toggleCommentPanel = () => {
     switchRightPanel(props.rightPanelMode === 1 ? 0 : 1);
@@ -894,9 +897,9 @@ const addToPlaylist = () => {
         </div>
 
         <Teleport to="body">
-            <transition name="song-info-metro">
+            <transition name="song-info-metro" :duration="{ enter: 900, leave: 700 }" @after-enter="onSongInfoAfterEnter" @after-leave="onSongInfoAfterLeave">
                 <div ref="songInfoLayer" v-if="songInfoShow && currentSong" class="song-info-layer" tabindex="-1" @click.self="closeSongInfo" @keydown.esc="closeSongInfo">
-                    <div class="song-info-dialog" role="dialog" aria-modal="true" aria-label="歌曲信息">
+                    <div class="song-info-dialog" :class="{ 'song-info-dialog-active': songInfoShowDelay }" role="dialog" aria-modal="true" aria-label="歌曲信息">
                         <div class="song-info-content">
                             <div class="song-info-title">歌曲信息</div>
                             <div class="song-info-groups">
@@ -1522,15 +1525,14 @@ const addToPlaylist = () => {
     justify-content: center;
     padding: 40px;
     box-sizing: border-box;
-    background: rgba(0, 0, 0, 0.08);
     outline: none;
 }
 
 .song-info-dialog {
     position: relative;
-    width: var(--song-info-width);
-    height: var(--song-info-height);
-    padding: 30px 60px;
+    width: 0;
+    height: 0;
+    padding: 0;
     background: rgba(0, 0, 0, 0.66);
     -webkit-backdrop-filter: blur(18px) saturate(120%);
     backdrop-filter: blur(18px) saturate(120%);
@@ -1538,7 +1540,12 @@ const addToPlaylist = () => {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
     color: rgba(255, 255, 255, 0.92);
     text-align: left;
-    clip-path: inset(-5px);
+
+    &-active {
+        width: var(--song-info-width);
+        height: var(--song-info-height);
+        padding: 30px 60px;
+    }
 }
 
 .song-info-content {
@@ -1638,16 +1645,12 @@ const addToPlaylist = () => {
 .song-info-corner4 { bottom: -4px; left: -4px; }
 
 .song-info-metro-enter-active {
-    animation: song-info-layer-timer 0.9s;
-
     .song-info-dialog {
         animation: song-info-dialog-in 0.6s 0.3s both;
     }
 }
 
 .song-info-metro-leave-active {
-    animation: song-info-layer-timer 0.7s reverse;
-
     .song-info-dialog {
         animation: song-info-dialog-in 0.6s 0.1s reverse both;
     }
@@ -1659,19 +1662,20 @@ const addToPlaylist = () => {
 
 @keyframes song-info-dialog-in {
     0% {
-        clip-path: inset(50% 50% 50% 50%);
+        width: 0;
+        height: 0;
+        padding: 0;
     }
     50% {
-        clip-path: inset(50% -5px 50% -5px);
+        width: var(--song-info-width);
+        height: 0;
+        padding: 0 60px;
     }
     100% {
-        clip-path: inset(-5px);
+        width: var(--song-info-width);
+        height: var(--song-info-height);
+        padding: 30px 60px;
     }
-}
-
-@keyframes song-info-layer-timer {
-    from { opacity: 0.999; }
-    to { opacity: 1; }
 }
 
 @keyframes song-info-close-in {
