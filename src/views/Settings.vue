@@ -823,7 +823,7 @@ const clearFmRecent = () => {
         :style="
           profileAvatarUrl
             ? {
-                backgroundImage: `linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,255,255,0.72)), url(${currentUser.backgroundUrl || profileAvatarUrl})`,
+                backgroundImage: `linear-gradient(var(--settings-profile-overlay), var(--settings-profile-overlay)), url(${currentUser.backgroundUrl || profileAvatarUrl})`,
               }
             : {}
         "
@@ -923,16 +923,20 @@ const clearFmRecent = () => {
                     title="自定义全局颜色"
                   />
                   <button
-                    class="theme-color-lock"
+                    class="theme-color-action theme-color-lock"
                     type="button"
                     :disabled="lockingCurrentSongColor"
                     @click="lockCurrentSongColor"
                   >
                     {{ lockingCurrentSongColor ? "正在固定" : "当前歌曲颜色" }}
                   </button>
-                  <div class="theme-color-reset" @click="clearCustomThemeColor">
+                  <button
+                    class="theme-color-action"
+                    type="button"
+                    @click="clearCustomThemeColor"
+                  >
                     恢复默认
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1548,7 +1552,7 @@ const clearFmRecent = () => {
         .profile-item {
           padding: 10px 12px;
           min-height: 60px;
-          background-color: rgba(255, 255, 255, 0.34);
+          background-color: var(--layer);
           border: 1px solid rgba(0, 0, 0, 0.04);
           display: flex;
           flex-direction: column;
@@ -1686,29 +1690,31 @@ const clearFmRecent = () => {
               }
             }
             .theme-color-control {
-              width: 200px;
+              width: 224px;
               height: 34px;
-              display: flex;
+              display: grid;
+              grid-template-columns: 34px 1fr auto;
               align-items: center;
-              justify-content: center;
-              gap: 12px;
               background-color: rgba(255, 255, 255, 0.35);
               font: 13px SourceHanSansCN-Bold;
-              .theme-color-reset {
-                padding: 0 8px;
-                cursor: pointer;
-                &:hover {
-                  opacity: 0.7;
-                }
-              }
-              .theme-color-lock {
+              .theme-color-action {
+                height: 34px;
+                padding: 0 12px;
                 border: none;
-                background: transparent;
+                border-left: 1px solid var(--border);
+                border-radius: 0;
+                background-color: transparent;
+                color: black;
                 font: inherit;
                 cursor: pointer;
                 white-space: nowrap;
+                transition: 0.2s;
                 &:hover:not(:disabled) {
-                  opacity: 0.7;
+                  background-color: rgba(255, 255, 255, 0.14);
+                }
+                &:focus-visible {
+                  outline: none;
+                  box-shadow: inset 0 0 0 1px var(--text);
                 }
                 &:disabled {
                   cursor: wait;
@@ -1718,12 +1724,19 @@ const clearFmRecent = () => {
               input[type="color"] {
                 margin: 0;
                 padding: 0;
-                width: 24px;
-                height: 24px;
+                width: 34px;
+                height: 34px;
                 border: none;
-                border-radius: 50%;
-                background: transparent;
-                appearance: auto;
+                border-radius: 0;
+                background-color: transparent;
+                appearance: none;
+                &::-webkit-color-swatch-wrapper {
+                  padding: 6px;
+                }
+                &::-webkit-color-swatch {
+                  border: 1px solid var(--border);
+                  border-radius: 50%;
+                }
               }
             }
             .select-download-folder {

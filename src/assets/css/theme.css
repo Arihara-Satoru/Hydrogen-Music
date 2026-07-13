@@ -93,6 +93,7 @@
   --lyric-scan-outside-text: #000000;
   /* text color outside bar */
   --cover-backdrop-overlay: rgba(255, 255, 255, 0.3);
+  --settings-profile-overlay: rgba(255, 255, 255, 0.78);
 }
 
 html {
@@ -172,6 +173,7 @@ html.dynamic-theme .music-widget .widget-back {
   --lyric-scan-inside-text: #000000;
   --lyric-scan-outside-text: var(--text);
   --cover-backdrop-overlay: rgba(0, 0, 0, 0.42);
+  --settings-profile-overlay: rgba(18, 22, 26, 0.72);
   --btn-minimize: #ffffff;
   --btn-maximize: #ffffff;
   --btn-close: #ffffff;
@@ -228,8 +230,14 @@ html.dark.dynamic-theme .title-container .title-player {
 .dark .local-folder .add-option,
 .dark .settings-page .setting-title .save,
 .dark .settings-page .button,
+.dark .settings-page .theme-color-control,
 .dark option {
   background-color: var(--layer) !important;
+}
+
+.dark .settings-page .theme-color-control .theme-color-action,
+.dark .settings-page .theme-color-control input[type="color"] {
+  background-color: transparent !important;
 }
 
 /* Do not tint entire setting rows; keep only explicit buttons/controls framed */
