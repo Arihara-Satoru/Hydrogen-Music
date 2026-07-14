@@ -231,7 +231,7 @@ const handleTitleBarDoubleClick = () => {
     position: fixed;
     left: 50%;
     bottom: 35px;
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
     box-shadow: 0 0 15px 2px rgba(189, 189, 189, 0.1);
 }
 .musicPlayer {
@@ -263,7 +263,8 @@ const handleTitleBarDoubleClick = () => {
 
 .home-enter-active,
 .home-leave-active {
-    transition: 0.4s cubic-bezier(0.14, 0.91, 0.58, 1);
+    transition: transform 0.4s cubic-bezier(0.14, 0.91, 0.58, 1), opacity 0.4s cubic-bezier(0.14, 0.91, 0.58, 1);
+    will-change: transform, opacity;
 }
 
 .home-enter-from,
@@ -274,17 +275,19 @@ const handleTitleBarDoubleClick = () => {
 
 .widget-enter-active,
 .widget-leave-active {
-    transition: 0.5s cubic-bezier(0.14, 0.91, 0.58, 1);
+    transition: transform 0.5s cubic-bezier(0.14, 0.91, 0.58, 1);
+    will-change: transform;
 }
 
 .widget-enter-from,
 .widget-leave-to {
-    bottom: -70px;
+    transform: translate3d(-50%, 105px, 0);
 }
 
 .player-enter-active,
 .player-leave-active {
-    transition: 0.5s cubic-bezier(0.14, 0.91, 0.58, 1);
+    transition: transform 0.5s cubic-bezier(0.14, 0.91, 0.58, 1);
+    will-change: transform;
 }
 
 .player-enter-from,
@@ -293,7 +296,8 @@ const handleTitleBarDoubleClick = () => {
 }
 .video-enter-active,
 .video-leave-active {
-    transition: 0.1s;
+    transition: transform 0.1s, opacity 0.1s;
+    will-change: transform, opacity;
 }
 
 .video-enter-from,
@@ -302,10 +306,12 @@ const handleTitleBarDoubleClick = () => {
     opacity: 0;
 }
 .fade-enter-active {
-    transition: 0.4s;
+    transition: opacity 0.4s;
+    will-change: opacity;
 }
 .fade-leave-active {
-    transition: 0.3s;
+    transition: opacity 0.3s;
+    will-change: opacity;
 }
 
 .fade-enter-from,

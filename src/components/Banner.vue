@@ -146,7 +146,7 @@
             </div>
         </div>
         <div class="banner-img" @mouseenter="bannerMouse(true)" @mouseleave="bannerMouse(false)">
-            <div class="img-box" :style="{left:`-${leftVal}vw`,transition:`${transitionTime}s`}">
+            <div class="img-box" :style="{ transform: `translate3d(-${leftVal}vw, 0, 0)`, transition: `transform ${transitionTime}s` }">
                 <img @click="bannerItem(item, index)" v-for="(item, index) in bannerList" :src="(item.pic || item.imageUrl) + '?param=720y280'" alt="">
                 <img :src="(bannerList[0].pic || bannerList[0].imageUrl) + '?param=720y280'" alt="">
             </div>

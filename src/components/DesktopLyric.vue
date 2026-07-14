@@ -207,8 +207,6 @@ const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 const enLockText = computed(() => (locked.value ? 'UNLOCK POSITION' : 'LOCK POSITION'));
 const zhLockText = computed(() => (locked.value ? '解锁位置' : '锁定位置'));
 
-// 同步扫描动画控制
-const scanAnimationRef = ref(null);
 const lyricElementRef = ref(null);
 const nextLyricElementRef = ref(null);
 // 动态两行扩展：当前歌词盒子目标高度（px）
@@ -415,75 +413,6 @@ const onDragEnd = () => {
     window.electronAPI?.setLyricWindowResizable?.(true);
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
-};
-
-// 启动同步扫描动画
-const startScanAnimation = () => {
-    if (scanAnimationRef.value) {
-        cancelAnimationFrame(scanAnimationRef.value);
-    }
-
-    let startTime = null;
-    const duration = 10000; // 10秒一个循环
-
-    const animate = currentTime => {
-        if (!startTime) startTime = currentTime;
-        const elapsed = currentTime - startTime;
-        const cycleProgress = (elapsed % duration) / duration; // 0-1之间的循环进度
-
-        // 计算黑色进度条的位置
-        let scanProgress;
-        let textClipProgress;
-
-        if (cycleProgress <= 0.05) {
-            // 初始阶段 (0%-5%)
-            scanProgress = -100;
-            textClipProgress = 0;
-        } else if (cycleProgress <= 0.35) {
-            // 扫描进入阶段 (5%-35%)
-            const phase = (cycleProgress - 0.05) / 0.3; // 0-1
-            scanProgress = -100 + phase * 100; // -100% 到 0%
-            // 文字变化稍微延迟，考虑padding
-            const textPhase = Math.max(0, (phase - 0.025) / 0.975); // 延迟8%开始
-            textClipProgress = textPhase * 100;
-        } else if (cycleProgress <= 0.65) {
-            // 停顿阶段 (35%-65%)
-            scanProgress = 0;
-            textClipProgress = 100;
-        } else if (cycleProgress <= 0.9) {
-            // 清除退出阶段 (65%-90%)
-            const phase = (cycleProgress - 0.65) / 0.25; // 0-1
-            scanProgress = phase * 100; // 0% 到 100%
-            // 文字清除稍微延迟，让黑色条清除到文字位置时文字才开始变黑
-            const textPhase = Math.max(0, (phase - 0.025) / 0.975); // 延迟6%开始，稍微快一点
-            textClipProgress = 100 - textPhase * 100; // 从100%变到0%
-        } else {
-            // 最后阶段 (90%-100%)
-            scanProgress = 100;
-            textClipProgress = 0;
-        }
-
-        // 应用CSS变量
-        if (lyricElementRef.value) {
-            lyricElementRef.value.style.setProperty('--scan-progress', `${scanProgress}%`);
-
-            // 根据不同阶段设置不同的clip-path方向
-            if (cycleProgress <= 0.65) {
-                // 扫描和停顿阶段：从左向右显示白色文字
-                lyricElementRef.value.style.setProperty('--text-clip', `polygon(0% 0%, ${textClipProgress}% 0%, ${textClipProgress}% 100%, 0% 100%)`);
-            } else {
-                // 清除阶段：从左向右隐藏白色文字（让黑色文字从左向右显示）
-                // textClipProgress从100%变到0%，所以白色文字从右边开始消失
-                // 我们需要让白色文字从左边开始消失，所以使用(100-textClipProgress)作为右边界
-                const leftBoundary = 100 - textClipProgress;
-                lyricElementRef.value.style.setProperty('--text-clip', `polygon(${leftBoundary}% 0%, 100% 0%, 100% 100%, ${leftBoundary}% 100%)`);
-            }
-        }
-
-        scanAnimationRef.value = requestAnimationFrame(animate);
-    };
-
-    scanAnimationRef.value = requestAnimationFrame(animate);
 };
 
 // 右键菜单相关
@@ -735,9 +664,6 @@ onMounted(() => {
         }
     });
 
-    // 启动同步扫描动画
-    startScanAnimation();
-
     // 监听当前歌词盒子尺寸变化，实时自适应 1-2 行
     try {
         if (window.ResizeObserver) {
@@ -754,11 +680,6 @@ onMounted(() => {
 
 onUnmounted(() => {
     document.removeEventListener('click', hideContextMenu);
-
-    // 清理动画
-    if (scanAnimationRef.value) {
-        cancelAnimationFrame(scanAnimationRef.value);
-    }
 
     if (lyricResizeObserver) {
         try { lyricResizeObserver.disconnect(); } catch (_) {}
@@ -1036,10 +957,11 @@ onUnmounted(() => {
             min-height: 60px;
             position: relative;
             overflow: hidden;
+            contain: paint;
             -webkit-app-region: no-drag;
             transition: height 0.22s cubic-bezier(0.3, 0, 0.12, 1);
 
-            // 使用JavaScript控制的同步进度条扫描效果（去除默认灰色底框）
+            // 同步进度条扫描效果（去除默认灰色底框）
             background: transparent !important;
             position: relative;
             overflow: hidden;
@@ -1054,8 +976,9 @@ onUnmounted(() => {
                 height: 100%;
                 /* Use theme variable so: light=black bar, dark=white bar */
                 background: var(--lyric-hilight-bg);
-                transform: translateX(var(--scan-progress, -100%));
-                transition: none;
+                transform: translateX(-100%);
+                animation: desktop-lyric-scan-bar 10s linear infinite;
+                will-change: transform;
                 z-index: 1;
             }
 
@@ -1080,9 +1003,9 @@ onUnmounted(() => {
                 z-index: 2;
                 text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 
-                // 使用JavaScript控制的遮罩，与进度条完全同步
-                clip-path: var(--text-clip, polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%));
-                transition: none;
+                clip-path: polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%);
+                animation: desktop-lyric-scan-text 10s linear infinite;
+                will-change: clip-path;
             }
         }
     }
@@ -1124,6 +1047,18 @@ onUnmounted(() => {
             text-shadow: 0 0 15px rgba(102, 102, 102, 0.9), 0 0 25px rgba(102, 102, 102, 0.4);
         }
     }
+}
+
+@keyframes desktop-lyric-scan-bar {
+    0%, 5% { transform: translateX(-100%); }
+    35%, 65% { transform: translateX(0%); }
+    90%, 100% { transform: translateX(100%); }
+}
+
+@keyframes desktop-lyric-scan-text {
+    0%, 5.75% { clip-path: polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%); }
+    35%, 65.625% { clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%); }
+    90%, 100% { clip-path: polygon(100% 0%, 100% 0%, 100% 100%, 100% 100%); }
 }
 
 // 进度指示器

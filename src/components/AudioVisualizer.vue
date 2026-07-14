@@ -31,7 +31,8 @@ function createFlatLevels() {
     return Array.from({ length: BAR_COUNT }, () => FLAT_LEVEL)
 }
 
-const levels = ref(createFlatLevels())
+const levels = createFlatLevels()
+const analyserLevelBuffer = createFlatLevels()
 const visualizerRef = ref(null)
 const barGap = ref(DEFAULT_BAR_GAP)
 
@@ -49,24 +50,41 @@ let emptyAnalyserFrames = 0
 let lastAnalyserReattachAt = 0
 
 function resetFlat() {
-    levels.value = createFlatLevels()
+    levels.fill(FLAT_LEVEL)
+    renderLevels(levels)
+}
+
+function renderLevels(nextLevels) {
+    const bars = visualizerRef.value?.children
+    for (let index = 0; index < BAR_COUNT; index++) {
+        const level = nextLevels[index]
+        levels[index] = level
+        if (bars?.[index]) bars[index].style.transform = `scaleY(${level})`
+    }
 }
 
 function settleFlat() {
     let changed = false
     let stillSettling = false
 
-    const nextLevels = levels.value.map(level => {
+    for (let index = 0; index < BAR_COUNT; index++) {
+        const level = levels[index]
         const delta = FLAT_LEVEL - level
-        if (Math.abs(delta) <= 0.001) return FLAT_LEVEL
+        if (Math.abs(delta) <= 0.001) {
+            if (level !== FLAT_LEVEL) {
+                levels[index] = FLAT_LEVEL
+                changed = true
+            }
+            continue
+        }
 
         changed = true
         const nextLevel = level + delta * 0.42
+        levels[index] = nextLevel
         if (Math.abs(FLAT_LEVEL - nextLevel) > 0.001) stillSettling = true
-        return nextLevel
-    })
+    }
 
-    if (changed) levels.value = nextLevels
+    if (changed) renderLevels(levels)
     return stillSettling
 }
 
@@ -309,18 +327,17 @@ function buildAnalyserLevels() {
         return null
     }
 
-    const nextLevels = []
     let total = 0
 
     for (let i = 0; i < BAR_COUNT; i++) {
         const value = analyserData[i % analyserData.length] / FREQUENCY_VALUE_SCALE
         const level = Math.max(FLAT_LEVEL, value)
         total += level
-        nextLevels.push(level)
+        analyserLevelBuffer[i] = level
     }
 
     if (total / BAR_COUNT < FLAT_LEVEL + 0.015) return null
-    return nextLevels
+    return analyserLevelBuffer
 }
 
 function reattachStaleAnalyser() {
@@ -364,7 +381,7 @@ function drawFrame() {
 
     if (analyserLevels) {
         emptyAnalyserFrames = 0
-        levels.value = analyserLevels
+        renderLevels(analyserLevels)
     } else {
         const reattaching = reattachStaleAnalyser()
         settleFlat()
@@ -443,10 +460,10 @@ onBeforeUnmount(() => {
         aria-hidden="true"
     >
         <span
-            v-for="(level, index) in levels"
+            v-for="index in BAR_COUNT"
             :key="index"
             class="visualizer-bar"
-            :style="{ transform: `scaleY(${level})` }"
+            :style="{ transform: `scaleY(${FLAT_LEVEL})` }"
         ></span>
     </div>
 </template>
