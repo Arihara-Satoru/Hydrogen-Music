@@ -84,6 +84,27 @@ function disconnectMediaStreamSource() {
     mediaStream = null
 }
 
+function disconnectPlaybackAnalyser(playback = attachedPlayback) {
+    const playbackAnalyser = playback?.__hmTopVisualizerAnalyser
+    if (!playbackAnalyser) return
+
+    const source = playback.__hmTopVisualizerAnalyserSource
+    try {
+        if (source) source.disconnect(playbackAnalyser)
+        else playback._gain?.disconnect?.(playbackAnalyser)
+    } catch (_) {}
+    try { playbackAnalyser.disconnect() } catch (_) {}
+    delete playback.__hmTopVisualizerAnalyser
+    delete playback.__hmTopVisualizerAnalyserSource
+}
+
+function closeMediaAudioContext() {
+    if (!mediaAudioContext) return
+    const context = mediaAudioContext
+    mediaAudioContext = null
+    void context.close().catch(() => {})
+}
+
 function clearPlaybackEventListeners() {
     if (!playbackEventCleanup) return
     playbackEventCleanup()
@@ -93,6 +114,7 @@ function clearPlaybackEventListeners() {
 function resetAnalyser(options = {}) {
     const keepPlayback = options.keepPlayback === true
     clearAttachTimer()
+    disconnectPlaybackAnalyser()
     analyser = null
     analyserData = null
     emptyAnalyserFrames = 0
@@ -106,7 +128,7 @@ function resetAnalyser(options = {}) {
 }
 
 function refreshAnalyserForPlayback(playback) {
-    if (!visible.value || currentMusic.value !== playback) return
+    if (!canAnimate() || currentMusic.value !== playback) return
 
     resetAnalyser({ keepPlayback: true })
     attachedPlayback = playback
@@ -171,6 +193,7 @@ function getHowlBufferAnalyser(playback) {
     if (!source || !context || typeof context.createAnalyser !== 'function') return null
 
     if (!playback.__hmTopVisualizerAnalyser || playback.__hmTopVisualizerAnalyserSource !== source) {
+        disconnectPlaybackAnalyser(playback)
         const nextAnalyser = configureAnalyser(context.createAnalyser())
         source.connect(nextAnalyser)
         playback.__hmTopVisualizerAnalyser = nextAnalyser
@@ -241,7 +264,7 @@ function getHifiAnalyser(playback) {
 
 function tryAttachAnalyser(retryCount = 0) {
     clearAttachTimer()
-    if (!visible.value) return
+    if (!canAnimate()) return
 
     const playback = currentMusic.value
     if (!playback) return
@@ -320,8 +343,12 @@ function reattachStaleAnalyser() {
     return true
 }
 
+function canAnimate() {
+    return visible.value && !document.hidden
+}
+
 function drawFrame() {
-    if (!visible.value) {
+    if (!canAnimate()) {
         animationFrame = 0
         return
     }
@@ -349,7 +376,7 @@ function drawFrame() {
 
 function start() {
     void nextTick(() => {
-        if (!visible.value) return
+        if (!canAnimate()) return
         updateBarGap()
         if (!analyser && !attachTimer) tryAttachAnalyser()
         if (!animationFrame) animationFrame = window.requestAnimationFrame(drawFrame)
@@ -363,7 +390,14 @@ function stop() {
         window.cancelAnimationFrame(animationFrame)
         animationFrame = 0
     }
+    resetAnalyser()
+    closeMediaAudioContext()
     resetFlat()
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) stop()
+    else if (visible.value) start()
 }
 
 watch(visible, isVisible => {
@@ -382,6 +416,7 @@ watch(playing, isPlaying => {
 })
 
 onMounted(() => {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     void nextTick(updateBarGap)
     if (typeof ResizeObserver !== 'undefined' && visualizerRef.value) {
         resizeObserver = new ResizeObserver(updateBarGap)
@@ -390,15 +425,11 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     stop()
-    resetAnalyser()
     if (resizeObserver) {
         resizeObserver.disconnect()
         resizeObserver = null
-    }
-    if (mediaAudioContext) {
-        void mediaAudioContext.close().catch(() => {})
-        mediaAudioContext = null
     }
 })
 </script>

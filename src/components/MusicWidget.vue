@@ -76,7 +76,6 @@
       progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0
     }
   })
-
   function normalizeSliderVolume(value) {
     const currentVolume = Number(value)
     if (!Number.isFinite(currentVolume)) return 0
@@ -129,7 +128,7 @@
 <template>
   <div class="music-widget">
     <div class="music-progress-container">
-        <vue-slider :key="'widget-progress-' + (songId || currentIndex)" id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+        <vue-slider :key="'widget-progress-' + (songId || currentIndex)" id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0" tooltip="none"></vue-slider>
         <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(sliderDuration)}}</div>
     </div>
     <div class="music-info">

@@ -830,29 +830,30 @@ watch([playing, lyricShow], ([p, show]) => {
         <Transition name="fade">
             <div v-show="showLyricArea" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash || !lyricAreaReady }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
-                <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
-                    <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
-                        <span class="roma" :style="{ 'font-size': rlyricSize + 'px' }" v-if="item.rlyric && lyricType.indexOf('roma') != -1">{{ item.rlyric }}</span>
-                        <span class="original" :style="{ 'font-size': lyricSize + 'px' }" v-if="lyricType.indexOf('original') != -1">{{ item.lyric }}</span>
-                        <span class="trans" :style="{ 'font-size': tlyricSize + 'px' }" v-if="item.tlyric && lyricType.indexOf('trans') != -1">{{ item.tlyric }}</span>
-                        <div
-                            class="hilight"
-                            :class="{ 'hilight-active': index == lycCurrentIndex }"
-                            :style="{ backgroundColor: videoIsPlaying ? 'var(--lyric-hilight-bg-dim)' : 'var(--lyric-hilight-bg)' }"
-                        ></div>
-                    </div>
-                    <div v-if="lycCurrentIndex != -1 && interludeIndex == index" class="music-interlude" :class="{ 'music-interlude-in': interludeAnimation, 'music-interlude-fast-close': interludeFastClose }">
-                        <div class="interlude-left">
-                            <div class="diamond">
-                                <div class="diamond-inner"></div>
-                            </div>
+                <div class="lyric-lines" :style="{ transform: `translate3d(0, ${lineOffset}px, 0)` }">
+                    <div class="lyric-line" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
+                        <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
+                            <span class="roma" :style="{ 'font-size': rlyricSize + 'px' }" v-if="item.rlyric && lyricType.indexOf('roma') != -1">{{ item.rlyric }}</span>
+                            <span class="original" :style="{ 'font-size': lyricSize + 'px' }" v-if="lyricType.indexOf('original') != -1">{{ item.lyric }}</span>
+                            <span class="trans" :style="{ 'font-size': tlyricSize + 'px' }" v-if="item.tlyric && lyricType.indexOf('trans') != -1">{{ item.tlyric }}</span>
+                            <div
+                                class="hilight"
+                                :class="{ 'hilight-active': index == lycCurrentIndex }"
+                                :style="{ backgroundColor: videoIsPlaying ? 'var(--lyric-hilight-bg-dim)' : 'var(--lyric-hilight-bg)' }"
+                            ></div>
                         </div>
-                        <div class="interlude-right">
-                            <div class="triangle"></div>
-                            <span class="remaining">THE REMAINING TIME: {{ interludeRemainingTime }}</span>
-                            <div class="interlude-title">
-                                <span class="title">MUSIC INTERLUDE</span>
-                                <div class="title-style">
+                        <div v-if="lycCurrentIndex != -1 && interludeIndex == index" class="music-interlude" :class="{ 'music-interlude-in': interludeAnimation, 'music-interlude-fast-close': interludeFastClose }">
+                            <div class="interlude-left">
+                                <div class="diamond">
+                                    <div class="diamond-inner"></div>
+                                </div>
+                            </div>
+                            <div class="interlude-right">
+                                <div class="triangle"></div>
+                                <span class="remaining">THE REMAINING TIME: {{ interludeRemainingTime }}</span>
+                                <div class="interlude-title">
+                                    <span class="title">MUSIC INTERLUDE</span>
+                                    <div class="title-style">
                                     <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="49" height="50" viewBox="0 0 49 50" fill="none">
                                         <defs><rect id="path_0" x="0" y="0" width="49" height="50" /></defs>
                                         <g opacity="1" transform="translate(0 0)  rotate(0 24.5 25)">
@@ -966,9 +967,10 @@ watch([playing, lyricShow], ([p, show]) => {
                                             </g>
                                         </g>
                                     </svg>
+                                    </div>
                                 </div>
+                                <div class="interlude-progress"></div>
                             </div>
-                            <div class="interlude-progress"></div>
                         </div>
                     </div>
                 </div>
@@ -1019,11 +1021,15 @@ watch([playing, lyricShow], ([p, show]) => {
             width: 100%;
             transition: 0.3s;
         }
+        .lyric-lines {
+            width: 100%;
+            transition: transform 0.58s cubic-bezier(0.4, 0, 0.12, 1);
+            will-change: transform;
+        }
         .lyric-line {
             margin-bottom: 10px;
             width: 100%;
             text-align: left;
-            transition: 0.58s cubic-bezier(0.4, 0, 0.12, 1);
             .line {
                 padding: 10px 130px 10px 25px;
                 width: 100%;

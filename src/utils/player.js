@@ -75,8 +75,11 @@ let playbackRequestToken = 0;
 let lastPersistedProgressSignature = "";
 let gaplessPreload = null;
 let gaplessPreloadToken = 0;
+let gaplessPreloadPendingKey = "";
 let disposeGaplessTransitionTicker = null;
 let gaplessTransitionInProgress = false;
+// ponytail: fixed lead time is best-effort; replace it with measured fetch/decode timing if gapless misses need adaptive calibration.
+const GAPLESS_PRELOAD_LEAD_SECONDS = 12;
 const GAPLESS_EARLY_START_SECONDS = 0.85;
 const GAPLESS_CROSSFADE_MS = 700;
 const SEEK_END_GUARD_SECONDS = 0.25;
@@ -120,7 +123,7 @@ watch(
     chorusMode,
   ],
   () => {
-    scheduleGaplessPreload();
+    clearGaplessPreload();
   },
 );
 watch(
@@ -129,7 +132,7 @@ watch(
       ? songList.value.map((song) => song?.id).join(",")
       : "",
   () => {
-    scheduleGaplessPreload();
+    clearGaplessPreload();
   },
 );
 
@@ -348,6 +351,7 @@ function clearChorusPrefetchData() {
 
 function clearGaplessPreload({ invalidate = true, unload = true } = {}) {
   if (invalidate) gaplessPreloadToken += 1;
+  gaplessPreloadPendingKey = "";
   if (unload && gaplessPreload?.player) {
     try {
       gaplessPreload.player.unload?.();
@@ -439,9 +443,11 @@ async function preloadGaplessSong() {
   ) {
     return gaplessPreload;
   }
+  if (gaplessPreloadPendingKey === preloadKey) return null;
 
   clearGaplessPreload({ unload: true });
   const token = gaplessPreloadToken;
+  gaplessPreloadPendingKey = preloadKey;
 
   try {
     const playbackInfo = await resolveGaplessPlaybackInfo(
@@ -471,13 +477,9 @@ async function preloadGaplessSong() {
   } catch (_) {
     if (token === gaplessPreloadToken) gaplessPreload = null;
     return null;
+  } finally {
+    if (token === gaplessPreloadToken) gaplessPreloadPendingKey = "";
   }
-}
-
-function scheduleGaplessPreload() {
-  setTimeout(() => {
-    void preloadGaplessSong();
-  }, 0);
 }
 
 function isActivePlaybackRequest(token, id) {
@@ -710,7 +712,9 @@ function maybeStartGaplessNextBeforeEnd(snapshot) {
   if (duration <= 0 || seek <= 0) return;
 
   const remaining = duration - seek;
-  if (remaining <= 0 || remaining > GAPLESS_EARLY_START_SECONDS) return;
+  if (remaining <= 0) return;
+  if (remaining <= GAPLESS_PRELOAD_LEAD_SECONDS) void preloadGaplessSong();
+  if (remaining > GAPLESS_EARLY_START_SECONDS) return;
 
   if (!tryStartGaplessNextFromEnd({ early: true })) {
     gaplessTransitionInProgress = false;
@@ -1544,7 +1548,6 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
     syncPlaybackStarted();
     // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
     updateWindowTitleDock();
-    scheduleGaplessPreload();
   };
   const handlePlaybackPause = (playback) => {
     if (currentMusic.value !== playback) return;
@@ -2539,11 +2542,9 @@ export function changeProgressByDragEnd(toTime) {
 export function changePlayMode() {
   if (isPersonalFMContext()) {
     applyPlayMode(playMode.value == 2 ? 3 : 2, { inFM: true });
-    scheduleGaplessPreload();
     return;
   }
   applyPlayMode(playMode.value != 3 ? playMode.value + 1 : 0, { inFM: false });
-  scheduleGaplessPreload();
 }
 
 export function playAll(listType, list, listMeta = null) {

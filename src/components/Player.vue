@@ -271,7 +271,6 @@ const sliderProgress = computed({
         progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0;
     },
 });
-
 function normalizeSliderVolume(value) {
     const currentVolume = Number(value);
     if (!Number.isFinite(currentVolume)) return 0;
@@ -417,7 +416,7 @@ const addToPlaylist = () => {
                             :min="0"
                             :max="safeSliderMax"
                             :interval="1"
-                            :duration="0.5"
+                            :duration="0"
                             tooltip="none"
                         ></vue-slider>
                     </div>
