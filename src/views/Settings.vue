@@ -117,6 +117,7 @@ const startupAnimation = ref("signal");
 const startupAnimationOptions = ref([
   { label: "信号校准", value: "signal" },
   { label: "经典律动", value: "classic" },
+  { label: "末日工业", value: "industrial" },
 ]);
 const quitApp = ref("minimize");
 const quitAppOptions = ref([
@@ -247,8 +248,11 @@ onActivated(() => {
     globalShortcuts.value = settings.other.globalShortcuts;
     // 兼容旧配置：未写入过该字段时默认保持开启更新。
     appUpdateEnabled.value = settings?.other?.enableUpdate !== false;
-    startupAnimation.value =
-      settings?.other?.startupAnimation === "classic" ? "classic" : "signal";
+    startupAnimation.value = ["classic", "industrial"].includes(
+      settings?.other?.startupAnimation,
+    )
+      ? settings.other.startupAnimation
+      : "signal";
     quitApp.value = settings.other.quitApp;
     customFont.value = settings?.other?.customFont || "";
     customFontLabel.value = settings?.other?.customFontLabel || "";

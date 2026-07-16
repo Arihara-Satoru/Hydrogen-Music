@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Splash layout QA preview</title>
+    <style>
+      html,
+      body,
+      iframe {
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        border: 0;
+        overflow: hidden;
+        display: block;
+        background: #f7faff;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="splash" src="/splash.html" title="Hydrogen Music 启动画面"></iframe>
+    <script>
+      const splashFrame = document.getElementById("splash");
+      splashFrame.addEventListener("load", () => {
+        splashFrame.contentWindow.setSplashStatus("准备就绪", 100);
+      });
+    </script>
+  </body>
+</html>

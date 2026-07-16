@@ -4,18 +4,14 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hydrogen Music</title>
     <style>
       :root {
-        --splash-scale: 2;
-        color-scheme: dark;
-        font-family:
-          Inter, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
-        background: #101419;
-        color: #f2f6f8;
+        color-scheme: light;
+        background: #f7faff;
       }
 
       * {
@@ -23,7 +19,9 @@
       }
 
       html,
-      body {
+      body,
+      main,
+      canvas {
         width: 100%;
         height: 100%;
       }
@@ -31,441 +29,387 @@
       body {
         margin: 0;
         overflow: hidden;
-        background: #101419;
+        background: #f7faff;
         user-select: none;
       }
 
       main {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 360px;
-        height: 240px;
-        transform: scale(var(--splash-scale));
-        transform-origin: top left;
-      }
-
-      .scene {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-      }
-
-      .logo {
-        position: absolute;
-        top: 29px;
-        left: 18px;
-        width: 24px;
-        height: 24px;
-        border: 1px solid rgba(207, 223, 232, 0.32);
-        border-radius: 6px;
-      }
-
-      .brand {
-        position: absolute;
-        top: 101px;
-        right: 17px;
-        width: 107px;
-      }
-
-      .brand h1 {
-        margin: 0;
-        color: #f4f7f8;
-        font-family: "Arial Narrow", Inter, "Segoe UI", sans-serif;
-        font-size: 13.5px;
-        font-stretch: condensed;
-        font-weight: 800;
-        letter-spacing: -0.45px;
-        line-height: 1;
-        white-space: nowrap;
-      }
-
-      .brand p {
-        margin: 9px 0 0;
-        color: #8796a1;
-        font-family: Consolas, "SFMono-Regular", monospace;
-        font-size: 6.5px;
-        letter-spacing: 0.8px;
-        line-height: 1;
-        white-space: nowrap;
-      }
-
-      .loading {
-        position: absolute;
-        right: 20px;
-        bottom: 16px;
-        left: 20px;
-      }
-
-      .status {
-        min-height: 12px;
-        margin: 0 0 7px;
-        color: #eef4f7;
-        font-size: 8.5px;
-        font-weight: 500;
-        letter-spacing: 0.2px;
-        line-height: 12px;
-      }
-
-      .progress {
-        width: 100%;
-        height: 6px;
-        overflow: hidden;
-        border: 1px solid #8494a0;
-        background: #111920;
-      }
-
-      .progress-fill {
         position: relative;
-        width: 12%;
-        height: 100%;
-        background: #eff5f7;
-        transition: width 620ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
-      .progress-fill::after {
+      canvas {
+        display: block;
+      }
+
+      .sr-only {
         position: absolute;
-        top: -1px;
-        right: -1px;
-        bottom: -1px;
-        width: 2px;
-        background: #e1c92e;
-        content: "";
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .progress-fill {
-          transition: none;
-        }
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
     </style>
   </head>
   <body>
     <main aria-label="Hydrogen Music 正在启动">
-      <canvas id="scene" class="scene" aria-hidden="true"></canvas>
-      <img class="logo" src="./src/assets/icon/icon.png" alt="" />
-      <section class="brand" aria-label="Hydrogen Music">
-        <h1>HYDROGEN MUSIC</h1>
-        <p>SIGNAL CALIBRATION</p>
-      </section>
-      <section class="loading" aria-live="polite">
-        <p id="status" class="status">正在初始化...</p>
-        <div
-          id="progress"
-          class="progress"
-          role="progressbar"
-          aria-label="启动进度"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="12"
-        >
-          <div id="progress-fill" class="progress-fill"></div>
-        </div>
-      </section>
+      <canvas id="scene" aria-hidden="true"></canvas>
+      <p id="status" class="sr-only" aria-live="polite">正在初始化...</p>
+      <progress id="progress" class="sr-only" max="100" value="12">12%</progress>
     </main>
     <script>
       const canvas = document.getElementById("scene");
       const context = canvas.getContext("2d");
       const statusElement = document.getElementById("status");
       const progressElement = document.getElementById("progress");
-      const progressFill = document.getElementById("progress-fill");
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-      const viewport = { width: 360, height: 240, dpr: 1 };
+      const MOTION_DURATION = 3500;
+      const HANDOFF_DURATION = 500;
       const TAU = Math.PI * 2;
+      const startTime = performance.now();
+      const viewport = { width: 720, height: 480, dpr: 1 };
+      let targetProgress = 0.12;
+      let visibleProgress = 0.12;
+      let handoffStart = 0;
+      let finishPromise = null;
+      let animationFrame = null;
 
-      // ponytail: 低精度大陆轮廓让启动页保持零依赖；若要地图级精度，再替换为压缩海岸线数据。
-      const landPolygons = [
-        [
-          [-168, 70], [-145, 72], [-122, 58], [-123, 48], [-114, 32],
-          [-103, 25], [-97, 17], [-86, 16], [-79, 25], [-82, 31],
-          [-73, 42], [-60, 52], [-64, 62], [-92, 72],
-        ],
-        [
-          [-82, 12], [-70, 10], [-55, 5], [-44, -2], [-36, -10],
-          [-45, -24], [-52, -34], [-57, -52], [-67, -45], [-72, -24],
-          [-78, -8],
-        ],
-        [
-          [-11, 36], [3, 44], [20, 46], [31, 39], [26, 32], [10, 35],
-        ],
-        [
-          [-17, 35], [3, 37], [22, 32], [36, 20], [51, 11], [43, -13],
-          [31, -34], [17, -35], [7, -23], [-3, -5], [-15, 14],
-        ],
-        [
-          [26, 34], [42, 54], [62, 70], [98, 75], [135, 58], [162, 47],
-          [145, 24], [118, 6], [89, 9], [71, 22], [52, 28],
-        ],
-        [
-          [112, -11], [136, -10], [154, -20], [151, -39], [130, -44],
-          [114, -29],
-        ],
-        [
-          [-53, 59], [-31, 63], [-20, 76], [-43, 83], [-64, 76],
-        ],
-      ];
-
-      const pointInPolygon = (longitude, latitude, polygon) => {
-        let inside = false;
-        for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-          const [x, y] = polygon[index];
-          const [previousX, previousY] = polygon[previous];
-          if (
-            y > latitude !== previousY > latitude &&
-            longitude < ((previousX - x) * (latitude - y)) / (previousY - y) + x
-          ) {
-            inside = !inside;
-          }
-        }
-        return inside;
-      };
-
-      const isLand = (longitude, latitude) =>
-        landPolygons.some((polygon) => pointInPolygon(longitude, latitude, polygon));
-
-      let randomState = 0x48594d;
-      const random = () => {
-        randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
-        return randomState / 4294967296;
-      };
-
-      const makeSpherePoints = (latitudeStep, longitudeStep, landOnly) => {
-        const points = [];
-        for (let latitude = -72; latitude <= 78; latitude += latitudeStep) {
-          for (let longitude = -180; longitude < 180; longitude += longitudeStep) {
-            const jitteredLongitude = longitude + (random() - 0.5) * 1.6;
-            const jitteredLatitude = latitude + (random() - 0.5) * 1.2;
-            if (!landOnly || isLand(jitteredLongitude, jitteredLatitude)) {
-              points.push({
-                latitude: (jitteredLatitude * Math.PI) / 180,
-                longitude: (jitteredLongitude * Math.PI) / 180,
-              });
-            }
-          }
-        }
-        return points;
-      };
-
-      const surfacePoints = makeSpherePoints(6, 8, false);
-      const landPoints = makeSpherePoints(2.8, 3.6, true);
-      const ambientPoints = Array.from({ length: 72 }, () => ({
-        x: 45 + random() * 250,
-        y: 36 + random() * 126,
-        size: 0.25 + random() * 0.55,
-        opacity: 0.08 + random() * 0.24,
-      }));
+      const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+      const lerp = (from, to, amount) => from + (to - from) * amount;
+      const range = (value, from, to) => clamp((value - from) / (to - from));
+      const easeOut = (value) => 1 - Math.pow(1 - value, 3);
+      const easeInOut = (value) =>
+        value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 
       const resizeCanvas = () => {
-        const bounds = canvas.getBoundingClientRect();
-        viewport.width = canvas.offsetWidth || 360;
-        viewport.height = canvas.offsetHeight || 240;
-        const displayScale = bounds.width / viewport.width || 1;
-        viewport.dpr = Math.min(window.devicePixelRatio || 1, 2) * displayScale;
+        viewport.width = canvas.clientWidth || 720;
+        viewport.height = canvas.clientHeight || 480;
+        viewport.dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(viewport.width * viewport.dpr);
         canvas.height = Math.round(viewport.height * viewport.dpr);
         context.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
       };
 
-      const drawHelix = ({ x, y, length, amplitude, angle, phase, opacity }) => {
-        const segments = 42;
+      const roundedRect = (x, y, width, height, radius) => {
+        const safeRadius = Math.min(radius, width / 2, height / 2);
+        context.beginPath();
+        context.moveTo(x + safeRadius, y);
+        context.arcTo(x + width, y, x + width, y + height, safeRadius);
+        context.arcTo(x + width, y + height, x, y + height, safeRadius);
+        context.arcTo(x, y + height, x, y, safeRadius);
+        context.arcTo(x, y, x + width, y, safeRadius);
+        context.closePath();
+      };
+
+      const strokeLine = (x1, y1, x2, y2, opacity = 1, width = 1) => {
+        context.strokeStyle = `rgba(95, 145, 190, ${opacity})`;
+        context.lineWidth = width;
+        context.beginPath();
+        context.moveTo(x1, y1);
+        context.lineTo(x2, y2);
+        context.stroke();
+      };
+
+      const drawBackground = (handoff) => {
+        const { width, height } = viewport;
+        const base = context.createLinearGradient(0, 0, width, height);
+        base.addColorStop(0, `rgb(${Math.round(248 + handoff * 7)}, ${Math.round(251 + handoff * 4)}, 255)`);
+        base.addColorStop(0.48, `rgb(${Math.round(235 + handoff * 20)}, ${Math.round(243 + handoff * 12)}, 252)`);
+        base.addColorStop(1, `rgb(${Math.round(210 + handoff * 45)}, ${Math.round(225 + handoff * 30)}, ${Math.round(242 + handoff * 13)})`);
+        context.fillStyle = base;
+        context.fillRect(0, 0, width, height);
+
+        const glow = context.createRadialGradient(width * 0.5, height * 0.44, 0, width * 0.5, height * 0.44, width * 0.58);
+        glow.addColorStop(0, `rgba(255, 255, 255, ${0.96 - handoff * 0.2})`);
+        glow.addColorStop(0.55, "rgba(250, 253, 255, 0.56)");
+        glow.addColorStop(1, "rgba(244, 249, 254, 0)");
+        context.fillStyle = glow;
+        context.fillRect(0, 0, width, height);
+      };
+
+      const REFERENCE_WIDTH = 1597;
+      const REFERENCE_HEIGHT = 985;
+      const chromeRects = [
+        [45, 34, 161, 40],
+        [238, 37, 139, 30],
+        [618, 38, 79, 27],
+        [740, 39, 99, 26],
+        [880, 40, 94, 25],
+        [1011, 39, 31, 26],
+        [1444, 26, 26, 25],
+        [1491, 26, 25, 25],
+        [1538, 26, 26, 25],
+      ];
+      const featureRects = [
+        [47, 141, 562, 215],
+        [666, 136, 437, 222],
+      ];
+      const featureDetails = [
+        [46, 115, 164, 19],
+        [616, 118, 19, 18],
+        [1073, 148, 18, 17],
+        [1157, 103, 94, 21],
+        [46, 402, 274, 21],
+      ];
+      const listRows = [
+        [1157, 139, 58, 59, 1228, 147, 170, 20, 1228, 176, 95, 14],
+        [1157, 220, 58, 61, 1228, 231, 170, 20, 1228, 261, 82, 15],
+        [1157, 300, 58, 59, 1228, 307, 170, 20, 1228, 337, 95, 14],
+      ];
+      const cardColumns = [
+        [47, 266, 185, 115],
+        [354, 268, 178, 118],
+        [662, 268, 181, 118],
+        [971, 267, 188, 118],
+        [1279, 267, 185, 118],
+      ];
+
+      const mapRect = ([x, y, width, height]) => [
+        (x / REFERENCE_WIDTH) * viewport.width,
+        (y / REFERENCE_HEIGHT) * viewport.height,
+        (width / REFERENCE_WIDTH) * viewport.width,
+        (height / REFERENCE_HEIGHT) * viewport.height,
+      ];
+
+      const mapPoint = (x, y) => [
+        (x / REFERENCE_WIDTH) * viewport.width,
+        (y / REFERENCE_HEIGHT) * viewport.height,
+      ];
+
+      const drawGlassPanel = (rect, opacity, accent = false) => {
+        const [x, y, width, height] = rect;
+        const fill = context.createLinearGradient(x, y, x + width, y + height);
+        fill.addColorStop(0, `rgba(255, 255, 255, ${0.5 * opacity})`);
+        fill.addColorStop(0.55, `rgba(226, 239, 250, ${0.32 * opacity})`);
+        fill.addColorStop(1, `rgba(185, 211, 235, ${0.23 * opacity})`);
+        const radius = Math.max(
+          1,
+          Math.min(viewport.width / REFERENCE_WIDTH, viewport.height / REFERENCE_HEIGHT) * 1.5,
+        );
+        roundedRect(x, y, width, height, radius);
+        context.fillStyle = fill;
+        context.shadowColor = `rgba(82, 135, 184, ${0.13 * opacity})`;
+        context.shadowBlur = 18 * opacity;
+        context.fill();
+        context.shadowBlur = 0;
+        context.strokeStyle = accent
+          ? `rgba(95, 169, 232, ${0.55 * opacity})`
+          : `rgba(114, 158, 198, ${0.34 * opacity})`;
+        context.lineWidth = accent ? 1.15 : 0.75;
+        context.stroke();
+
+        const edge = context.createLinearGradient(x, y, x + width, y);
+        edge.addColorStop(0, "rgba(255,255,255,0)");
+        edge.addColorStop(0.55, `rgba(255,255,255,${0.78 * opacity})`);
+        edge.addColorStop(1, "rgba(255,255,255,0)");
+        context.strokeStyle = edge;
+        context.beginPath();
+        context.moveTo(x + width * 0.08, y + 0.6);
+        context.lineTo(x + width * 0.92, y + 0.6);
+        context.stroke();
+      };
+
+      const drawExpandingRect = (target, progress, opacity, accent = false, seedY = 0.5) => {
+        const [x, y, width, height] = mapRect(target);
+        const seedSize = Math.max(5, Math.min(viewport.width, viewport.height) * 0.012);
+        const seedX = x + width / 2 - seedSize / 2;
+        const startY = viewport.height * seedY - seedSize / 2;
+        drawGlassPanel(
+          [
+            lerp(seedX, x, progress),
+            lerp(startY, y, progress),
+            lerp(seedSize, width, progress),
+            lerp(seedSize, height, progress),
+          ],
+          opacity,
+          accent,
+        );
+      };
+
+      const drawReferenceLine = (x1, y1, x2, y2, reveal, opacity = 0.38, width = 0.8) => {
+        const [fromX, fromY] = mapPoint(x1, y1);
+        const [toX, toY] = mapPoint(x2, y2);
+        strokeLine(fromX, fromY, lerp(fromX, toX, reveal), lerp(fromY, toY, reveal), opacity * reveal, width);
+      };
+
+      const drawChrome = (timeline) => {
+        const reveal = easeInOut(range(timeline, 0.24, 0.58));
+        const opacity = easeOut(range(timeline, 0.18, 0.44));
+        chromeRects.forEach((rect, index) => {
+          drawExpandingRect(rect, reveal, opacity, false, index < 2 ? 0.18 : 0.08);
+        });
+      };
+
+      const drawFeatures = (timeline) => {
+        const reveal = easeInOut(range(timeline, 0.18, 0.62));
+        const opacity = easeOut(range(timeline, 0.13, 0.42));
+        featureRects.forEach((rect, index) => {
+          drawExpandingRect(rect, reveal, opacity, index === 1, 0.26);
+        });
+
+        const detailReveal = easeInOut(range(timeline, 0.38, 0.72));
+        featureDetails.forEach((rect, index) => {
+          drawExpandingRect(rect, detailReveal, detailReveal, false, index === 4 ? 0.43 : 0.14);
+        });
+        drawReferenceLine(465, 124, 609, 124, detailReveal);
+        drawReferenceLine(557, 373, 624, 373, detailReveal);
+        drawReferenceLine(624, 373, 624, 307, detailReveal);
+        drawReferenceLine(335, 417, 1549, 417, detailReveal, 0.42, 0.9);
+
+        listRows.forEach((row, index) => {
+          const rowReveal = easeInOut(range(timeline, 0.36 + index * 0.06, 0.68 + index * 0.06));
+          drawExpandingRect(row.slice(0, 4), rowReveal, rowReveal, false, 0.24);
+          drawExpandingRect(row.slice(4, 8), rowReveal, rowReveal, false, 0.24);
+          drawExpandingRect(row.slice(8, 12), rowReveal, rowReveal, false, 0.24);
+          if (index < 2) drawReferenceLine(1157, 206 + index * 84, 1544, 206 + index * 84, rowReveal);
+        });
+      };
+
+      const drawCards = (timeline) => {
+        cardColumns.forEach(([x, width, labelWidth, sublabelWidth], index) => {
+          const firstReveal = easeInOut(range(timeline, 0.45 + index * 0.035, 0.78 + index * 0.035));
+          drawExpandingRect([x, 477, width, 252], firstReveal, firstReveal, false, 0.52);
+          drawExpandingRect([x, 746, labelWidth, 21], firstReveal, firstReveal, false, 0.75);
+          drawExpandingRect([x, 779, sublabelWidth, 15], firstReveal, firstReveal, false, 0.79);
+
+          const secondReveal = easeInOut(range(timeline, 0.63 + index * 0.035, 0.94 + index * 0.02));
+          drawExpandingRect([x, 860, width, 252], secondReveal, secondReveal * 0.9, false, 0.88);
+          drawExpandingRect([x, 1129, labelWidth, 21], secondReveal, secondReveal, false, 0.95);
+          drawExpandingRect([x, 1162, sublabelWidth, 15], secondReveal, secondReveal, false, 0.95);
+        });
+      };
+
+      const drawPlayer = (timeline) => {
+        const reveal = easeInOut(range(timeline, 0.66, 0.96));
+        drawExpandingRect([382, 842, 825, 84], reveal, reveal, true, 0.86);
+        drawExpandingRect([398, 851, 67, 63], reveal, reveal, false, 0.86);
+        drawExpandingRect([484, 882, 334, 28], reveal, reveal, false, 0.86);
+
+        const [railX, railY] = mapPoint(484, 910);
+        const railWidth = (334 / REFERENCE_WIDTH) * viewport.width;
+        strokeLine(railX, railY, railX + railWidth, railY, 0.18 * reveal, 0.75);
+        const progressWidth = railWidth * visibleProgress;
+        const light = context.createLinearGradient(railX, railY, railX + progressWidth, railY);
+        light.addColorStop(0, "rgba(151, 218, 255, 0.24)");
+        light.addColorStop(0.76, `rgba(83, 174, 244, ${0.72 * reveal})`);
+        light.addColorStop(1, `rgba(240, 251, 255, ${0.98 * reveal})`);
+        context.strokeStyle = light;
+        context.lineWidth = 2.2;
+        context.shadowColor = "rgba(74, 172, 243, 0.58)";
+        context.shadowBlur = 12;
+        context.beginPath();
+        context.moveTo(railX, railY);
+        context.lineTo(railX + progressWidth, railY);
+        context.stroke();
+        context.shadowBlur = 0;
+      };
+
+      const drawAperture = (timeline, time) => {
+        const { width, height } = viewport;
+        const reveal = easeOut(range(timeline, 0, 0.26)) * (1 - easeInOut(range(timeline, 0.52, 0.84)));
+        const settle = easeInOut(range(timeline, 0.24, 0.68));
+        const centerX = width * lerp(0.5, 0.501, settle);
+        const centerY = height * lerp(0.5, 0.43, settle);
+        const radius = Math.min(width, height) * lerp(0.025, 0.1, easeOut(range(timeline, 0, 0.26)));
+        const rotation = (1 - settle) * time * 0.0024;
+        const pulse = Math.sin(time * 0.002) * 0.012 * reveal;
+
         context.save();
-        context.translate(x, y);
-        context.rotate(angle);
-
-        for (let index = 0; index <= segments; index += 1) {
-          const ratio = index / segments;
-          const axis = (ratio - 0.5) * length;
-          const wavePhase = ratio * Math.PI * 7 + phase;
-          const offset = Math.sin(wavePhase) * amplitude;
-          const depth = (Math.cos(wavePhase) + 1) / 2;
-
-          context.fillStyle = `rgba(134, 165, 184, ${opacity * (0.35 + depth * 0.65)})`;
+        context.translate(centerX, centerY);
+        context.scale(1 + pulse, 1 + pulse);
+        context.shadowColor = "rgba(69, 153, 229, 0.2)";
+        context.shadowBlur = 16 * reveal;
+        context.lineCap = "round";
+        [
+          [1, 0.52, 0.78, 0],
+          [0.84, 0.32, 0.44, 1.7],
+          [1.14, 0.2, 0.28, 3.7],
+        ].forEach(([scale, alpha, length, offset]) => {
+          context.strokeStyle = `rgba(84, 143, 197, ${alpha * reveal})`;
+          context.lineWidth = scale === 1 ? 1.1 : 0.7;
           context.beginPath();
-          context.arc(axis, offset, 0.45 + depth * 0.45, 0, TAU);
-          context.fill();
+          context.arc(0, 0, radius * scale, rotation + offset, rotation + offset + TAU * length);
+          context.stroke();
+        });
+        context.shadowBlur = 0;
 
-          context.fillStyle = `rgba(134, 165, 184, ${opacity * (1 - depth * 0.65)})`;
-          context.beginPath();
-          context.arc(axis, -offset, 0.45 + (1 - depth) * 0.45, 0, TAU);
-          context.fill();
+        const core = context.createRadialGradient(0, 0, 0, 0, 0, radius * 0.82);
+        core.addColorStop(0, `rgba(255, 255, 255, ${0.92 * reveal})`);
+        core.addColorStop(0.7, `rgba(219, 235, 249, ${0.34 * reveal})`);
+        core.addColorStop(1, "rgba(197, 221, 243, 0)");
+        context.fillStyle = core;
+        context.beginPath();
+        context.arc(0, 0, radius * 0.82, 0, TAU);
+        context.fill();
 
-          if (index % 4 === 0) {
-            context.strokeStyle = `rgba(134, 165, 184, ${opacity * 0.42})`;
-            context.lineWidth = 0.45;
-            context.beginPath();
-            context.moveTo(axis, offset);
-            context.lineTo(axis, -offset);
-            context.stroke();
-          }
-        }
+        context.fillStyle = `rgba(255, 255, 255, ${reveal})`;
+        context.shadowColor = "rgba(70, 158, 235, 0.65)";
+        context.shadowBlur = 10;
+        context.beginPath();
+        context.arc(0, 0, lerp(1.5, 3.5, reveal), 0, TAU);
+        context.fill();
         context.restore();
       };
 
-      const drawWaveform = (time) => {
-        const y = 107;
-        context.strokeStyle = "rgba(136, 161, 175, 0.32)";
-        context.lineWidth = 0.55;
-        context.beginPath();
-        context.moveTo(35, y);
-        context.lineTo(223, y);
-        context.stroke();
+      const drawFrame = (time) => {
+        const elapsed = time - startTime;
+        const timeline = reduceMotion.matches ? 1 : clamp(elapsed / MOTION_DURATION);
+        const handoff = handoffStart ? easeInOut(clamp((time - handoffStart) / HANDOFF_DURATION)) : 0;
+        visibleProgress = lerp(visibleProgress, targetProgress, 0.055);
+        drawBackground(handoff);
 
-        context.strokeStyle = "rgba(205, 222, 231, 0.72)";
-        for (let x = 140; x <= 220; x += 3) {
-          const envelope = Math.max(0, 1 - Math.abs(x - 181) / 45);
-          const wave = Math.sin(x * 0.31 + time * 0.0018) * 0.5 + 0.5;
-          const height = 1 + envelope * wave * 9;
-          context.beginPath();
-          context.moveTo(x, y - height);
-          context.lineTo(x, y + height);
-          context.stroke();
-        }
-      };
+        context.save();
+        const handoffScale = 1 + handoff * 0.11;
+        context.translate(viewport.width / 2, viewport.height / 2);
+        context.scale(handoffScale, handoffScale);
+        context.translate(-viewport.width / 2, -viewport.height / 2);
+        context.globalAlpha = 1 - handoff;
+        drawChrome(timeline);
+        drawFeatures(timeline);
+        drawCards(timeline);
+        drawPlayer(timeline);
+        drawAperture(timeline, time);
+        context.restore();
 
-      const drawSphereLayer = (points, rotation, opacity, minSize, maxSize) => {
-        const centerX = 105;
-        const centerY = 107;
-        const radius = 45;
-        for (const point of points) {
-          const rotatedLongitude = point.longitude + rotation;
-          const latitudeCosine = Math.cos(point.latitude);
-          const depth = latitudeCosine * Math.cos(rotatedLongitude);
-          if (depth <= 0.03) continue;
-
-          const x = centerX + radius * latitudeCosine * Math.sin(rotatedLongitude);
-          const y = centerY - radius * Math.sin(point.latitude);
-          const size = minSize + (maxSize - minSize) * depth;
-          context.fillStyle = `rgba(202, 222, 234, ${opacity * (0.2 + depth * 0.8)})`;
-          context.beginPath();
-          context.arc(x, y, size, 0, TAU);
-          context.fill();
-        }
-      };
-
-      const drawCalibration = () => {
-        const centerX = 105;
-        const centerY = 107;
-        context.lineWidth = 0.65;
-        context.strokeStyle = "rgba(230, 239, 243, 0.82)";
-        for (const [radius, start, end] of [
-          [62, -2.9, -0.74],
-          [62, 0.74, 2.9],
-          [55, -2.66, -0.86],
-          [55, 0.86, 2.66],
-        ]) {
-          context.beginPath();
-          context.arc(centerX, centerY, radius, start, end);
-          context.stroke();
-        }
-
-        context.lineWidth = 1;
-        for (const [x1, y1, x2, y2] of [
-          [105, 37, 105, 47],
-          [105, 167, 105, 177],
-          [35, 107, 45, 107],
-          [165, 107, 175, 107],
-        ]) {
-          context.beginPath();
-          context.moveTo(x1, y1);
-          context.lineTo(x2, y2);
-          context.stroke();
-        }
-
-        context.strokeStyle = "#e1c92e";
-        context.beginPath();
-        context.moveTo(105, 52);
-        context.lineTo(105, 58);
-        context.stroke();
-      };
-
-      const drawGlobe = (time) => {
-        const rotation = 1.55 + time * 0.00008;
-        drawSphereLayer(surfacePoints, rotation, 0.16, 0.25, 0.5);
-        drawSphereLayer(landPoints, rotation, 0.9, 0.35, 0.85);
-
-        context.strokeStyle = "rgba(160, 187, 201, 0.35)";
-        context.lineWidth = 0.55;
-        context.beginPath();
-        context.arc(105, 107, 46, 0, TAU);
-        context.stroke();
-      };
-
-      const drawScene = (time) => {
-        context.clearRect(0, 0, viewport.width, viewport.height);
-
-        for (const point of ambientPoints) {
-          context.fillStyle = `rgba(160, 188, 203, ${point.opacity})`;
-          context.fillRect(point.x, point.y, point.size, point.size);
-        }
-
-        drawHelix({
-          x: 38,
-          y: 91,
-          length: 176,
-          amplitude: 8,
-          angle: Math.PI * 0.47,
-          phase: time * 0.00022,
-          opacity: 0.28,
-        });
-        drawHelix({
-          x: 290,
-          y: 145,
-          length: 118,
-          amplitude: 7,
-          angle: -0.68,
-          phase: -time * 0.00018 + 1.6,
-          opacity: 0.18,
-        });
-        drawWaveform(time);
-        drawGlobe(time);
-        drawCalibration();
-      };
-
-      let animationFrame = null;
-      let lastFrame = 0;
-      const animate = (time) => {
-        if (time - lastFrame >= 1000 / 30) {
-          drawScene(time);
-          lastFrame = time;
-        }
-        animationFrame = requestAnimationFrame(animate);
-      };
-
-      const startAnimation = () => {
-        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
-        animationFrame = null;
-        if (reduceMotion.matches) {
-          drawScene(0);
-          return;
-        }
-        animationFrame = requestAnimationFrame(animate);
+        animationFrame = requestAnimationFrame(drawFrame);
       };
 
       window.setSplashStatus = (status, progress) => {
-        if (typeof status === "string" && status.trim()) {
-          statusElement.textContent = status;
-        }
+        if (typeof status === "string" && status.trim()) statusElement.textContent = status;
         const nextProgress = Number(progress);
-        if (Number.isFinite(nextProgress)) {
-          const clampedProgress = Math.min(100, Math.max(0, nextProgress));
-          progressFill.style.width = `${clampedProgress}%`;
-          progressElement.setAttribute("aria-valuenow", String(Math.round(clampedProgress)));
-        }
+        if (!Number.isFinite(nextProgress)) return;
+        targetProgress = clamp(nextProgress / 100);
+        progressElement.value = Math.round(targetProgress * 100);
+        progressElement.textContent = `${progressElement.value}%`;
       };
 
+      window.finishSplash = () => {
+        if (finishPromise) return finishPromise;
+        finishPromise = new Promise((resolve) => {
+          const wait = reduceMotion.matches
+            ? 0
+            : Math.max(0, MOTION_DURATION - (performance.now() - startTime));
+          setTimeout(() => {
+            handoffStart = performance.now();
+            setTimeout(resolve, reduceMotion.matches ? 120 : HANDOFF_DURATION);
+          }, wait);
+        });
+        return finishPromise;
+      };
+
+      window.__splashMotion = Object.freeze({
+        motionDuration: MOTION_DURATION,
+        handoffDuration: HANDOFF_DURATION,
+        layout: "full-player-skeleton",
+      });
+
       resizeCanvas();
-      startAnimation();
-      window.addEventListener("resize", () => {
-        resizeCanvas();
-        if (reduceMotion.matches) drawScene(0);
-      });
-      if (typeof reduceMotion.addEventListener === "function") {
-        reduceMotion.addEventListener("change", startAnimation);
-      }
-      window.addEventListener("beforeunload", () => {
-        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
-      });
+      animationFrame = requestAnimationFrame(drawFrame);
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("beforeunload", () => cancelAnimationFrame(animationFrame));
     </script>
   </body>
 </html>

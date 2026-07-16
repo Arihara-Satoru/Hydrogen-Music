@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Industrial splash QA</title>
+    <style>
+      html,
+      body,
+      iframe {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        border: 0;
+        background: #090a09;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="splash" src="/splash-industrial.html" title="末日工业启动动画"></iframe>
+    <script>
+      document.getElementById("splash").addEventListener("load", (event) => {
+        event.currentTarget.contentWindow.setSplashStatus("系统唤醒", 76);
+      });
+    </script>
+  </body>
+</html>

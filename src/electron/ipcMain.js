@@ -101,8 +101,11 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   normalized.other = {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     enableUpdate: normalized.other?.enableUpdate !== false,
-    startupAnimation:
-      normalized.other?.startupAnimation === "classic" ? "classic" : "signal",
+    startupAnimation: ["classic", "industrial"].includes(
+      normalized.other?.startupAnimation,
+    )
+      ? normalized.other.startupAnimation
+      : "signal",
     quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
     customFont: typeof normalized.other?.customFont === "string" ? normalized.other.customFont.trim() : "",
     customFontLabel: typeof normalized.other?.customFontLabel === "string" ? normalized.other.customFontLabel.trim() : "",

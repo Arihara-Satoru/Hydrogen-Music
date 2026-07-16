@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>System Wake</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #090a09;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      main,
+      canvas {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #090a09;
+        user-select: none;
+      }
+
+      main {
+        position: relative;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-label="末日工业系统正在启动">
+      <canvas id="scene" aria-hidden="true"></canvas>
+      <p id="status" class="sr-only" aria-live="polite">正在初始化...</p>
+      <progress id="progress" class="sr-only" max="100" value="12">12%</progress>
+    </main>
+    <script>
+      const canvas = document.getElementById("scene");
+      const context = canvas.getContext("2d", { alpha: false });
+      const statusElement = document.getElementById("status");
+      const progressElement = document.getElementById("progress");
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const texture = new Image();
+      const DESIGN_WIDTH = 720;
+      const DESIGN_HEIGHT = 480;
+      const MINIMUM_DURATION = 2800;
+      const HANDOFF_DURATION = 520;
+      const FRAME_INTERVAL = 1000 / 30;
+      const TAU = Math.PI * 2;
+      const MOTION_TRACKS = Object.freeze({
+        texture: 17300,
+        grid: 11320,
+        contours: 9470,
+        waveform: 2670,
+        scan: 4870,
+        telemetry: 3710,
+        depth: 6630,
+        dust: 8290,
+        noise: 83,
+      });
+      const colors = Object.freeze({
+        background: "#090a09",
+        ink: [205, 202, 190],
+        dim: [125, 124, 117],
+        orange: [206, 78, 24],
+      });
+      const viewport = { width: DESIGN_WIDTH, height: DESIGN_HEIGHT, dpr: 1 };
+      const startTime = performance.now();
+      let targetProgress = 0.12;
+      let visibleProgress = 0.12;
+      let handoffStart = 0;
+      let finishPromise = null;
+      let animationFrame = null;
+      let lastFrame = 0;
+
+      const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+      const lerp = (from, to, amount) => from + (to - from) * amount;
+      const fract = (value) => value - Math.floor(value);
+      const range = (value, from, to) => clamp((value - from) / (to - from));
+      const easeOut = (value) => 1 - Math.pow(1 - value, 4);
+      const easeInOut = (value) =>
+        value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+      const hash = (value) => fract(Math.sin(value * 91.347 + 17.13) * 43758.5453);
+      const rgba = (color, alpha) => `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
+
+      const particles = Array.from({ length: 46 }, (_, index) => ({
+        x: hash(index + 2) * DESIGN_WIDTH,
+        y: hash(index + 31) * DESIGN_HEIGHT,
+        size: 0.25 + hash(index + 63) * 1.05,
+        speed: 0.28 + hash(index + 97) * 1.4,
+        drift: -0.6 + hash(index + 151) * 1.2,
+        phase: hash(index + 211) * TAU,
+      }));
+
+      const resizeCanvas = () => {
+        viewport.width = canvas.clientWidth || DESIGN_WIDTH;
+        viewport.height = canvas.clientHeight || DESIGN_HEIGHT;
+        viewport.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewport.width * viewport.dpr);
+        canvas.height = Math.round(viewport.height * viewport.dpr);
+        context.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+        if (reducedMotion.matches) drawFrame(startTime + MINIMUM_DURATION, true);
+      };
+
+      const fitScene = () => {
+        const scale = Math.min(viewport.width / DESIGN_WIDTH, viewport.height / DESIGN_HEIGHT);
+        context.translate(
+          (viewport.width - DESIGN_WIDTH * scale) / 2,
+          (viewport.height - DESIGN_HEIGHT * scale) / 2,
+        );
+        context.scale(scale, scale);
+      };
+
+      const drawTexture = (time) => {
+        context.fillStyle = colors.background;
+        context.fillRect(0, 0, viewport.width, viewport.height);
+        if (!texture.complete || !texture.naturalWidth) return;
+        const phase = time / MOTION_TRACKS.texture;
+        const driftX = Math.sin(phase * TAU) * 5 - 6;
+        const driftY = Math.cos(phase * TAU * 0.73) * 3 - 4;
+        context.save();
+        context.globalAlpha = 0.94;
+        context.drawImage(texture, driftX, driftY, viewport.width + 12, viewport.height + 8);
+        context.restore();
+        context.fillStyle = "rgba(0, 0, 0, 0.24)";
+        context.fillRect(0, 0, viewport.width, viewport.height);
+      };
+
+      const drawGrid = (time, reveal) => {
+        const offsetX = Math.sin((time / MOTION_TRACKS.grid) * TAU) * 2.4;
+        const offsetY = Math.cos((time / (MOTION_TRACKS.grid * 0.77)) * TAU) * 1.5;
+        context.strokeStyle = rgba(colors.dim, 0.09 * reveal);
+        context.lineWidth = 0.45;
+        context.beginPath();
+        for (let x = 36 + offsetX; x < DESIGN_WIDTH; x += 72) {
+          context.moveTo(x, 0);
+          context.lineTo(x, DESIGN_HEIGHT);
+        }
+        for (let y = 29 + offsetY; y < DESIGN_HEIGHT; y += 52) {
+          context.moveTo(0, y);
+          context.lineTo(DESIGN_WIDTH, y);
+        }
+        context.stroke();
+      };
+
+      const drawContours = (time, reveal) => {
+        context.save();
+        context.beginPath();
+        context.rect(575, 34, 145, 332);
+        context.clip();
+        for (let line = 0; line < 8; line += 1) {
+          const duration = MOTION_TRACKS.contours + line * 713;
+          const phase = (time / duration) * TAU + line * 0.82;
+          context.strokeStyle = rgba(colors.ink, (0.08 + line * 0.007) * reveal);
+          context.lineWidth = line % 3 === 0 ? 0.72 : 0.48;
+          context.beginPath();
+          for (let point = 0; point <= 46; point += 1) {
+            const angle = (point / 46) * TAU;
+            const radius = 18 + line * 11 + Math.sin(angle * 3 + phase) * (3 + line * 0.35);
+            const x = 650 + Math.cos(angle) * radius * 0.72 + Math.sin(phase * 0.61) * 2;
+            const y = 174 + Math.sin(angle) * radius + Math.cos(phase * 0.47) * 2.5;
+            if (point === 0) context.moveTo(x, y);
+            else context.lineTo(x, y);
+          }
+          context.closePath();
+          context.stroke();
+        }
+        context.restore();
+      };
+
+      const drawWaveform = (time, reveal) => {
+        const shift = (time / MOTION_TRACKS.waveform) * 132;
+        const burst = 102 + Math.sin((time / 4310) * TAU) * 14;
+        context.strokeStyle = rgba(colors.dim, 0.28 * reveal);
+        context.lineWidth = 0.55;
+        context.beginPath();
+        context.moveTo(0, 246);
+        context.lineTo(603, 246);
+        context.stroke();
+
+        context.strokeStyle = rgba(colors.ink, 0.68 * reveal);
+        context.lineWidth = 0.72;
+        context.beginPath();
+        for (let x = 0; x <= 604; x += 2) {
+          const distance = Math.abs(x - burst);
+          const envelope = 4 + 48 * Math.exp(-distance / 54);
+          const signal =
+            Math.sin((x + shift) * 0.19) * 0.52 +
+            Math.sin((x - shift * 0.61) * 0.47) * 0.28 +
+            Math.sin(x * 1.73 + time * 0.0083) * 0.2;
+          const y = 246 + signal * envelope * reveal;
+          if (x === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+        context.stroke();
+
+        context.strokeStyle = rgba(colors.ink, 0.36 * reveal);
+        context.lineWidth = 0.5;
+        for (let x = 14; x < 605; x += 9) {
+          const tick = 2 + hash(x) * 7 * (0.55 + Math.sin(time / (530 + x) + x) * 0.45);
+          context.beginPath();
+          context.moveTo(x, 246 - tick);
+          context.lineTo(x, 246 + tick);
+          context.stroke();
+        }
+      };
+
+      const drawScanSlit = (time, reveal) => {
+        const cycle = easeInOut(fract(time / MOTION_TRACKS.scan - 0.07));
+        const x = lerp(48, 562, cycle) + Math.sin(time / 137) * 0.8;
+        context.fillStyle = rgba(colors.ink, 0.035 * reveal);
+        context.fillRect(x - 10, 0, 20, DESIGN_HEIGHT);
+        context.strokeStyle = rgba(colors.ink, 0.5 * reveal);
+        context.lineWidth = 0.7;
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, DESIGN_HEIGHT);
+        context.stroke();
+        context.fillStyle = rgba(colors.orange, (0.35 + Math.sin(time / 173) * 0.15) * reveal);
+        context.fillRect(x - 1, 244, 2, 5);
+      };
+
+      const drawLabels = (time, reveal) => {
+        const driftX = Math.sin(time / 7620) * 1.1;
+        const driftY = Math.cos(time / 5980) * 0.8;
+        context.save();
+        context.translate(driftX, driftY);
+        context.fillStyle = rgba(colors.dim, 0.82 * reveal);
+        context.font = "6px Consolas, 'SFMono-Regular', monospace";
+        context.textBaseline = "top";
+        context.fillText("// SEISMIC INTERFACE", 33, 28);
+        context.fillText("// CHANNEL S-07", 33, 39);
+        context.fillText("// DEPTH: 2.73KM", 33, 50);
+        context.fillText("ACQ_17 ▸", 331, 220);
+        context.restore();
+
+        const blink = fract(time / 1180) > 0.18 ? 1 : 0.3;
+        context.fillStyle = rgba(colors.dim, 0.72 * reveal * blink);
+        context.fillText("CALIBRATION", 628, 34);
+        context.fillText("C.17.2", 628, 45);
+        context.fillStyle = rgba(colors.orange, 0.92 * reveal);
+        context.fillText("▸ 2.73KM", 621, 292);
+      };
+
+      const drawDepthScale = (time, reveal) => {
+        const drift = Math.sin((time / MOTION_TRACKS.depth) * TAU) * 3;
+        context.font = "5.5px Consolas, monospace";
+        context.textBaseline = "middle";
+        for (let index = 0; index < 8; index += 1) {
+          const y = 101 + index * 31 + drift;
+          const pulse = 0.46 + Math.sin(time / (740 + index * 71) + index) * 0.18;
+          context.strokeStyle = rgba(colors.dim, pulse * reveal);
+          context.beginPath();
+          context.moveTo(606, y);
+          context.lineTo(611 + (index % 2) * 4, y);
+          context.stroke();
+          context.fillStyle = rgba(colors.dim, 0.66 * reveal);
+          context.fillText(String(-1200 - index * 200), 618, y);
+        }
+      };
+
+      const drawStatusPanel = (time, reveal) => {
+        visibleProgress = lerp(visibleProgress, targetProgress, 0.065);
+        const jitter = Math.sin(time / MOTION_TRACKS.telemetry) * 0.7;
+        const x = 414 + jitter;
+        const y = 67 + Math.cos(time / 2910) * 0.45;
+        const percent = Math.round(visibleProgress * 100);
+        context.font = "12px Consolas, 'SFMono-Regular', monospace";
+        context.textBaseline = "top";
+        context.fillStyle = rgba(colors.ink, 0.82 * reveal);
+        context.fillText("SYSTEM WAKE /", x, y);
+        context.fillStyle = rgba(colors.orange, 0.96 * reveal);
+        context.fillText(`${String(percent).padStart(3, "0")}%`, x + 104, y);
+
+        const segments = 28;
+        for (let index = 0; index < segments; index += 1) {
+          const filled = index / segments < visibleProgress;
+          const cadence = 270 + index * 23;
+          const flicker = 0.72 + Math.sin(time / cadence + index * 1.7) * 0.22;
+          context.fillStyle = filled
+            ? rgba(colors.ink, flicker * reveal)
+            : rgba(colors.dim, 0.2 * reveal);
+          context.fillRect(x + index * 5.25, y + 20, 3.6, 8);
+        }
+        context.fillStyle = rgba(colors.dim, 0.76 * reveal);
+        context.font = "6.5px Consolas, monospace";
+        context.fillText("SUBSYSTEMS ONLINE", x, y + 39);
+        context.fillText(`${Math.max(1, Math.round(visibleProgress * 16))} / 16`, x + 122, y + 39);
+        context.fillText("SIGNAL ACQUISITION", x, y + 60);
+        context.fillText("BUFFER", x, y + 81);
+
+        for (let index = 0; index < 36; index += 1) {
+          const live = hash(index * 17 + Math.floor(time / (125 + (index % 5) * 29))) > 0.45;
+          context.fillStyle = rgba(colors.dim, (live ? 0.62 : 0.16) * reveal);
+          context.fillRect(x + 39 + index * 3, y + 83, live ? 1.7 : 1, 2);
+        }
+      };
+
+      const drawTelemetry = (time, reveal) => {
+        const x = 394;
+        const y = 351;
+        const width = 172;
+        const height = 94;
+        const scroll = Math.floor((time / 41) % 9);
+        context.strokeStyle = rgba(colors.dim, 0.38 * reveal);
+        context.lineWidth = 0.5;
+        context.strokeRect(x, y, width, height);
+        context.save();
+        context.beginPath();
+        context.rect(x, y, width, height);
+        context.clip();
+        for (let row = -2; row < 28; row += 1) {
+          const rowY = y + ((row * 4 + scroll) % (height + 8));
+          const cadence = 191 + row * 17;
+          const alpha = 0.08 + (Math.sin(time / cadence + row) + 1) * 0.08;
+          context.fillStyle = rgba(colors.ink, alpha * reveal);
+          const start = x + hash(row + Math.floor(time / 163)) * 42;
+          const length = 48 + hash(row + 91) * 110;
+          context.fillRect(start, rowY, length, hash(row + 55) > 0.45 ? 1 : 0.5);
+        }
+        context.restore();
+      };
+
+      const drawDust = (time, reveal) => {
+        const base = time / MOTION_TRACKS.dust;
+        particles.forEach((particle, index) => {
+          const duration = MOTION_TRACKS.dust * particle.speed;
+          const y = fract(particle.y / DESIGN_HEIGHT + time / duration) * DESIGN_HEIGHT;
+          const x = particle.x + Math.sin(base * TAU * particle.drift + particle.phase) * 8;
+          const shimmer = 0.12 + hash(index + Math.floor(time / (87 + (index % 7) * 11))) * 0.25;
+          context.fillStyle = rgba(colors.ink, shimmer * reveal);
+          context.fillRect(x, y, particle.size, particle.size);
+        });
+      };
+
+      const drawNoise = (time, reveal) => {
+        const frame = Math.floor(time / MOTION_TRACKS.noise);
+        for (let index = 0; index < 54; index += 1) {
+          const x = hash(index * 13 + frame * 0.7) * DESIGN_WIDTH;
+          const y = hash(index * 29 + frame * 1.3) * DESIGN_HEIGHT;
+          context.fillStyle = rgba(colors.ink, hash(index + frame) * 0.1 * reveal);
+          context.fillRect(x, y, 0.5 + hash(index + 4) * 1.5, 0.5);
+        }
+        if (hash(frame) > 0.82) {
+          const y = hash(frame + 7) * DESIGN_HEIGHT;
+          context.fillStyle = rgba(colors.ink, 0.065 * reveal);
+          context.fillRect(0, y, DESIGN_WIDTH, 1 + hash(frame + 2) * 2);
+        }
+      };
+
+      const drawFooter = (time, reveal) => {
+        const drift = Math.sin(time / 5310) * 1.4;
+        context.save();
+        context.translate(drift, Math.cos(time / 6940) * 0.8);
+        context.font = "5.5px Consolas, monospace";
+        context.textBaseline = "top";
+        context.fillStyle = rgba(colors.dim, 0.58 * reveal);
+        context.fillText("E   128.7731", 620, 374);
+        context.fillText("N   -23.1987", 620, 386);
+        context.fillText("D   2.73KM", 620, 398);
+        context.fillText("GRD  19/04", 620, 427);
+        context.fillText("T    04:32:11:07", 620, 439);
+
+        context.strokeStyle = rgba(colors.dim, 0.26 * reveal);
+        context.beginPath();
+        context.moveTo(369, 421);
+        context.lineTo(573, 421);
+        context.stroke();
+        for (let index = 0; index < 25; index += 1) {
+          const cadence = 610 + index * 41;
+          const height = 2 + (Math.sin(time / cadence + index) + 1) * 2;
+          context.strokeStyle = rgba(colors.dim, (0.22 + (index % 5 === 0 ? 0.24 : 0)) * reveal);
+          context.beginPath();
+          context.moveTo(373 + index * 8, 421 - height);
+          context.lineTo(373 + index * 8, 421 + 2);
+          context.stroke();
+        }
+
+        for (let column = 0; column < 11; column += 1) {
+          for (let row = 0; row < 6; row += 1) {
+            const pulse = 0.12 +
+              0.22 * (Math.sin(time / (880 + column * 53 + row * 31) + column + row) + 1) / 2;
+            context.fillStyle = rgba(colors.ink, pulse * reveal);
+            context.fillRect(32 + column * 9, 364 + row * 9, 0.8, 0.8);
+          }
+        }
+        context.restore();
+      };
+
+      const drawCorners = (time, reveal) => {
+        const breathe = 0.46 + Math.sin(time / 1440) * 0.12;
+        context.strokeStyle = rgba(colors.ink, breathe * reveal);
+        context.lineWidth = 0.6;
+        [[30, 21], [690, 21], [30, 459], [690, 459]].forEach(([x, y], index) => {
+          const directionX = x < DESIGN_WIDTH / 2 ? 1 : -1;
+          const directionY = y < DESIGN_HEIGHT / 2 ? 1 : -1;
+          const size = 7 + Math.sin(time / (1170 + index * 161) + index) * 1.3;
+          context.beginPath();
+          context.moveTo(x, y + directionY * size);
+          context.lineTo(x, y);
+          context.lineTo(x + directionX * size, y);
+          context.stroke();
+        });
+      };
+
+      const drawHandoff = (time) => {
+        if (!handoffStart) return 0;
+        const amount = easeInOut(clamp((time - handoffStart) / HANDOFF_DURATION));
+        context.fillStyle = colors.background;
+        context.fillRect(0, 0, viewport.width * amount, viewport.height * 0.51);
+        context.fillRect(viewport.width * (1 - amount), viewport.height * 0.49, viewport.width * amount, viewport.height * 0.51);
+        return amount;
+      };
+
+      const drawFrame = (time, force = false) => {
+        if (!force && time - lastFrame < FRAME_INTERVAL) {
+          animationFrame = requestAnimationFrame(drawFrame);
+          return;
+        }
+        lastFrame = time;
+        const elapsed = time - startTime;
+        const motionTime = reducedMotion.matches ? MINIMUM_DURATION : elapsed;
+        const reveal = reducedMotion.matches ? 1 : easeOut(range(elapsed, 40, 980));
+        drawTexture(motionTime);
+        context.save();
+        fitScene();
+        drawGrid(motionTime, reveal);
+        drawContours(motionTime, reveal);
+        drawWaveform(motionTime, reveal);
+        drawScanSlit(motionTime, reveal);
+        drawLabels(motionTime, reveal);
+        drawDepthScale(motionTime, reveal);
+        drawStatusPanel(motionTime, reveal);
+        drawTelemetry(motionTime, reveal);
+        drawDust(motionTime, reveal);
+        drawNoise(motionTime, reveal);
+        drawFooter(motionTime, reveal);
+        drawCorners(motionTime, reveal);
+        context.restore();
+        drawHandoff(time);
+        if (!reducedMotion.matches && !force) animationFrame = requestAnimationFrame(drawFrame);
+      };
+
+      window.setSplashStatus = (status, progress) => {
+        if (typeof status === "string" && status.trim()) statusElement.textContent = status;
+        const nextProgress = Number(progress);
+        if (!Number.isFinite(nextProgress)) return;
+        targetProgress = clamp(nextProgress / 100);
+        progressElement.value = Math.round(targetProgress * 100);
+        progressElement.textContent = `${progressElement.value}%`;
+        if (reducedMotion.matches) drawFrame(startTime + MINIMUM_DURATION, true);
+      };
+
+      window.finishSplash = () => {
+        if (finishPromise) return finishPromise;
+        finishPromise = new Promise((resolve) => {
+          const wait = reducedMotion.matches
+            ? 0
+            : Math.max(0, MINIMUM_DURATION - (performance.now() - startTime));
+          setTimeout(() => {
+            handoffStart = performance.now();
+            if (reducedMotion.matches) drawFrame(handoffStart + HANDOFF_DURATION, true);
+            setTimeout(resolve, reducedMotion.matches ? 80 : HANDOFF_DURATION);
+          }, wait);
+        });
+        return finishPromise;
+      };
+
+      window.__industrialMotion = Object.freeze({
+        minimumDuration: MINIMUM_DURATION,
+        handoffDuration: HANDOFF_DURATION,
+        tracks: MOTION_TRACKS,
+        movingLayers: Object.keys(MOTION_TRACKS),
+      });
+
+      texture.src = "./splash-industrial-texture.png";
+      texture.addEventListener("load", () => drawFrame(performance.now(), true));
+      resizeCanvas();
+      if (reducedMotion.matches) drawFrame(startTime + MINIMUM_DURATION, true);
+      else animationFrame = requestAnimationFrame(drawFrame);
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("beforeunload", () => cancelAnimationFrame(animationFrame));
+    </script>
+  </body>
+</html>

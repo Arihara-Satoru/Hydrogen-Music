@@ -57,12 +57,16 @@ const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
 const createSplashWindow = async () => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
-  let useClassicSplash = false;
+  let splashFile = "splash.html";
   try {
     const Store = await getElectronStore();
     const settingsStore = new Store({ name: "settings" });
     const settings = await settingsStore.get("settings");
-    useClassicSplash = settings?.other?.startupAnimation === "classic";
+    splashFile =
+      {
+        classic: "splash-classic.html",
+        industrial: "splash-industrial.html",
+      }[settings?.other?.startupAnimation] || splashFile;
   } catch (error) {
     console.warn("Splash preference load failed:", error);
   }
@@ -77,7 +81,7 @@ const createSplashWindow = async () => {
     show: false,
     center: true,
     skipTaskbar: true,
-    backgroundColor: useClassicSplash ? "#f7f9fc" : "#101419",
+    backgroundColor: splashFile === "splash-industrial.html" ? "#090a09" : "#f7faff",
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -91,9 +95,7 @@ const createSplashWindow = async () => {
   });
 
   try {
-    await win.loadFile(
-      path.join(__dirname, useClassicSplash ? "splash-classic.html" : "splash.html"),
-    );
+    await win.loadFile(path.join(__dirname, splashFile));
   } catch (error) {
     console.error("Splash load failed:", error);
   }
@@ -165,6 +167,14 @@ if (!gotTheLock) {
     setSplashStatus("正在准备播放器...", 24);
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
     createWindow();
+    if (
+      splashWindow &&
+      !splashWindow.isDestroyed() &&
+      myWindow &&
+      !myWindow.isDestroyed()
+    ) {
+      splashWindow.setBounds(myWindow.getBounds());
+    }
     setSplashStatus("正在检查本地数据...", 38);
     // 然后启动 API 后端，等待就绪后再加载前端页面内容
     // 避免前端在 API 尚未就绪时发起请求导致"请求错误"
@@ -458,10 +468,24 @@ const createWindow = () => {
   let hasShownMainWindow = false;
   let postShowInitialized = false;
   let mainWindowFallbackTimer = null;
-  const showMainWindow = () => {
+  const showMainWindow = async () => {
     if (!win || win.isDestroyed() || hasShownMainWindow) return;
     hasShownMainWindow = true;
     setSplashStatus("准备就绪", 100);
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      try {
+        await Promise.race([
+          splashWindow.webContents.executeJavaScript(
+            "window.finishSplash ? window.finishSplash() : undefined",
+          ),
+          new Promise((resolve) => setTimeout(resolve, 5000)),
+        ]);
+      } catch (_) {}
+    }
+    if (!win || win.isDestroyed()) {
+      closeSplashWindow();
+      return;
+    }
     win.show();
     closeSplashWindow();
     // 微调 macOS 交通灯位置以匹配自定义布局高度
