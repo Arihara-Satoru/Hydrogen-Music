@@ -47,6 +47,7 @@ const BASE_FILE_PATTERNS = [
   'desktop-lyric.html',
   'index.html',
   'splash.html',
+  'splash-classic.html',
   'dist/**/*',
   'src/assets/icon/**/*',
   'src/electron/**/*',

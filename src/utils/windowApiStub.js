@@ -49,6 +49,7 @@
       other: {
         quitApp: "minimize",
         enableUpdate: false,
+        startupAnimation: "signal",
       },
     }),
     setSettings: noop,

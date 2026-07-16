@@ -57,9 +57,19 @@ const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
 const createSplashWindow = async () => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
+  let useClassicSplash = false;
+  try {
+    const Store = await getElectronStore();
+    const settingsStore = new Store({ name: "settings" });
+    const settings = await settingsStore.get("settings");
+    useClassicSplash = settings?.other?.startupAnimation === "classic";
+  } catch (error) {
+    console.warn("Splash preference load failed:", error);
+  }
+
   const win = new BrowserWindow({
-    width: 360,
-    height: 240,
+    width: 720,
+    height: 480,
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -67,7 +77,7 @@ const createSplashWindow = async () => {
     show: false,
     center: true,
     skipTaskbar: true,
-    backgroundColor: "#f7f9fc",
+    backgroundColor: useClassicSplash ? "#f7f9fc" : "#101419",
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -81,7 +91,9 @@ const createSplashWindow = async () => {
   });
 
   try {
-    await win.loadFile(path.join(__dirname, "splash.html"));
+    await win.loadFile(
+      path.join(__dirname, useClassicSplash ? "splash-classic.html" : "splash.html"),
+    );
   } catch (error) {
     console.error("Splash load failed:", error);
   }
@@ -91,11 +103,12 @@ const createSplashWindow = async () => {
   return win;
 };
 
-const setSplashStatus = (status) => {
+const setSplashStatus = (status, progress) => {
   if (!splashWindow || splashWindow.isDestroyed()) return;
+  const serializedProgress = Number.isFinite(progress) ? progress : "undefined";
   splashWindow.webContents
     .executeJavaScript(
-      `window.setSplashStatus && window.setSplashStatus(${JSON.stringify(status)})`,
+      `window.setSplashStatus && window.setSplashStatus(${JSON.stringify(status)}, ${serializedProgress})`,
     )
     .catch(() => {});
 };
@@ -149,8 +162,10 @@ if (!gotTheLock) {
     await createSplashWindow();
     // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
     hasDevServer = !app.isPackaged && (await isDevServerReachable());
+    setSplashStatus("正在准备播放器...", 24);
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
     createWindow();
+    setSplashStatus("正在检查本地数据...", 38);
     // 然后启动 API 后端，等待就绪后再加载前端页面内容
     // 避免前端在 API 尚未就绪时发起请求导致"请求错误"
     // 数据迁移：清理旧版可能遗留的不兼容数据
@@ -214,6 +229,7 @@ if (!gotTheLock) {
       }
     } catch (_) {}
 
+    setSplashStatus("正在启动音乐服务...", 56);
     const kugouApiResult = await startKugouMusicApi().catch((err) => {
       console.error("KuGou API probe failed:", err);
       return { ready: false, error: err?.message || "unknown error" };
@@ -225,13 +241,12 @@ if (!gotTheLock) {
             ...(kugouApiResult.error ? { error: kugouApiResult.error } : {}),
           }
         : { ready: true };
+    setSplashStatus("正在加载播放器...", 82);
     if (payload.ready) {
       console.log("KuGou API ready");
-      setSplashStatus("正在加载播放器...");
       if (typeof loadMainContentRef === "function") loadMainContentRef();
     } else {
       console.warn("KuGou API not ready:", payload.error || "unknown error");
-      setSplashStatus("正在加载播放器...");
       // 即使 API 启动失败，也要加载前端内容让用户能操作（部分功能可能受限）
       if (typeof loadMainContentRef === "function") loadMainContentRef();
       // 将详细的 API 错误信息发送到渲染进程，便于诊断
@@ -446,6 +461,7 @@ const createWindow = () => {
   const showMainWindow = () => {
     if (!win || win.isDestroyed() || hasShownMainWindow) return;
     hasShownMainWindow = true;
+    setSplashStatus("准备就绪", 100);
     win.show();
     closeSplashWindow();
     // 微调 macOS 交通灯位置以匹配自定义布局高度

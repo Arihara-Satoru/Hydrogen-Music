@@ -101,6 +101,8 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   normalized.other = {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     enableUpdate: normalized.other?.enableUpdate !== false,
+    startupAnimation:
+      normalized.other?.startupAnimation === "classic" ? "classic" : "signal",
     quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
     customFont: typeof normalized.other?.customFont === "string" ? normalized.other.customFont.trim() : "",
     customFontLabel: typeof normalized.other?.customFontLabel === "string" ? normalized.other.customFontLabel.trim() : "",
@@ -544,6 +546,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
         other: {
           globalShortcuts: true,
           enableUpdate: true,
+          startupAnimation: "signal",
           quitApp: "minimize",
           customFont: "",
           customFontLabel: "",
