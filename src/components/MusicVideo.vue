@@ -28,10 +28,6 @@ const currentSongHasVideo = ref(false); // 当前歌曲是否确实有视频文�
 let currentSongVideoCheckToken = 0;
 const BILI_PLAYURL_API = 'https://api.bilibili.com/x/player/playurl';
 const TIME_INPUT_PATTERN = /^(\d+:)?\d{1,2}(\.\d{0,1})?$/;
-migrateLegacyBiliSession();
-if (!hasStoredBiliSession() && userStore.biliUser) {
-    userStore.clearBiliAccountState();
-}
 const headers = {
     Accept: '*/*',
     'Accept-Encoding': 'gzip, deflate',
@@ -70,6 +66,10 @@ const migrateLegacyBiliSession = () => {
     const cookie = readStoredBiliCookie();
     if (cookie) localStorage.setItem('BiliCookie', cookie);
 };
+migrateLegacyBiliSession();
+if (!hasStoredBiliSession() && userStore.biliUser) {
+    userStore.clearBiliAccountState();
+}
 
 const clampVideoTimingRange = (range, maxDuration) => {
     const upper = Math.max(0, Number(maxDuration) || 0);
@@ -947,13 +947,15 @@ const reopenVideo = () => {
 <style scoped lang="scss">
 .set-video-container {
     width: 450px;
-    height: 600px;
+    max-height: calc(100vh - 32px);
     background-color: rgba(44, 50, 51, 1);
     position: absolute;
     top: 50%;
     left: 50%;
     z-index: 999;
     transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
     .close {
         width: 25px;
         height: 25px;
@@ -990,6 +992,7 @@ const reopenVideo = () => {
     }
     .set-video-info {
         padding: 10px 15px;
+        overflow-y: auto;
         .bili-account {
             display: flex;
             flex-direction: row;
