@@ -5,6 +5,8 @@ import { noticeOpen } from './dialog'
 
 const STORAGE_PREFIX = 'hydrogenmusic:daily-vip'
 const SHANGHAI_TIME_ZONE = 'Asia/Shanghai'
+const SHANGHAI_UTC_OFFSET = 8 * 60 * 60 * 1000
+const DAY_ROLLOVER_BUFFER = 1000
 
 export const dailyVipClaimState = reactive({
     running: false,
@@ -18,6 +20,7 @@ export const dailyVipClaimState = reactive({
 })
 
 let claimPromise = null
+let rolloverTimer = null
 
 function getCurrentUserId() {
     return String(getCookie('userid') || '').trim()
@@ -77,11 +80,36 @@ function formatShanghaiDate(timestamp) {
     } catch (_) {}
 
     // 兜底：用 UTC+8 手动拼接，避免本地时区影响领取日期。
-    const shanghai = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+    const shanghai = new Date(date.getTime() + SHANGHAI_UTC_OFFSET)
     const year = shanghai.getUTCFullYear()
     const month = String(shanghai.getUTCMonth() + 1).padStart(2, '0')
     const day = String(shanghai.getUTCDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
+}
+
+function triggerDailyVipRollover() {
+    if (claimPromise) {
+        rolloverTimer = window.setTimeout(triggerDailyVipRollover, DAY_ROLLOVER_BUFFER)
+        return
+    }
+
+    rolloverTimer = null
+    void runDailyVipAutoClaim('day-rollover')
+}
+
+function scheduleNextDailyVipClaim(serverTime) {
+    if (typeof window === 'undefined' || typeof window.setTimeout !== 'function') return
+
+    const shanghai = new Date(serverTime + SHANGHAI_UTC_OFFSET)
+    const nextMidnight = Date.UTC(
+        shanghai.getUTCFullYear(),
+        shanghai.getUTCMonth(),
+        shanghai.getUTCDate() + 1,
+    ) - SHANGHAI_UTC_OFFSET
+    const delay = Math.max(0, nextMidnight - serverTime) + DAY_ROLLOVER_BUFFER
+
+    if (rolloverTimer !== null) window.clearTimeout(rolloverTimer)
+    rolloverTimer = window.setTimeout(triggerDailyVipRollover, delay)
 }
 
 function pickNumber(...values) {
@@ -252,7 +280,7 @@ async function precheckClaimed(claimDay) {
 }
 
 /**
- * 启动后自动领取当天 VIP。
+ * 自动领取当天 VIP。
  * - 只对登录用户生效
  * - 同一用户同一天只会尝试一次
  * - 领取失败也会记录，避免频繁重试
@@ -277,6 +305,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
         }
 
         const { claimDay, serverTime } = await resolveClaimDay()
+        scheduleNextDailyVipClaim(serverTime)
         const storedRecord = readStoredRecord(userId)
 
         if (storedRecord?.claimDay === claimDay && storedRecord?.status) {
