@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>灰域协议</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --texture-period: 14.7s;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #080806;
+      }
+
+      body {
+        position: relative;
+        opacity: 1;
+        transition: opacity 180ms linear;
+      }
+
+      .texture {
+        position: absolute;
+        inset: -3%;
+        background-image: url("./splash-ashen-texture.png");
+        background-position: center;
+        background-size: cover;
+        opacity: 0.74;
+        filter: contrast(1.08) brightness(0.76) saturate(0.35);
+        animation: texture-drift var(--texture-period) cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      body.finishing .texture {
+        animation: texture-collapse 820ms cubic-bezier(0.7, 0, 1, 1) forwards;
+      }
+
+      @keyframes texture-drift {
+        0%,
+        100% {
+          transform: translate3d(-0.3%, -0.15%, 0) scale(1.015);
+          opacity: 0.7;
+        }
+        19% {
+          transform: translate3d(0.18%, -0.35%, 0) scale(1.019);
+          opacity: 0.77;
+        }
+        47% {
+          transform: translate3d(0.42%, 0.24%, 0) scale(1.012);
+          opacity: 0.72;
+        }
+        71% {
+          transform: translate3d(-0.12%, 0.38%, 0) scale(1.02);
+          opacity: 0.75;
+        }
+      }
+
+      @keyframes texture-collapse {
+        0% {
+          transform: scale(1.015);
+          filter: contrast(1.08) brightness(0.76) saturate(0.35);
+        }
+        56% {
+          transform: scale(1.03, 0.985);
+          filter: contrast(1.4) brightness(0.68) saturate(0.1);
+        }
+        100% {
+          transform: scale(1.08, 0.02);
+          opacity: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .texture {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="texture" aria-hidden="true"></div>
+    <canvas id="field" aria-hidden="true"></canvas>
+    <p id="status" class="sr-only" aria-live="polite">正在同步灰域协议...</p>
+    <progress id="progress" class="sr-only" max="100" value="8">8%</progress>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const canvas = document.getElementById("field");
+        const context = canvas.getContext("2d", { alpha: true });
+        const statusElement = document.getElementById("status");
+        const progressElement = document.getElementById("progress");
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const TAU = Math.PI * 2;
+        const BASE_WIDTH = 720;
+        const BASE_HEIGHT = 480;
+        const COLORS = Object.freeze({
+          ink: "#080806",
+          ash: "#aaa58f",
+          bone: "#d1ccb7",
+          dim: "#6f6c60",
+          red: "#a92d20",
+        });
+
+        const MOTION_TRACKS = Object.freeze({
+          texture: { period: 14.7, delay: 0.0, easing: "inOutSine", jitter: 0.72 },
+          grid: { period: 11.3, delay: 0.18, easing: "inOutCubic", jitter: 0.34 },
+          containment: { period: 7.6, delay: 0.06, easing: "inOutQuart", jitter: 0.82 },
+          verificationA: { period: 6.1, delay: 0.16, easing: "outCubic", jitter: 0.48 },
+          verificationB: { period: 8.9, delay: 0.43, easing: "inOutSine", jitter: 0.61 },
+          verificationC: { period: 10.4, delay: 0.72, easing: "inOutCubic", jitter: 0.77 },
+          telemetry: { period: 12.8, delay: 0.31, easing: "inOutQuart", jitter: 0.26 },
+          progress: { period: 5.7, delay: 0.54, easing: "outExpo", jitter: 0.43 },
+          scan: { period: 4.35, delay: 0.27, easing: "linear", jitter: 0.2 },
+          particles: { period: 9.65, delay: 0.11, easing: "inOutSine", jitter: 0.94 },
+          flash: { period: 3.72, delay: 0.82, easing: "outExpo", jitter: 1.0 },
+          rotation: { period: 6.86, delay: 1.14, easing: "outCubic", jitter: 0.58 },
+          dropout: { period: 13.2, delay: 2.1, easing: "linear", jitter: 0.91 },
+        });
+
+        const EASINGS = Object.freeze({
+          linear: (value) => value,
+          inOutSine: (value) => -(Math.cos(Math.PI * value) - 1) / 2,
+          outCubic: (value) => 1 - (1 - value) ** 3,
+          inOutCubic: (value) =>
+            value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value + 2) ** 3 / 2,
+          inOutQuart: (value) =>
+            value < 0.5 ? 8 * value ** 4 : 1 - (-2 * value + 2) ** 4 / 2,
+          outExpo: (value) => (value === 1 ? 1 : 1 - 2 ** (-10 * value)),
+        });
+
+        const state = {
+          start: performance.now(),
+          lastFrame: performance.now(),
+          targetProgress: 0.08,
+          progress: 0.08,
+          status: "BOOT SEQUENCE",
+          finishStart: 0,
+          frame: 0,
+        };
+
+        let randomSeed = 0x7a31bf2d;
+        const seededRandom = () => {
+          randomSeed = (randomSeed * 1664525 + 1013904223) >>> 0;
+          return randomSeed / 4294967296;
+        };
+        const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+        const modulo = (value, divisor) => ((value % divisor) + divisor) % divisor;
+        const trackPhase = (name, time) => {
+          const track = MOTION_TRACKS[name];
+          return modulo(time - track.delay, track.period) / track.period;
+        };
+        const trackValue = (name, time) => {
+          const track = MOTION_TRACKS[name];
+          return EASINGS[track.easing](trackPhase(name, time));
+        };
+        const disturbance = (name, time, offset = 0) => {
+          const track = MOTION_TRACKS[name];
+          const phase = trackPhase(name, time) * TAU + offset;
+          return (
+            Math.sin(phase) * 0.62 +
+            Math.sin(phase * 2.37 + 1.7) * 0.25 +
+            Math.sin(phase * 5.13 + offset * 0.3) * 0.13
+          ) * track.jitter;
+        };
+
+        const ambientParticles = Array.from({ length: 58 }, (_, index) => ({
+          x: seededRandom() * BASE_WIDTH,
+          y: seededRandom() * BASE_HEIGHT,
+          size: 0.45 + seededRandom() * 1.35,
+          speed: 2.8 + seededRandom() * 12.4,
+          drift: -1.4 + seededRandom() * 2.8,
+          phase: seededRandom() * TAU,
+          pulseSpeed: 0.45 + seededRandom() * 2.35,
+          delay: seededRandom() * 4.8,
+          alpha: 0.12 + seededRandom() * 0.4,
+          index,
+        }));
+
+        const channelParticles = Array.from({ length: 34 }, (_, index) => ({
+          x: 216 + seededRandom() * 58,
+          y: seededRandom() * BASE_HEIGHT,
+          size: 0.5 + seededRandom() * 1.8,
+          speed: 8 + seededRandom() * 31,
+          sway: 0.7 + seededRandom() * 3.4,
+          phase: seededRandom() * TAU,
+          pulseSpeed: 0.8 + seededRandom() * 3.1,
+          delay: seededRandom() * 3.2,
+          alpha: 0.18 + seededRandom() * 0.5,
+          index,
+        }));
+
+        const progressSegments = Array.from({ length: 28 }, (_, index) => ({
+          speed: 0.64 + seededRandom() * 2.4,
+          phase: seededRandom() * TAU,
+          delay: seededRandom() * 2.6,
+          width: 2 + seededRandom() * 2.4,
+          lift: -0.8 + seededRandom() * 1.6,
+          index,
+        }));
+
+        const verticalSegments = Array.from({ length: 24 }, (_, index) => ({
+          speed: 0.8 + seededRandom() * 2.75,
+          phase: seededRandom() * TAU,
+          delay: seededRandom() * 3.1,
+          nudge: -0.7 + seededRandom() * 1.4,
+          index,
+        }));
+
+        document.documentElement.style.setProperty(
+          "--texture-period",
+          `${MOTION_TRACKS.texture.period}s`,
+        );
+
+        const resizeCanvas = () => {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          canvas.width = Math.round(window.innerWidth * dpr);
+          canvas.height = Math.round(window.innerHeight * dpr);
+          canvas.dataset.dpr = String(dpr);
+        };
+
+        const prepareContext = () => {
+          const dpr = Number(canvas.dataset.dpr) || 1;
+          context.setTransform(1, 0, 0, 1, 0, 0);
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.setTransform(
+            (window.innerWidth / BASE_WIDTH) * dpr,
+            0,
+            0,
+            (window.innerHeight / BASE_HEIGHT) * dpr,
+            0,
+            0,
+          );
+          context.imageSmoothingEnabled = false;
+          context.textBaseline = "alphabetic";
+        };
+
+        const setStroke = (color, alpha = 1, width = 1) => {
+          context.strokeStyle = color;
+          context.globalAlpha = alpha;
+          context.lineWidth = width;
+        };
+
+        const setFill = (color, alpha = 1) => {
+          context.fillStyle = color;
+          context.globalAlpha = alpha;
+        };
+
+        const label = (text, x, y, options = {}) => {
+          const {
+            color = COLORS.ash,
+            alpha = 0.8,
+            size = 8,
+            family = "Consolas, 'Cascadia Mono', monospace",
+            tracking = 0,
+          } = options;
+          setFill(color, alpha);
+          context.font = `${size}px ${family}`;
+          if (!tracking) {
+            context.fillText(text, x, y);
+            return;
+          }
+          let cursor = x;
+          for (const character of text) {
+            context.fillText(character, cursor, y);
+            cursor += context.measureText(character).width + tracking;
+          }
+        };
+
+        const drawCrosshair = (x, y, size, time, offset) => {
+          const spinPhase = modulo(
+            time - MOTION_TRACKS.rotation.delay - offset,
+            MOTION_TRACKS.rotation.period,
+          );
+          const spinWindow = clamp(spinPhase / 0.34);
+          const rotation = EASINGS.outCubic(spinWindow) * TAU;
+          const blinkPhase = modulo(time - offset, MOTION_TRACKS.flash.period);
+          const flash = blinkPhase < 0.1 ? 1 : 0.36 + Math.sin(time * 1.7 + offset) * 0.08;
+          context.save();
+          context.translate(x, y);
+          context.rotate(rotation);
+          setStroke(COLORS.bone, flash, 0.75);
+          context.beginPath();
+          context.moveTo(-size, 0);
+          context.lineTo(-3, 0);
+          context.moveTo(3, 0);
+          context.lineTo(size, 0);
+          context.moveTo(0, -size);
+          context.lineTo(0, -3);
+          context.moveTo(0, 3);
+          context.lineTo(0, size);
+          context.stroke();
+          context.restore();
+        };
+
+        const drawGrid = (time) => {
+          const offset = disturbance("grid", time) * 2.2;
+          const alpha = 0.12 + trackValue("grid", time) * 0.07;
+          context.save();
+          context.translate(offset, disturbance("grid", time, 2.1) * 0.8);
+          setStroke(COLORS.dim, alpha, 0.55);
+          context.setLineDash([1, 6]);
+          for (let x = 34; x < BASE_WIDTH; x += 86) {
+            context.beginPath();
+            context.moveTo(x, 0);
+            context.lineTo(x, BASE_HEIGHT);
+            context.stroke();
+          }
+          context.setLineDash([]);
+          setStroke(COLORS.ash, 0.18, 0.5);
+          [102, 213, 276, 400, 491, 664].forEach((x, index) => {
+            context.beginPath();
+            context.moveTo(x, index % 2 ? 16 : 0);
+            context.lineTo(x, BASE_HEIGHT - (index % 3) * 18);
+            context.stroke();
+          });
+          context.restore();
+
+          drawCrosshair(18, 20, 10, time, 0.0);
+          drawCrosshair(686, 22, 9, time, 0.74);
+          drawCrosshair(36, 370, 7, time, 1.46);
+          drawCrosshair(681, 373, 8, time, 2.28);
+          drawCrosshair(52, 136, 6, time, 3.03);
+        };
+
+        const drawAmbientParticles = (time, delta) => {
+          const fieldWind = disturbance("particles", time) * 5.2;
+          for (const particle of ambientParticles) {
+            particle.x += (particle.speed + fieldWind * 0.2) * delta;
+            particle.y +=
+              (particle.drift + Math.sin(time * particle.pulseSpeed + particle.phase) * 0.7) * delta;
+            if (particle.x > BASE_WIDTH + 3) particle.x = -3;
+            if (particle.y > BASE_HEIGHT + 3) particle.y = -3;
+            if (particle.y < -3) particle.y = BASE_HEIGHT + 3;
+            const flicker =
+              0.35 +
+              0.65 * Math.abs(Math.sin((time - particle.delay) * particle.pulseSpeed + particle.phase));
+            setFill(COLORS.bone, particle.alpha * flicker);
+            context.fillRect(particle.x, particle.y, particle.size * 1.8, particle.size * 0.55);
+          }
+        };
+
+        const drawContainment = (time, delta) => {
+          const track = MOTION_TRACKS.containment;
+          const x = 215 + disturbance("containment", time) * 1.35;
+          const width = 61 + disturbance("containment", time, 1.2) * 0.9;
+          const breathe = 0.26 + trackValue("containment", time) * 0.08;
+          context.save();
+          context.beginPath();
+          context.rect(x, 0, width, BASE_HEIGHT);
+          context.clip();
+          setFill(COLORS.bone, breathe);
+          context.fillRect(x, 0, width, BASE_HEIGHT);
+
+          for (let index = 0; index < 19; index += 1) {
+            const blockSpeed = 0.22 + (index % 5) * 0.11;
+            const blockY = modulo(index * 31 + time * blockSpeed * 13, BASE_HEIGHT + 26) - 13;
+            const blockX = x + ((index * 17) % Math.max(20, width - 10));
+            const blockWidth = 5 + ((index * 13) % 23);
+            setFill(index % 4 === 0 ? COLORS.ink : COLORS.bone, index % 4 === 0 ? 0.72 : 0.14);
+            context.fillRect(blockX, blockY, blockWidth, 2 + (index % 3));
+          }
+
+          for (const particle of channelParticles) {
+            particle.y += particle.speed * delta;
+            particle.x += Math.sin(time * particle.pulseSpeed + particle.phase) * particle.sway * delta;
+            if (particle.y > BASE_HEIGHT + 3) {
+              particle.y = -3;
+              particle.x = x + 3 + seededRandom() * Math.max(4, width - 6);
+            }
+            const pulse =
+              0.2 +
+              0.8 * Math.abs(Math.sin((time - particle.delay) * particle.pulseSpeed + particle.phase));
+            setFill(particle.index % 7 === 0 ? COLORS.red : COLORS.bone, particle.alpha * pulse);
+            context.fillRect(particle.x, particle.y, particle.size, particle.size * 2.4);
+          }
+          context.restore();
+
+          setStroke(COLORS.bone, 0.52, 0.75);
+          context.beginPath();
+          context.moveTo(x, 0);
+          context.lineTo(x, BASE_HEIGHT);
+          context.moveTo(x + width, 0);
+          context.lineTo(x + width, BASE_HEIGHT);
+          context.stroke();
+
+          const scanY = modulo((time - track.delay) * 43, BASE_HEIGHT + 36) - 18;
+          setFill(COLORS.bone, 0.28 + Math.abs(Math.sin(time * 2.3)) * 0.14);
+          context.fillRect(x - 4, scanY, width + 8, 1);
+        };
+
+        const drawVerificationBand = (band, time) => {
+          const track = MOTION_TRACKS[band.track];
+          const reveal = reducedMotion.matches
+            ? 1
+            : EASINGS.outCubic(clamp((time - track.delay) / (0.74 + band.index * 0.12)));
+          const jitterX = disturbance(band.track, time, band.index * 1.7) * track.jitter;
+          const jitterY = disturbance(band.track, time, band.index * 2.9) * 0.34;
+          const x = 100 + jitterX;
+          const y = band.y + jitterY;
+          const width = 302 * reveal;
+          context.save();
+          context.beginPath();
+          context.rect(x, y, width, 46);
+          context.clip();
+          setFill(COLORS.ink, 0.63);
+          context.fillRect(x, y, 302, 46);
+          setStroke(COLORS.bone, 0.48, 0.65);
+          context.strokeRect(x + 0.5, y + 0.5, 301, 45);
+          setFill(COLORS.ash, 0.45);
+          context.fillRect(214 + jitterX, y, 64, 46);
+
+          const active = band.index === 2;
+          label(`VERIFICATION 0${band.index + 1}`, x + 11, y + 17, {
+            color: active ? COLORS.red : COLORS.bone,
+            alpha: active ? 0.96 : 0.72,
+            size: 7.4,
+          });
+          label(band.caption, x + 11, y + 31, {
+            color: active ? COLORS.red : COLORS.ash,
+            alpha: active ? 0.9 : 0.66,
+            size: 7.2,
+          });
+          label("// OK", x + 273, y + 30, {
+            color: COLORS.bone,
+            alpha: 0.58 + Math.abs(Math.sin(time * (1.3 + band.index * 0.41))) * 0.22,
+            size: 7,
+          });
+          if (active) {
+            const pulseWidth = 38 + trackValue(band.track, time) * 128;
+            setFill(COLORS.red, 0.78);
+            context.fillRect(x, y + 42, pulseWidth, 3);
+            setFill(COLORS.bone, 0.46);
+            context.fillRect(x + pulseWidth, y + 42, 302 - pulseWidth, 3);
+          }
+          context.restore();
+        };
+
+        const drawProgress = (time) => {
+          const driftX = disturbance("telemetry", time) * 0.7;
+          const driftY = disturbance("telemetry", time, 1.9) * 0.45;
+          const panelX = 505 + driftX;
+          const titleFlash = modulo(time - MOTION_TRACKS.flash.delay, MOTION_TRACKS.flash.period);
+          const titleAlpha = titleFlash < 0.08 ? 0.22 : 0.86;
+          context.save();
+          context.translate(0, driftY);
+
+          label("RUN   0007 // FAILSAFE ONLINE", panelX, 43, { alpha: 0.58, size: 6.6 });
+          setStroke(COLORS.ash, 0.34, 0.55);
+          context.beginPath();
+          context.moveTo(panelX, 54);
+          context.lineTo(628, 54);
+          context.stroke();
+          label("ASHEN PROTOCOL", panelX, 109, {
+            color: COLORS.bone,
+            alpha: titleAlpha,
+            size: 14,
+            family: "'Arial Narrow', 'Roboto Condensed', sans-serif",
+            tracking: 1.35,
+          });
+          label("CONTAINMENT / STABLE", panelX, 145, {
+            color: COLORS.bone,
+            alpha: 0.72,
+            size: 10.2,
+            family: "'Arial Narrow', 'Roboto Condensed', sans-serif",
+            tracking: 1,
+          });
+          setStroke(COLORS.bone, 0.52, 0.65);
+          context.beginPath();
+          context.moveTo(panelX, 162);
+          context.lineTo(631, 162);
+          context.stroke();
+
+          label("ID       07-A3", panelX, 181, { alpha: 0.62, size: 6.5 });
+          label("CLASS    C", panelX, 192, { alpha: 0.62, size: 6.5 });
+          label("PRIORITY 1", panelX, 203, { alpha: 0.62, size: 6.5 });
+          const statusCode =
+            state.progress < 0.38
+              ? "SIGNAL ACQUIRE"
+              : state.progress < 0.56
+                ? "DATA CHECK"
+                : state.progress < 0.82
+                  ? "SERVICE LINK"
+                  : state.progress < 0.995
+                    ? "PLAYER LOAD"
+                    : "READY";
+          label(`STATUS   ${statusCode}`, panelX, 214, {
+            alpha: 0.62,
+            size: 6.5,
+          });
+
+          setStroke(COLORS.ash, 0.27, 0.55);
+          context.setLineDash([3, 2]);
+          context.beginPath();
+          context.moveTo(panelX, 230);
+          context.lineTo(632, 230);
+          context.stroke();
+          context.setLineDash([]);
+
+          const percentage = String(Math.round(state.progress * 100)).padStart(2, "0");
+          label(`${percentage}%`, panelX, 304, {
+            color: COLORS.bone,
+            alpha: 0.84,
+            size: 35,
+            family: "'Arial Narrow', 'Roboto Condensed', sans-serif",
+          });
+          label("PROTOCOL PROGRESS", panelX + 1, 319, { alpha: 0.68, size: 6.8 });
+
+          let segmentX = panelX;
+          progressSegments.forEach((segment, index) => {
+            const active = (index + 1) / progressSegments.length <= state.progress;
+            const pulse =
+              0.35 +
+              0.65 * Math.abs(Math.sin((time - segment.delay) * segment.speed + segment.phase));
+            const nudge = Math.sin(time * segment.speed * 0.51 + segment.phase) * segment.lift;
+            setFill(active ? COLORS.bone : COLORS.dim, active ? 0.42 + pulse * 0.48 : 0.18 + pulse * 0.12);
+            context.fillRect(segmentX, 331 + nudge, segment.width, 10 + pulse * 2.2);
+            segmentX += segment.width + 1.25;
+          });
+
+          label("UPLINK      STABLE", panelX, 378, { alpha: 0.62, size: 6.5 });
+          label("DOWNLINK    STABLE", panelX, 390, { alpha: 0.62, size: 6.5 });
+          label("REDUNDANCY  ACTIVE", panelX, 402, { alpha: 0.62, size: 6.5 });
+          setStroke(COLORS.ash, 0.3, 0.55);
+          context.beginPath();
+          context.moveTo(panelX, 420);
+          context.lineTo(632, 420);
+          context.stroke();
+
+          verticalSegments.forEach((segment, index) => {
+            const active = (index + 1) / verticalSegments.length <= state.progress;
+            const pulse =
+              0.25 +
+              0.75 * Math.abs(Math.sin((time - segment.delay) * segment.speed + segment.phase));
+            const x = 653 + Math.sin(time * segment.speed * 0.4 + segment.phase) * segment.nudge;
+            const y = 87 + index * 13.2;
+            setFill(active ? COLORS.bone : COLORS.dim, active ? 0.34 + pulse * 0.52 : 0.14 + pulse * 0.1);
+            context.fillRect(x, y, 4, 7.2 + pulse * 1.5);
+          });
+
+          const pointerY = 87 + Math.round(state.progress * (verticalSegments.length - 1)) * 13.2;
+          setFill(COLORS.red, 0.7 + Math.sin(time * 7.2) * 0.18);
+          context.beginPath();
+          context.moveTo(664, pointerY + 3);
+          context.lineTo(670, pointerY);
+          context.lineTo(670, pointerY + 6);
+          context.closePath();
+          context.fill();
+          context.restore();
+        };
+
+        const drawLeftTelemetry = (time) => {
+          const drift = disturbance("telemetry", time, 4.1);
+          label("GRID    7/24", 31 + drift * 0.4, 45, { alpha: 0.58, size: 6.4 });
+          label("SECTOR  A-07", 31 + drift * 0.4, 56, { alpha: 0.58, size: 6.4 });
+          label("NODE    03.91", 31 + drift * 0.4, 67, { alpha: 0.58, size: 6.4 });
+          label("CALIBRATION", 31, 407, { alpha: 0.58, size: 6.4 });
+          label(`ΔX    ${(disturbance("grid", time) * 0.03).toFixed(2)}`, 31, 419, {
+            alpha: 0.56,
+            size: 6.2,
+          });
+          label(`ΔY    ${(disturbance("grid", time, 1.7) * 0.03).toFixed(2)}`, 31, 430, {
+            alpha: 0.56,
+            size: 6.2,
+          });
+          label(`ΔZ    ${(disturbance("grid", time, 3.2) * 0.03).toFixed(2)}`, 31, 441, {
+            alpha: 0.56,
+            size: 6.2,
+          });
+        };
+
+        const drawScanAndDropout = (time) => {
+          const scan = trackValue("scan", time);
+          const scanX = scan * BASE_WIDTH;
+          setFill(COLORS.bone, 0.055 + Math.abs(disturbance("scan", time)) * 0.04);
+          context.fillRect(scanX, 0, 1.2, BASE_HEIGHT);
+          setFill(COLORS.bone, 0.08);
+          context.fillRect(0, modulo(time * 29, BASE_HEIGHT), BASE_WIDTH, 0.65);
+
+          const dropoutPhase = trackPhase("dropout", time);
+          if (dropoutPhase < 0.035 && !reducedMotion.matches) {
+            const height = 1 + Math.floor(dropoutPhase * 210);
+            const y = 72 + Math.floor(Math.abs(disturbance("dropout", time)) * 306);
+            setFill(COLORS.ink, 0.78);
+            context.fillRect(0, y, BASE_WIDTH, height);
+            setFill(COLORS.bone, 0.15);
+            context.fillRect(0, y - 1, BASE_WIDTH * (0.42 + dropoutPhase * 8), 0.7);
+          }
+        };
+
+        const drawFinish = (now) => {
+          if (!state.finishStart) return;
+          const elapsed = (now - state.finishStart) / 820;
+          const amount = clamp(elapsed);
+          const sweep = EASINGS.outExpo(amount);
+          setFill(COLORS.bone, 0.74 * (1 - amount));
+          context.fillRect(0, BASE_HEIGHT * 0.5 - 0.5, BASE_WIDTH * sweep, 1);
+          setFill(COLORS.ink, EASINGS.inOutQuart(amount));
+          context.fillRect(0, 0, BASE_WIDTH * sweep, BASE_HEIGHT);
+        };
+
+        const render = (now) => {
+          const time = (now - state.start) / 1000;
+          const delta = Math.min((now - state.lastFrame) / 1000, 0.05);
+          state.lastFrame = now;
+          state.frame += 1;
+          state.progress += (state.targetProgress - state.progress) * (1 - Math.exp(-delta * 3.4));
+
+          prepareContext();
+          // ponytail: one canvas keeps this short-lived splash cheap; split into workers only if it ever gains heavy raster effects.
+          drawGrid(time);
+          drawAmbientParticles(time, reducedMotion.matches ? 0 : delta);
+          drawContainment(time, reducedMotion.matches ? 0 : delta);
+          [
+            { index: 0, y: 126, caption: "> ALIGNMENT", track: "verificationA" },
+            { index: 1, y: 214, caption: "> INTEGRITY", track: "verificationB" },
+            { index: 2, y: 302, caption: "> CONTAINMENT", track: "verificationC" },
+          ].forEach((band) => drawVerificationBand(band, time));
+          drawLeftTelemetry(time);
+          drawProgress(time);
+          drawScanAndDropout(time);
+          drawFinish(now);
+          if (!state.finishStart || now - state.finishStart < 900) {
+            state.animationFrame = requestAnimationFrame(render);
+          }
+        };
+
+        window.setSplashStatus = (status, progress) => {
+          if (typeof status === "string" && status.trim()) {
+            statusElement.textContent = status;
+            state.status = status.trim();
+          }
+          const nextProgress = Number(progress);
+          if (!Number.isFinite(nextProgress)) return;
+          state.targetProgress = clamp(nextProgress / 100);
+          progressElement.value = Math.round(state.targetProgress * 100);
+          progressElement.textContent = `${progressElement.value}%`;
+        };
+
+        window.finishSplash = () => {
+          if (state.finishPromise) return state.finishPromise;
+          state.targetProgress = 1;
+          progressElement.value = 100;
+          progressElement.textContent = "100%";
+          state.finishStart = performance.now();
+          document.body.classList.add("finishing");
+          state.finishPromise = new Promise((resolve) => {
+            window.setTimeout(resolve, reducedMotion.matches ? 180 : 840);
+          });
+          return state.finishPromise;
+        };
+
+        window.__ashenMotion = Object.freeze({
+          name: "灰域协议",
+          motionTracks: MOTION_TRACKS,
+          particleSpeeds: ambientParticles.map(({ speed }) => speed),
+          channelParticleSpeeds: channelParticles.map(({ speed }) => speed),
+          progressSegmentSpeeds: progressSegments.map(({ speed }) => speed),
+          verticalSegmentSpeeds: verticalSegments.map(({ speed }) => speed),
+          reducedMotion,
+        });
+
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+        window.addEventListener("beforeunload", () => cancelAnimationFrame(state.animationFrame));
+        state.animationFrame = requestAnimationFrame(render);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>灰域协议 QA Preview</title>
+    <style>
+      html,
+      body,
+      iframe {
+        width: 720px;
+        height: 480px;
+        margin: 0;
+        border: 0;
+        overflow: hidden;
+        display: block;
+        background: #080806;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="splash" src="/splash-ashen.html" title="灰域协议启动画面"></iframe>
+    <script>
+      const splashFrame = document.getElementById("splash");
+      splashFrame.addEventListener("load", () => {
+        splashFrame.contentWindow.setSplashStatus("CONTAINMENT STABLE", 82);
+      });
+    </script>
+  </body>
+</html>

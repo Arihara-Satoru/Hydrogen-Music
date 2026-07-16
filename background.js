@@ -66,6 +66,7 @@ const createSplashWindow = async () => {
       {
         classic: "splash-classic.html",
         industrial: "splash-industrial.html",
+        ashen: "splash-ashen.html",
       }[settings?.other?.startupAnimation] || splashFile;
   } catch (error) {
     console.warn("Splash preference load failed:", error);
@@ -81,7 +82,9 @@ const createSplashWindow = async () => {
     show: false,
     center: true,
     skipTaskbar: true,
-    backgroundColor: splashFile === "splash-industrial.html" ? "#090a09" : "#f7faff",
+    backgroundColor: ["splash-industrial.html", "splash-ashen.html"].includes(splashFile)
+      ? "#080806"
+      : "#f7faff",
     webPreferences: {
       sandbox: true,
       contextIsolation: true,

@@ -28,7 +28,7 @@ assert.match(splash, /movingLayers: Object\.keys\(MOTION_TRACKS\)/);
 assert.match(background, /industrial: "splash-industrial\.html"/);
 assert.match(background, /loadFile\(path\.join\(__dirname, splashFile\)\)/);
 assert.match(settings, /label: "末日工业", value: "industrial"/);
-assert.match(settingsIpc, /\["classic", "industrial"\]\.includes/);
+assert.match(settingsIpc, /\["classic", "industrial", "ashen"\]\.includes/);
 assert.match(builder, /'splash-industrial\.html'/);
 assert.match(builder, /'splash-industrial-texture\.png'/);
 assert.ok(fs.statSync(path.join(root, "splash-industrial-texture.png")).size > 100_000);

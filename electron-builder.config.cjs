@@ -50,6 +50,8 @@ const BASE_FILE_PATTERNS = [
   'splash-classic.html',
   'splash-industrial.html',
   'splash-industrial-texture.png',
+  'splash-ashen.html',
+  'splash-ashen-texture.png',
   'dist/**/*',
   'src/assets/icon/**/*',
   'src/electron/**/*',
