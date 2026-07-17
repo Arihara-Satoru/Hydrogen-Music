@@ -47,7 +47,7 @@ assert.match(splash, /titleFlash < 0\.08/);
 assert.match(background, /ashen: "splash-ashen\.html"/);
 assert.match(background, /loadFile\(path\.join\(__dirname, splashFile\)\)/);
 assert.match(settings, /label: "灰域协议", value: "ashen"/);
-assert.match(settingsIpc, /\["classic", "industrial", "ashen"\]\.includes/);
+assert.match(settingsIpc, /\["classic", "industrial", "ashen", "ashlink"\]\.includes/);
 assert.match(builder, /'splash-ashen\.html'/);
 assert.match(builder, /'splash-ashen-texture\.png'/);
 assert.ok(fs.statSync(path.join(root, "splash-ashen-texture.png")).size > 100_000);

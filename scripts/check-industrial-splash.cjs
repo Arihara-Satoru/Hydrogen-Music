@@ -16,6 +16,12 @@ assert.match(splash, /splash-industrial-texture\.png/);
 assert.doesNotMatch(splash, /<img\b[^>]+(?:logo|icon)|src\/assets|HYDROGEN MUSIC/i);
 assert.match(splash, /prefers-reduced-motion: reduce/);
 assert.match(splash, /window\.finishSplash = \(\) =>/);
+const waveform = splash.match(/const drawWaveform = \(time, reveal\) => \{([\s\S]*?)\n      \};/)?.[1];
+assert.ok(waveform, "waveform renderer should exist");
+assert.match(waveform, /fractalNoise/);
+assert.match(waveform, /fieldSurge/);
+assert.doesNotMatch(waveform, /right(?:Surge|Breath|Weight)/);
+assert.doesNotMatch(waveform, /Math\.sin/, "waveform should not use predictable sine cycles");
 
 const tracks = [...splash.matchAll(/^\s{8}(\w+): (\d+),$/gm)].map(([, name, value]) => [
   name,
@@ -28,7 +34,7 @@ assert.match(splash, /movingLayers: Object\.keys\(MOTION_TRACKS\)/);
 assert.match(background, /industrial: "splash-industrial\.html"/);
 assert.match(background, /loadFile\(path\.join\(__dirname, splashFile\)\)/);
 assert.match(settings, /label: "末日工业", value: "industrial"/);
-assert.match(settingsIpc, /\["classic", "industrial", "ashen"\]\.includes/);
+assert.match(settingsIpc, /\["classic", "industrial", "ashen", "ashlink"\]\.includes/);
 assert.match(builder, /'splash-industrial\.html'/);
 assert.match(builder, /'splash-industrial-texture\.png'/);
 assert.ok(fs.statSync(path.join(root, "splash-industrial-texture.png")).size > 100_000);

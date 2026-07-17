@@ -67,6 +67,8 @@ const createSplashWindow = async () => {
         classic: "splash-classic.html",
         industrial: "splash-industrial.html",
         ashen: "splash-ashen.html",
+        ashlink: "splash-ashlink.html",
+        palerift: "splash-palerift.html",
       }[settings?.other?.startupAnimation] || splashFile;
   } catch (error) {
     console.warn("Splash preference load failed:", error);
@@ -82,9 +84,12 @@ const createSplashWindow = async () => {
     show: false,
     center: true,
     skipTaskbar: true,
-    backgroundColor: ["splash-industrial.html", "splash-ashen.html"].includes(splashFile)
-      ? "#080806"
-      : "#f7faff",
+    backgroundColor:
+      splashFile === "splash-palerift.html"
+        ? "#e9eae4"
+        : ["splash-industrial.html", "splash-ashen.html", "splash-ashlink.html"].includes(splashFile)
+          ? "#080806"
+          : "#f7faff",
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -103,7 +108,9 @@ const createSplashWindow = async () => {
     console.error("Splash load failed:", error);
   }
 
-  if (!win.isDestroyed()) win.show();
+  if (!win.isDestroyed()) {
+    win.show();
+  }
 
   return win;
 };

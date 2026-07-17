@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>灰烬链路</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Cascadia Mono", "IBM Plex Mono", Consolas, "Microsoft YaHei UI", monospace;
+        background: #080806;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #080806;
+      }
+
+      body {
+        position: relative;
+        opacity: 1;
+        transition: opacity 220ms cubic-bezier(0.4, 0, 1, 1);
+      }
+
+      .texture {
+        position: absolute;
+        inset: -4%;
+        background: url("./splash-ashlink-texture.png") center / cover no-repeat;
+        filter: contrast(1.1) brightness(0.78);
+        opacity: 0.9;
+        animation: texture-drift 12700ms cubic-bezier(0.42, 0, 0.28, 1) 190ms infinite alternate;
+        will-change: transform, opacity;
+      }
+
+      #scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      body.finishing .texture {
+        animation: texture-exit 620ms cubic-bezier(0.7, 0, 1, 1) forwards;
+      }
+
+      body.finished {
+        opacity: 0;
+      }
+
+      @keyframes texture-drift {
+        0% { transform: translate3d(-1.2%, -0.7%, 0) scale(1.025); opacity: 0.84; }
+        47% { transform: translate3d(0.45%, 0.25%, 0) scale(1.012); opacity: 0.92; }
+        100% { transform: translate3d(1.1%, -0.35%, 0) scale(1.036); opacity: 0.87; }
+      }
+
+      @keyframes texture-exit {
+        0% { transform: scale(1.02); opacity: 0.9; }
+        62% { transform: translate3d(1.8%, 0, 0) scale(1.04); opacity: 0.54; }
+        100% { transform: translate3d(7%, 0, 0) scale(1.08); opacity: 0; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .texture,
+        body.finishing .texture {
+          animation: none;
+          transform: none;
+        }
+
+        body {
+          transition-duration: 80ms;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="texture" aria-hidden="true"></div>
+    <canvas id="scene" width="720" height="480" role="img" aria-label="灰烬链路正在初始化"></canvas>
+    <div id="progress-accessibility" class="sr-only" role="progressbar" aria-label="启动进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"></div>
+    <div id="status-accessibility" class="sr-only" role="status" aria-live="polite">正在初始化灰烬链路</div>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const DESIGN_WIDTH = 720;
+        const DESIGN_HEIGHT = 480;
+        const canvas = document.getElementById("scene");
+        const context = canvas.getContext("2d", { alpha: true });
+        const progressAccessibility = document.getElementById("progress-accessibility");
+        const statusAccessibility = document.getElementById("status-accessibility");
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const TAU = Math.PI * 2;
+        const FONT = '"Cascadia Mono", "IBM Plex Mono", Consolas, "Microsoft YaHei UI", monospace';
+
+        const MOTION_TRACKS = Object.freeze({
+          contourField: { duration: 13100, delay: 140, easing: "sineInOut", jitter: 0.19 },
+          contourResolve: { duration: 8700, delay: 520, easing: "quintOut", jitter: 0.11 },
+          ashDrift: { duration: 17300, delay: 60, easing: "linear", jitter: 0.23 },
+          telemetryRows: { duration: 7600, delay: 880, easing: "cubicInOut", jitter: 0.16 },
+          erosionFlow: { duration: 4900, delay: 310, easing: "quartOut", jitter: 0.31 },
+          signalBeam: { duration: 6100, delay: 730, easing: "expoOut", jitter: 0.12 },
+          statusStack: { duration: 9200, delay: 1180, easing: "sineInOut", jitter: 0.08 },
+          phaseIndicator: { duration: 2300, delay: 430, easing: "backOut", jitter: 0.26 },
+          progressRail: { duration: 11800, delay: 1670, easing: "cubicInOut", jitter: 0.14 },
+          rulerLabels: { duration: 14300, delay: 940, easing: "sineOut", jitter: 0.07 },
+          scanTear: { duration: 3700, delay: 2050, easing: "steps", jitter: 0.42 },
+          dropout: { duration: 10200, delay: 2760, easing: "quartIn", jitter: 0.55 },
+          calibration: { duration: 15600, delay: 1320, easing: "sineInOut", jitter: 0.09 },
+          exitWipe: { duration: 620, delay: 0, easing: "quintIn", jitter: 0 },
+        });
+
+        const EASINGS = Object.freeze({
+          linear: (value) => value,
+          sineInOut: (value) => -(Math.cos(Math.PI * value) - 1) / 2,
+          sineOut: (value) => Math.sin((value * Math.PI) / 2),
+          cubicInOut: (value) => value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value + 2) ** 3 / 2,
+          quartIn: (value) => value ** 4,
+          quartOut: (value) => 1 - (1 - value) ** 4,
+          quintIn: (value) => value ** 5,
+          quintOut: (value) => 1 - (1 - value) ** 5,
+          expoOut: (value) => value === 1 ? 1 : 1 - 2 ** (-10 * value),
+          backOut: (value) => {
+            const c1 = 1.70158;
+            const c3 = c1 + 1;
+            return 1 + c3 * (value - 1) ** 3 + c1 * (value - 1) ** 2;
+          },
+          steps: (value) => Math.floor(value * 7) / 7,
+        });
+
+        let randomState = 0x4153484c;
+        const seededRandom = () => {
+          randomState |= 0;
+          randomState = (randomState + 0x6d2b79f5) | 0;
+          let value = Math.imul(randomState ^ (randomState >>> 15), 1 | randomState);
+          value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+          return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+        };
+
+        const mod = (value, divisor) => ((value % divisor) + divisor) % divisor;
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+        const trackPhase = (name, time) => {
+          const track = MOTION_TRACKS[name];
+          const raw = mod(time - track.delay, track.duration) / track.duration;
+          return EASINGS[track.easing](raw);
+        };
+        const disturbance = (name, time, seed = 0) => {
+          const track = MOTION_TRACKS[name];
+          const unit = (time - track.delay) / track.duration;
+          return (
+            Math.sin(unit * TAU * 5.17 + seed * 11.3) * 0.58 +
+            Math.sin(unit * TAU * 13.9 + seed * 4.7) * 0.29 +
+            Math.sin(unit * TAU * 31.1 + seed * 7.9) * 0.13
+          ) * track.jitter;
+        };
+
+        const state = {
+          startedAt: performance.now(),
+          previousFrame: performance.now(),
+          targetProgress: 0.08,
+          displayedProgress: 0.08,
+          status: "FIELD ARRAY WAKE",
+          finishing: false,
+          finishStartedAt: 0,
+        };
+
+        const contourFamilies = [
+          { centerX: 306, centerY: 124, count: 13, stepX: 15, stepY: 9 },
+          { centerX: 72, centerY: 102, count: 8, stepX: 13, stepY: 8 },
+          { centerX: 606, centerY: 38, count: 7, stepX: 12, stepY: 7 },
+        ];
+        const contours = contourFamilies.flatMap((family, familyIndex) =>
+          Array.from({ length: family.count }, (_, index) => ({
+            familyIndex,
+            centerX: family.centerX,
+            centerY: family.centerY,
+            radiusX: 32 + index * family.stepX,
+            radiusY: 20 + index * family.stepY,
+            seed: seededRandom() * TAU,
+            speed: 0.32 + seededRandom() * 2.8,
+            drift: 0.45 + seededRandom() * 1.65,
+            delay: seededRandom() * 2.4,
+            alpha: 0.18 + seededRandom() * 0.28,
+          })),
+        );
+
+        const ambientParticles = Array.from({ length: 92 }, (_, index) => ({
+          index,
+          x: seededRandom() * DESIGN_WIDTH,
+          y: seededRandom() * DESIGN_HEIGHT,
+          size: 0.35 + seededRandom() * 1.65,
+          speed: 0.18 + seededRandom() * 2.95,
+          driftX: -2.4 + seededRandom() * 6.8,
+          driftY: 1.1 + seededRandom() * 8.6,
+          wobble: 0.4 + seededRandom() * 2.9,
+          wobbleSpeed: 0.33 + seededRandom() * 3.2,
+          delay: seededRandom() * 3.8,
+          alpha: 0.08 + seededRandom() * 0.34,
+        }));
+
+        const bandParticles = Array.from({ length: 196 }, (_, index) => ({
+          index,
+          x: 176 + seededRandom() * 286,
+          y: 275 + seededRandom() * 126,
+          width: 0.6 + seededRandom() * 3.8,
+          height: 0.45 + seededRandom() * 2.2,
+          speed: 4.5 + seededRandom() * 36,
+          pulseSpeed: 0.55 + seededRandom() * 4.1,
+          delay: seededRandom() * 2.9,
+          alpha: 0.1 + seededRandom() * 0.45,
+          lane: seededRandom(),
+        }));
+
+        const progressSegments = Array.from({ length: 61 }, (_, index) => ({
+          index,
+          level: index < 5 ? 1 : 0,
+          activationSpeed: 0.7 + seededRandom() * 3.1,
+          pulseSpeed: 0.42 + seededRandom() * 3.4,
+          delay: seededRandom() * 1.7,
+          disturbance: seededRandom() * TAU,
+          height: 5 + seededRandom() * 5,
+        }));
+
+        const beamStrips = Array.from({ length: 17 }, (_, index) => ({
+          index,
+          y: 311 + index * 3.15,
+          height: 0.5 + seededRandom() * 1.7,
+          speed: 0.35 + seededRandom() * 2.65,
+          delay: seededRandom() * 1.9,
+          phase: seededRandom() * TAU,
+          alpha: 0.035 + seededRandom() * 0.13,
+        }));
+
+        const telemetryRows = Array.from({ length: 10 }, (_, index) => ({
+          index,
+          base: 83419 + index * 697 + Math.floor(seededRandom() * 180),
+          phase: seededRandom() * TAU,
+          speed: 0.45 + seededRandom() * 2.1,
+          delay: seededRandom() * 2.2,
+        }));
+
+        const fieldLabels = [
+          { x: 92, y: 61, value: "-642" },
+          { x: 381, y: 54, value: "-571" },
+          { x: 542, y: 49, value: "-552" },
+          { x: 254, y: 132, value: "-618" },
+          { x: 595, y: 126, value: "-534" },
+          { x: 243, y: 232, value: "-603" },
+          { x: 573, y: 234, value: "-523" },
+          { x: 285, y: 253, value: "-589" },
+          { x: 545, y: 264, value: "-487" },
+        ].map((label, index) => ({
+          ...label,
+          index,
+          speed: 0.38 + seededRandom() * 1.9,
+          delay: seededRandom() * 2.4,
+          phase: seededRandom() * TAU,
+        }));
+
+        const phaseMessage = (progress) => {
+          if (progress >= 0.995) return "LINK STABILITY CONFIRMED";
+          if (progress >= 0.75) return "PLAYER SHELL ASSEMBLY";
+          if (progress >= 0.5) return "AUDIO LINK HANDSHAKE";
+          if (progress >= 0.32) return "LOCAL ARCHIVE SCAN";
+          return "FIELD ARRAY WAKE";
+        };
+
+        const resize = () => {
+          const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+          canvas.width = Math.round(window.innerWidth * pixelRatio);
+          canvas.height = Math.round(window.innerHeight * pixelRatio);
+          canvas.style.width = `${window.innerWidth}px`;
+          canvas.style.height = `${window.innerHeight}px`;
+          context.setTransform(
+            (pixelRatio * window.innerWidth) / DESIGN_WIDTH,
+            0,
+            0,
+            (pixelRatio * window.innerHeight) / DESIGN_HEIGHT,
+            0,
+            0,
+          );
+        };
+
+        const text = (value, x, y, size, alpha = 1, align = "left", weight = 400) => {
+          context.save();
+          context.fillStyle = `rgba(205, 199, 183, ${alpha})`;
+          context.font = `${weight} ${size}px ${FONT}`;
+          context.textAlign = align;
+          context.textBaseline = "alphabetic";
+          context.fillText(value, x, y);
+          context.restore();
+        };
+
+        const drawContours = (time) => {
+          const fieldPhase = trackPhase("contourField", time);
+          const resolvePhase = trackPhase("contourResolve", time);
+          context.save();
+          context.beginPath();
+          context.rect(0, 0, DESIGN_WIDTH, 284);
+          context.clip();
+          context.lineWidth = 0.55;
+          contours.forEach((contour) => {
+            const local = Math.max(0, time / 1000 - contour.delay);
+            const wave = local * contour.speed;
+            const driftX = Math.sin(wave * 0.41 + contour.seed) * contour.drift + (fieldPhase - 0.5) * 2.4;
+            const driftY = Math.cos(wave * 0.27 + contour.seed) * contour.drift * 0.55;
+            const reveal = clamp(0.42 + resolvePhase * 0.72 - contour.familyIndex * 0.05, 0.38, 1);
+            context.beginPath();
+            for (let point = 0; point <= 96; point += 1) {
+              const angle = (point / 96) * TAU;
+              const roughness =
+                1 +
+                Math.sin(angle * 3 + contour.seed + wave * 0.11) * 0.094 +
+                Math.sin(angle * 7 - contour.seed * 0.7 + wave * 0.19) * 0.041 +
+                Math.sin(angle * 13 + contour.seed * 1.4 - wave * 0.13) * 0.019;
+              const x =
+                contour.centerX +
+                driftX +
+                Math.cos(angle) * contour.radiusX * roughness +
+                Math.sin(angle * 2.1 + contour.seed) * contour.radiusX * 0.11 +
+                Math.sin(angle * 5.2 - contour.seed + wave * 0.07) * 3.4;
+              const y =
+                contour.centerY +
+                driftY +
+                Math.sin(angle) * contour.radiusY * roughness +
+                Math.cos(angle * 2.8 - contour.seed) * contour.radiusY * 0.13;
+              if (point === 0) context.moveTo(x, y);
+              else context.lineTo(x, y);
+            }
+            context.strokeStyle = `rgba(195, 187, 169, ${contour.alpha * reveal})`;
+            context.setLineDash([
+              13 + contour.speed * 2.1,
+              0.7 + contour.delay * 0.18,
+              4.5 + contour.familyIndex * 2.2,
+              0.55,
+            ]);
+            context.lineDashOffset = -wave * 0.75;
+            context.stroke();
+          });
+          context.restore();
+        };
+
+        const drawAmbientParticles = (time) => {
+          const globalPhase = trackPhase("ashDrift", time);
+          const seconds = time / 1000;
+          ambientParticles.forEach((particle) => {
+            const local = Math.max(0, seconds - particle.delay);
+            const x = mod(
+              particle.x + local * particle.driftX * particle.speed + Math.sin(local * particle.wobbleSpeed + particle.index) * particle.wobble + globalPhase * 7,
+              DESIGN_WIDTH + 12,
+            ) - 6;
+            const y = mod(particle.y + local * particle.driftY * particle.speed, DESIGN_HEIGHT + 12) - 6;
+            const flicker = 0.28 + 0.72 * Math.abs(Math.sin(local * particle.wobbleSpeed * 1.7 + particle.index));
+            context.fillStyle = `rgba(205, 198, 181, ${particle.alpha * flicker})`;
+            context.fillRect(x, y, particle.size, particle.size * (0.45 + particle.speed * 0.12));
+          });
+        };
+
+        const drawFieldLabels = (time) => {
+          fieldLabels.forEach((label) => {
+            const local = Math.max(0, time / 1000 - label.delay);
+            const pulse = 0.45 + Math.sin(local * label.speed + label.phase) * 0.18;
+            const shift = Math.sin(local * label.speed * 0.37 + label.phase) * 1.1;
+            text(label.value, label.x + shift, label.y, 7, pulse, "center");
+          });
+
+          const calibrationPhase = trackPhase("calibration", time);
+          [[32, 190], [286, 178], [431, 102]].forEach(([x, y], index) => {
+            const offset = Math.sin(calibrationPhase * TAU + index * 1.7) * 1.6;
+            context.strokeStyle = `rgba(199, 192, 175, ${0.28 + index * 0.05})`;
+            context.lineWidth = 0.6;
+            context.beginPath();
+            context.moveTo(x - 6 + offset, y);
+            context.lineTo(x + 6 + offset, y);
+            context.moveTo(x + offset, y - 6);
+            context.lineTo(x + offset, y + 6);
+            context.stroke();
+          });
+        };
+
+        const drawTelemetryBand = (time) => {
+          const rowPhase = trackPhase("telemetryRows", time);
+          const dropout = disturbance("dropout", time);
+          context.strokeStyle = "rgba(198, 190, 174, 0.3)";
+          context.lineWidth = 0.55;
+          context.beginPath();
+          context.moveTo(12, 284);
+          context.lineTo(720, 284);
+          context.moveTo(12, 406);
+          context.lineTo(720, 406);
+          context.stroke();
+
+          telemetryRows.forEach((row) => {
+            const local = Math.max(0, time / 1000 - row.delay);
+            const y = 300 + row.index * 10.7 + Math.sin(local * row.speed + row.phase) * 0.65;
+            const alpha = 0.36 + Math.sin(local * row.speed * 1.4 + row.phase) * 0.12;
+            const drift = (rowPhase - 0.5) * 2 + dropout * (row.index % 3 === 0 ? 5 : 1);
+            const values = [
+              String(row.base).padStart(5, "0"),
+              `${(-618 - row.index * 0.8 + Math.sin(local) * 1.9).toFixed(1)}`,
+              `${(2.68 + (row.index % 4) * 0.02).toFixed(2)}`,
+              `${(0.829 + (row.index % 5) * 0.003).toFixed(3)}`,
+              `${(14.0 + (row.index % 4) * 0.1).toFixed(1)}`,
+              `${(70.4 + (row.index % 6) * 0.5).toFixed(1)}`,
+            ];
+            values.forEach((value, column) => text(value, 20 + column * 43 + drift, y, 7, alpha));
+          });
+
+          for (let column = 0; column < 7; column += 1) {
+            const x = 14 + column * 43;
+            context.strokeStyle = "rgba(201, 194, 177, 0.19)";
+            context.beginPath();
+            context.moveTo(x, 290);
+            context.lineTo(x + Math.sin(time / 1700 + column) * 0.6, 399);
+            context.stroke();
+          }
+        };
+
+        const drawErosion = (time) => {
+          const seconds = time / 1000;
+          const erosionPhase = trackPhase("erosionFlow", time);
+          bandParticles.forEach((particle) => {
+            const local = Math.max(0, seconds - particle.delay);
+            const distance = local * particle.speed * (0.45 + particle.lane);
+            const x = mod(particle.x + distance, 356) + 174;
+            const spread = (x - 174) / 356;
+            const y = particle.y + Math.sin(local * particle.pulseSpeed + particle.index) * (1 + spread * 5.5);
+            const pulse = 0.25 + Math.abs(Math.sin(local * particle.pulseSpeed + particle.index * 0.7)) * 0.75;
+            const alpha = particle.alpha * pulse * (0.45 + erosionPhase * 0.55);
+            context.fillStyle = `rgba(210, 203, 186, ${alpha})`;
+            context.fillRect(x, y, particle.width, particle.height);
+          });
+        };
+
+        const drawSignalBeam = (time) => {
+          const beamPhase = trackPhase("signalBeam", time);
+          const tear = disturbance("scanTear", time);
+          beamStrips.forEach((strip) => {
+            const local = Math.max(0, time / 1000 - strip.delay);
+            const head = 338 + mod(local * strip.speed * 34 + strip.index * 19, 135);
+            const alpha = strip.alpha * (0.45 + Math.abs(Math.sin(local * strip.speed + strip.phase)) * 0.85);
+            context.fillStyle = `rgba(219, 212, 194, ${alpha})`;
+            context.fillRect(head + tear * 6, strip.y, DESIGN_WIDTH - head, strip.height);
+          });
+
+          const centerY = 347 + disturbance("signalBeam", time, 0.7) * 3.2;
+          context.fillStyle = `rgba(220, 214, 197, ${0.09 + beamPhase * 0.08})`;
+          context.fillRect(371, centerY - 10, 349, 20);
+          context.fillStyle = `rgba(229, 223, 205, ${0.36 + beamPhase * 0.18})`;
+          context.fillRect(370, centerY - 0.6, 350, 1.2);
+          text("INITIALIZING", 467 + tear * 4, centerY + 3, 7, 0.73);
+          text(`${phaseMessage(state.displayedProgress)}${".".repeat(3 + Math.floor(beamPhase * 8))}`, 523 + tear * 4, centerY + 3, 7, 0.72);
+          text(state.displayedProgress >= 0.995 ? "OK" : "--", 700, centerY + 3, 7, 0.82, "right");
+        };
+
+        const drawStatusStack = (time) => {
+          const statusPhase = trackPhase("statusStack", time);
+          const indicatorPhase = trackPhase("phaseIndicator", time);
+          const jitter = disturbance("statusStack", time) * 3;
+          const right = 691 + jitter;
+          text("ASH-LINK", right, 40, 11, 0.52 + statusPhase * 0.22, "right", 500);
+          text("PHASE 03", right, 58, 9, 0.42 + (1 - statusPhase) * 0.18, "right");
+          context.strokeStyle = "rgba(211, 204, 186, 0.52)";
+          context.lineWidth = 0.65;
+          context.beginPath();
+          context.moveTo(640 + jitter, 67);
+          context.lineTo(691 + jitter, 67);
+          context.stroke();
+          text(`${Math.round(state.displayedProgress * 100).toString().padStart(2, "0")}%`, 679 + jitter, 87, 11, 0.62, "right");
+          context.fillStyle = `rgba(180, 151, 31, ${0.48 + indicatorPhase * 0.45})`;
+          const indicatorSize = 4 + indicatorPhase * 1.5;
+          context.fillRect(686 + jitter, 79 - indicatorSize / 2, indicatorSize, indicatorSize);
+        };
+
+        const updateProgressSegments = (deltaSeconds) => {
+          progressSegments.forEach((segment) => {
+            const target = segment.index / (progressSegments.length - 1) <= state.displayedProgress ? 1 : 0;
+            const rate = 1 - Math.exp(-deltaSeconds * segment.activationSpeed);
+            segment.level += (target - segment.level) * rate;
+          });
+        };
+
+        const drawProgressRail = (time) => {
+          const seconds = time / 1000;
+          const railPhase = trackPhase("progressRail", time);
+          const rulerPhase = trackPhase("rulerLabels", time);
+          text("T-00:04:27:13", 29, 442, 11, 0.43 + rulerPhase * 0.13);
+
+          progressSegments.forEach((segment) => {
+            const local = Math.max(0, seconds - segment.delay);
+            const x = 154 + segment.index * 8.05;
+            const pulse = 0.48 + Math.abs(Math.sin(local * segment.pulseSpeed + segment.disturbance)) * 0.52;
+            const height = segment.height * (0.65 + railPhase * 0.35);
+            const activeAlpha = 0.15 + segment.level * pulse * 0.62;
+            context.fillStyle = `rgba(207, 200, 183, ${activeAlpha})`;
+            context.fillRect(x, 435 - height / 2, segment.index % 5 === 0 ? 1.1 : 0.65, height);
+          });
+
+          const markerX = 154 + state.displayedProgress * (progressSegments.length - 1) * 8.05;
+          context.fillStyle = `rgba(184, 154, 30, ${0.64 + railPhase * 0.3})`;
+          context.fillRect(markerX - 1.8, 429, 3.6, 3.6);
+
+          [[154, "00"], [274.75, "15"], [395.5, "30"], [516.25, "45"], [637, "60 SEC"]].forEach(([x, label], index) => {
+            const shift = Math.sin(seconds * (0.42 + index * 0.09) + index) * 0.7;
+            text(label, x + shift, 456, 7, 0.37 + rulerPhase * 0.09, index === 4 ? "right" : "center");
+          });
+        };
+
+        const drawScanDisturbance = (time) => {
+          const tearPhase = trackPhase("scanTear", time);
+          const dropoutPhase = trackPhase("dropout", time);
+          const tearY = mod(time * 0.073 + tearPhase * 93, DESIGN_HEIGHT);
+          context.fillStyle = `rgba(214, 207, 190, ${0.018 + Math.abs(disturbance("scanTear", time)) * 0.05})`;
+          context.fillRect(0, tearY, DESIGN_WIDTH, 0.75 + tearPhase * 1.4);
+
+          for (let y = 0; y < DESIGN_HEIGHT; y += 4) {
+            context.fillStyle = `rgba(0, 0, 0, ${0.035 + Math.sin(y * 0.17 + time / 900) * 0.009})`;
+            context.fillRect(0, y, DESIGN_WIDTH, 1);
+          }
+
+          if (dropoutPhase > 0.965) {
+            const strength = (dropoutPhase - 0.965) / 0.035;
+            context.fillStyle = `rgba(0, 0, 0, ${0.2 + strength * 0.5})`;
+            context.fillRect(0, 268 + disturbance("dropout", time) * 28, DESIGN_WIDTH, 7 + strength * 14);
+          }
+        };
+
+        const drawExit = (now) => {
+          if (!state.finishing) return;
+          const elapsed = now - state.finishStartedAt;
+          const raw = clamp(elapsed / MOTION_TRACKS.exitWipe.duration, 0, 1);
+          const eased = EASINGS[MOTION_TRACKS.exitWipe.easing](raw);
+          const wipeX = DESIGN_WIDTH * eased;
+          context.fillStyle = `rgba(220, 214, 197, ${0.18 * (1 - raw)})`;
+          context.fillRect(wipeX - 32, 0, 32, DESIGN_HEIGHT);
+          context.fillStyle = `rgba(7, 7, 6, ${clamp(raw * 1.18, 0, 1)})`;
+          context.fillRect(0, 0, wipeX, DESIGN_HEIGHT);
+          if (raw > 0.74) document.body.classList.add("finished");
+        };
+
+        const render = (now) => {
+          const deltaSeconds = Math.min(0.05, Math.max(0, (now - state.previousFrame) / 1000));
+          state.previousFrame = now;
+          const animationTime = reducedMotion.matches ? 2400 : now - state.startedAt;
+          const progressRate = 1 - Math.exp(-deltaSeconds * 2.6);
+          state.displayedProgress += (state.targetProgress - state.displayedProgress) * progressRate;
+          updateProgressSegments(deltaSeconds);
+
+          context.clearRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+          drawContours(animationTime);
+          drawAmbientParticles(animationTime);
+          drawFieldLabels(animationTime);
+          drawTelemetryBand(animationTime);
+          drawErosion(animationTime);
+          drawSignalBeam(animationTime);
+          drawStatusStack(animationTime);
+          drawProgressRail(animationTime);
+          drawScanDisturbance(animationTime);
+          drawExit(now);
+          requestAnimationFrame(render);
+        };
+
+        window.setSplashStatus = (status, progress) => {
+          if (typeof status === "string" && status.trim()) state.status = status.trim();
+          if (Number.isFinite(progress)) state.targetProgress = clamp(progress / 100, 0, 1);
+          const percentage = Math.round(state.targetProgress * 100);
+          progressAccessibility.setAttribute("aria-valuenow", String(percentage));
+          statusAccessibility.textContent = `${state.status}，${percentage}%`;
+          canvas.setAttribute("aria-label", `灰烬链路正在初始化，${percentage}%`);
+        };
+
+        window.finishSplash = () => {
+          if (state.finishing) return Promise.resolve();
+          state.targetProgress = 1;
+          state.finishing = true;
+          state.finishStartedAt = performance.now();
+          document.body.classList.add("finishing");
+          return new Promise((resolve) => setTimeout(resolve, reducedMotion.matches ? 90 : 620));
+        };
+
+        window.__ashLinkMotion = Object.freeze({
+          name: "灰烬链路",
+          motionTracks: MOTION_TRACKS,
+          contourSpeeds: contours.map(({ speed }) => speed),
+          particleSpeeds: ambientParticles.map(({ speed }) => speed),
+          bandParticleSpeeds: bandParticles.map(({ speed }) => speed),
+          progressSegmentSpeeds: progressSegments.map(({ activationSpeed }) => activationSpeed),
+          progressPulseSpeeds: progressSegments.map(({ pulseSpeed }) => pulseSpeed),
+          beamStripSpeeds: beamStrips.map(({ speed }) => speed),
+          ready: true,
+        });
+
+        window.addEventListener("resize", resize);
+        resize();
+        requestAnimationFrame(render);
+      })();
+    </script>
+  </body>
+</html>

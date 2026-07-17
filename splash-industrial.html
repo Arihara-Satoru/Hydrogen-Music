@@ -107,6 +107,22 @@
       const easeInOut = (value) =>
         value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
       const hash = (value) => fract(Math.sin(value * 91.347 + 17.13) * 43758.5453);
+      const smoothNoise = (value, seed = 0) => {
+        const lower = Math.floor(value);
+        const blend = easeInOut(fract(value));
+        return lerp(hash(lower + seed) * 2 - 1, hash(lower + seed + 1) * 2 - 1, blend);
+      };
+      const fractalNoise = (value, seed = 0) => {
+        let total = 0;
+        let amplitude = 0.58;
+        let frequency = 1;
+        for (let octave = 0; octave < 4; octave += 1) {
+          total += smoothNoise(value * frequency, seed + octave * 137) * amplitude;
+          amplitude *= 0.5;
+          frequency *= 2.07;
+        }
+        return total;
+      };
       const rgba = (color, alpha) => `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
 
       const particles = Array.from({ length: 46 }, (_, index) => ({
@@ -195,26 +211,51 @@
       };
 
       const drawWaveform = (time, reveal) => {
-        const shift = (time / MOTION_TRACKS.waveform) * 132;
-        const burst = 102 + Math.sin((time / 4310) * TAU) * 14;
+        const end = 640;
+        const seconds = (time / MOTION_TRACKS.waveform) * 2.67;
+        const burst = 40 + (smoothNoise(seconds * 0.31, 41) + 1) * 280;
+        const centerY = 246 + fractalNoise(seconds * 0.42, 73) * 21;
+        const fieldSurge = Math.pow(clamp((fractalNoise(seconds * 0.34, 109) + 1) / 2), 1.45);
+        const fieldBreath = 34 + fieldSurge * 76;
         context.strokeStyle = rgba(colors.dim, 0.28 * reveal);
         context.lineWidth = 0.55;
         context.beginPath();
-        context.moveTo(0, 246);
-        context.lineTo(603, 246);
+        for (let x = 0; x <= end; x += 6) {
+          const carrierY = 246 + fractalNoise(x * 0.024 + seconds * 0.23, 151) * 5.5;
+          if (x === 0) context.moveTo(x, carrierY);
+          else context.lineTo(x, carrierY);
+        }
         context.stroke();
 
-        context.strokeStyle = rgba(colors.ink, 0.68 * reveal);
-        context.lineWidth = 0.72;
+        context.strokeStyle = rgba(colors.dim, 0.2 * reveal);
+        context.lineWidth = 0.58;
         context.beginPath();
-        for (let x = 0; x <= 604; x += 2) {
+        for (let x = 0; x <= end; x += 2) {
+          const spatialCluster = 0.72 + Math.abs(fractalNoise(x * 0.019 + seconds * 0.37, 223));
+          const echoEnvelope = 10 + fieldBreath * 0.68 * spatialCluster;
+          const echo =
+            fractalNoise(x * 0.034 - seconds * 1.9, 271) * 0.76 +
+            fractalNoise(x * 0.091 + seconds * 2.7, 337) * 0.34;
+          const y = centerY + echo * echoEnvelope * reveal;
+          if (x === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+        context.stroke();
+
+        context.strokeStyle = rgba(colors.ink, 0.76 * reveal);
+        context.lineWidth = 0.82;
+        context.beginPath();
+        for (let x = 0; x <= end; x += 2) {
           const distance = Math.abs(x - burst);
-          const envelope = 4 + 48 * Math.exp(-distance / 54);
+          const spatialCluster = 0.68 + Math.abs(fractalNoise(x * 0.017 - seconds * 0.29, 401));
+          const envelope =
+            16 +
+            72 * Math.exp(-distance / (44 + hash(Math.floor(seconds * 0.7) + 17) * 28)) +
+            fieldBreath * 0.65 * spatialCluster;
           const signal =
-            Math.sin((x + shift) * 0.19) * 0.52 +
-            Math.sin((x - shift * 0.61) * 0.47) * 0.28 +
-            Math.sin(x * 1.73 + time * 0.0083) * 0.2;
-          const y = 246 + signal * envelope * reveal;
+            fractalNoise(x * 0.052 + seconds * 3.3, 457) * 0.86 +
+            fractalNoise(x * 0.146 - seconds * 5.2, 593) * 0.31;
+          const y = clamp(centerY + signal * envelope * reveal, 102, 382);
           if (x === 0) context.moveTo(x, y);
           else context.lineTo(x, y);
         }
@@ -222,11 +263,16 @@
 
         context.strokeStyle = rgba(colors.ink, 0.36 * reveal);
         context.lineWidth = 0.5;
-        for (let x = 14; x < 605; x += 9) {
-          const tick = 2 + hash(x) * 7 * (0.55 + Math.sin(time / (530 + x) + x) * 0.45);
+        for (let x = 14; x < end; x += 9) {
+          const randomPulse = (smoothNoise(seconds * (1.1 + x * 0.0017), x * 13) + 1) / 2;
+          const tick =
+            2 +
+            hash(x) *
+              (7 + fieldSurge * 15) *
+              (0.28 + randomPulse * 0.92);
           context.beginPath();
-          context.moveTo(x, 246 - tick);
-          context.lineTo(x, 246 + tick);
+          context.moveTo(x, centerY - tick);
+          context.lineTo(x, centerY + tick);
           context.stroke();
         }
       };

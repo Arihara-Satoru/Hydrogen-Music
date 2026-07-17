@@ -101,7 +101,7 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   normalized.other = {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     enableUpdate: normalized.other?.enableUpdate !== false,
-    startupAnimation: ["classic", "industrial", "ashen"].includes(
+    startupAnimation: ["classic", "industrial", "ashen", "ashlink", "palerift"].includes(
       normalized.other?.startupAnimation,
     )
       ? normalized.other.startupAnimation

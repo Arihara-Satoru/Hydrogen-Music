@@ -1,0 +1,25 @@
+{
+  "firstCapturePath": "D:\\data\\project\\ArkMusic\\Hydrogen-Music\\design-qa\\ashlink-motion-a.png",
+  "implementationPath": "D:\\data\\project\\ArkMusic\\Hydrogen-Music\\design-qa\\ashlink-implementation.png",
+  "changedBytes": 3691618,
+  "changedRatio": 0.6676103153935186,
+  "diagnostics": {
+    "name": "灰烬链路",
+    "trackCount": 14,
+    "easingCount": 11,
+    "contourSpeedCount": 28,
+    "particleSpeedCount": 92,
+    "bandParticleSpeedCount": 196,
+    "progressSpeedCount": 61,
+    "progressPulseCount": 61,
+    "beamSpeedCount": 17
+  },
+  "contentBounds": {
+    "x": -10006,
+    "y": -10000,
+    "width": 720,
+    "height": 480
+  },
+  "finishDuration": 626,
+  "consoleErrors": []
+}
