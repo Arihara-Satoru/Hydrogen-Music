@@ -1,8 +1,6 @@
 <script setup>
   import { computed, ref, watch } from 'vue'
   import { formatTime } from '../utils/time'
-  import { dialogOpen, noticeOpen } from '../utils/dialog'
-  import { deleteCloudSong } from '../api/cloud'
   import { addSong, setShuffledList } from '../utils/player'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
@@ -22,8 +20,6 @@
       default: '全部',
     },
   })
-
-  const emit = defineEmits(['refresh'])
 
   const playerStore = usePlayerStore()
   const localStore = useLocalStore()
@@ -119,33 +115,8 @@
     clearSelect()
   }
 
-  function deleteFile(flag) {
-    if (!flag || selectedSongIds.value.length == 0) return
-
-    const params = {
-      id: selectedSongIds.value.join(','),
-    }
-
-    deleteCloudSong(params).then(result => {
-      if (result?.code == 200) {
-        clearSelect()
-        emit('refresh')
-      } else if (result?.code == 501) {
-        noticeOpen(result?.message || '当前后端暂不支持删除云盘歌曲', 2)
-      } else {
-        noticeOpen('删除失败', 2)
-      }
-    }).catch(() => {
-      noticeOpen('删除失败', 2)
-    })
-  }
-
-  function deleteFileConfirm() {
-    if (!hasSelection.value) return
-    dialogOpen('确认删除', '您确定要从云盘中删除歌曲吗？', deleteFile)
-  }
-
   function addTime(time) {
+    if (!time) return '时间未知'
     return formatTime(time, 'YYYY-MM-DD HH:mm:ss')
   }
 
@@ -215,10 +186,6 @@
       <div class="edit-item" @click="downloadFile()">
         <svg t="1669030443895" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="10347" width="200" height="200"><path d="M921.6 563.2c-9.6-9.6-25.6-9.6-35.2 0L544 896l0-822.4c0-12.8-9.6-22.4-25.6-22.4s-25.6 9.6-25.6 22.4L492.8 896l-342.4-339.2c-9.6-9.6-25.6-9.6-35.2 0-9.6 9.6-9.6 22.4 0 32l384 377.6c6.4 6.4 12.8 6.4 19.2 6.4 0 0 0 0 0 0 3.2 0 3.2 0 6.4 0 0 0 0 0 3.2 0 3.2 0 6.4-3.2 9.6-6.4l380.8-371.2C931.2 588.8 931.2 572.8 921.6 563.2z" p-id="10348"></path></svg>
         <span class="item-name">下载</span>
-      </div>
-      <div class="edit-item" @click="deleteFileConfirm()">
-        <svg t="1669033713486" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="11464" width="200" height="200"><path d="M851.416 217.84l-45.256-45.248L512 466.744l-294.152-294.16-45.256 45.256L466.744 512l-294.152 294.16 45.248 45.256L512 557.256l294.16 294.16 45.256-45.256L557.256 512z" fill="#272536" p-id="11465"></path></svg>
-        <span class="item-name">删除</span>
       </div>
     </div>
   </div>

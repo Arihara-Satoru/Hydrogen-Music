@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:cloud-api-alignment": "node --experimental-vm-modules scripts/check-cloud-api-alignment.mjs",
     "check:dynamic-theme": "node scripts/check-dynamic-theme.mjs",
     "check:playback-performance": "node scripts/check-playback-performance.mjs",
     "check:platform-builds": "node scripts/check-platform-builds.cjs",
