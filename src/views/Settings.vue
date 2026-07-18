@@ -173,6 +173,17 @@ const downloadFolder = ref(null);
 const downloadCreateSongFolder = ref(false);
 const downloadSaveLyricFile = ref(false);
 const videoFolder = ref(null);
+const localMusicVideos = ref([]);
+const musicVideoModeOptions = [
+  { label: "歌曲专属视频", value: "song" },
+  { label: "本地随机视频池", value: "pool" },
+];
+if (!["song", "pool"].includes(playerStore.musicVideoMode)) {
+  playerStore.musicVideoMode = "song";
+}
+const availableLocalMusicVideoCount = computed(
+  () => localMusicVideos.value.filter((video) => video.available).length,
+);
 const localFolder = ref([]);
 const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
@@ -224,6 +235,7 @@ const loadVipInfo = async () => {
 };
 
 onActivated(() => {
+  void refreshLocalMusicVideoPool();
   windowApi.getSettings().then((settings) => {
     if (!settings) return;
     let loadedLevel = playerStore.quality ?? settings.music.level;
@@ -578,6 +590,62 @@ const clearMusicVideo = () => {
     else noticeOpen("删除失败", 3);
   });
 };
+const applyLocalMusicVideoPoolPayload = (payload) => {
+  localMusicVideos.value = Array.isArray(payload?.videos) ? payload.videos : [];
+};
+const refreshLocalMusicVideoPool = async () => {
+  try {
+    applyLocalMusicVideoPoolPayload(await windowApi.getMusicVideoPool());
+  } catch (error) {
+    console.error("读取本地音乐视频池失败:", error);
+  }
+};
+const addLocalMusicVideos = async () => {
+  try {
+    const result = await windowApi.addMusicVideoPoolFiles();
+    applyLocalMusicVideoPoolPayload(result);
+    if (result?.canceled) return;
+
+    if (result?.addedCount > 0) {
+      playerStore.musicVideoPoolRevision++;
+      noticeOpen(`已添加 ${result.addedCount} 个本地视频`, 2);
+    } else {
+      noticeOpen("没有新增视频，所选文件可能已在视频池中", 2);
+    }
+  } catch (error) {
+    console.error("添加本地音乐视频失败:", error);
+    noticeOpen("添加本地视频失败", 2);
+  }
+};
+const removeLocalMusicVideo = async (filePath) => {
+  try {
+    applyLocalMusicVideoPoolPayload(
+      await windowApi.removeMusicVideoPoolFile(filePath),
+    );
+    playerStore.musicVideoPoolRevision++;
+  } catch (error) {
+    console.error("移除本地音乐视频失败:", error);
+    noticeOpen("移除本地视频失败", 2);
+  }
+};
+const clearLocalMusicVideoPool = async (flag) => {
+  if (!flag) return;
+  try {
+    applyLocalMusicVideoPoolPayload(await windowApi.clearMusicVideoPool());
+    playerStore.musicVideoPoolRevision++;
+    noticeOpen("本地视频池已清空，原视频文件未被删除", 2);
+  } catch (error) {
+    console.error("清空本地音乐视频池失败:", error);
+    noticeOpen("清空本地视频池失败", 2);
+  }
+};
+const confirmClearLocalMusicVideoPool = () => {
+  dialogOpen(
+    "确认清空",
+    "只会清空视频池关联，不会删除您的本地视频文件，确定继续吗？",
+    clearLocalMusicVideoPool,
+  );
+};
 const setMusicVideo = () => {
   if (!playerStore.musicVideo)
     dialogOpen(
@@ -761,6 +829,8 @@ const clearAllCacheData = async (flag) => {
     }
 
     await clearRendererCacheData();
+    localMusicVideos.value = [];
+    playerStore.musicVideoPoolRevision++;
     const deletedVideoCount = Number(result.deletedMusicVideoFiles || 0);
     noticeOpen(
       deletedVideoCount > 0
@@ -1092,6 +1162,18 @@ const clearFmRecent = () => {
               </div>
             </div>
             <div class="option" v-if="playerStore.musicVideo">
+              <div class="option-name">音乐视频来源</div>
+              <Selector
+                v-model="playerStore.musicVideoMode"
+                :options="musicVideoModeOptions"
+              ></Selector>
+            </div>
+            <div
+              class="option"
+              v-if="
+                playerStore.musicVideo && playerStore.musicVideoMode === 'song'
+              "
+            >
               <div class="option-name">删除所有未被使用的音乐视频</div>
               <div class="option-operation">
                 <div class="button" @click="clearMusicVideo()">清除</div>
@@ -1103,7 +1185,65 @@ const clearFmRecent = () => {
           <h2 class="item-title">本地</h2>
           <div class="line"></div>
           <div class="item-options">
-            <div class="option" v-if="playerStore.musicVideo">
+            <div
+              class="option music-video-pool-option"
+              v-if="
+                playerStore.musicVideo && playerStore.musicVideoMode === 'pool'
+              "
+            >
+              <div class="option-name">本地随机视频池</div>
+              <div class="music-video-pool-control">
+                <div class="music-video-pool-head">
+                  <span>
+                    已选择 {{ localMusicVideos.length }} 个，
+                    {{ availableLocalMusicVideoCount }} 个可用
+                  </span>
+                  <div class="music-video-pool-actions">
+                    <button type="button" @click="addLocalMusicVideos">
+                      添加视频
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="localMusicVideos.length === 0"
+                      @click="confirmClearLocalMusicVideoPool"
+                    >
+                      清空
+                    </button>
+                  </div>
+                </div>
+                <div class="music-video-pool-list" v-if="localMusicVideos.length">
+                  <div
+                    class="music-video-pool-item"
+                    v-for="video in localMusicVideos"
+                    :key="video.path"
+                    :class="{ 'is-missing': !video.available }"
+                  >
+                    <span class="music-video-pool-name" :title="video.path">
+                      {{ video.name }}
+                    </span>
+                    <span class="music-video-pool-status" v-if="!video.available">
+                      文件不可用
+                    </span>
+                    <button
+                      type="button"
+                      :aria-label="`移除 ${video.name}`"
+                      @click="removeLocalMusicVideo(video.path)"
+                    >
+                      移除
+                    </button>
+                  </div>
+                </div>
+                <div class="music-video-pool-tip">
+                  支持 MP4、M4V、WebM 和 MOV；切歌时随机选择，原文件不会被复制或删除。
+                </div>
+              </div>
+            </div>
+            <div
+              class="option"
+              v-if="
+                playerStore.musicVideo && playerStore.musicVideoMode === 'song'
+              "
+            >
               <div class="option-name">音乐视频缓存</div>
               <div class="select-download-folder">
                 <div class="selected-folder" :title="videoFolder">
@@ -1710,6 +1850,84 @@ const clearFmRecent = () => {
                 cursor: pointer;
                 opacity: 0.8;
                 box-shadow: 0 0 0 1px black;
+              }
+            }
+            &.music-video-pool-option {
+              align-items: flex-start;
+            }
+            .music-video-pool-control {
+              width: 50vw;
+              display: flex;
+              flex-direction: column;
+              gap: 10px;
+              font: 12px SourceHanSansCN-Bold;
+              color: black;
+              .music-video-pool-head,
+              .music-video-pool-item,
+              .music-video-pool-actions {
+                display: flex;
+                align-items: center;
+              }
+              .music-video-pool-head {
+                min-height: 34px;
+                padding-left: 10px;
+                justify-content: space-between;
+                background-color: rgba(255, 255, 255, 0.35);
+              }
+              .music-video-pool-actions {
+                gap: 8px;
+                padding-right: 8px;
+              }
+              button {
+                min-width: 58px;
+                height: 26px;
+                padding: 0 10px;
+                border: 0;
+                border-radius: 0;
+                background-color: rgba(255, 255, 255, 0.55);
+                color: black;
+                font: 12px SourceHanSansCN-Bold;
+                cursor: pointer;
+                &:hover:not(:disabled),
+                &:focus-visible {
+                  box-shadow: 0 0 0 1px black;
+                  outline: none;
+                }
+                &:disabled {
+                  cursor: default;
+                  opacity: 0.45;
+                }
+              }
+              .music-video-pool-list {
+                max-height: 180px;
+                overflow-y: auto;
+              }
+              .music-video-pool-item {
+                min-height: 32px;
+                padding: 3px 8px 3px 10px;
+                gap: 10px;
+                background-color: rgba(255, 255, 255, 0.22);
+                border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+                &.is-missing {
+                  opacity: 0.62;
+                }
+              }
+              .music-video-pool-name {
+                min-width: 0;
+                flex: 1;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                text-align: left;
+              }
+              .music-video-pool-status {
+                color: #8a1f1f;
+                white-space: nowrap;
+              }
+              .music-video-pool-tip {
+                font-size: 10px;
+                text-align: left;
+                opacity: 0.68;
               }
             }
             .theme-color-control {

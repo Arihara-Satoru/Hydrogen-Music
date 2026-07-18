@@ -194,10 +194,18 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         </div>
 
         <Transition name="fade">
-            <MusicVideo class="music-video" v-if="playerStore.addMusicVideo"></MusicVideo>
+            <MusicVideo
+                class="music-video"
+                v-if="playerStore.addMusicVideo && playerStore.musicVideoMode !== 'pool'"
+            ></MusicVideo>
         </Transition>
         <Transition name="fade2">
-            <PlayerVideo class="back-video" v-show="playerStore.videoIsPlaying" v-if="playerStore.currentMusicVideo && playerStore.musicVideo"></PlayerVideo>
+            <PlayerVideo
+                class="back-video"
+                v-show="playerStore.videoIsPlaying"
+                v-if="playerStore.currentMusicVideo && playerStore.musicVideo"
+                :key="`${playerStore.currentMusicVideo.id}-${playerStore.currentMusicVideo.path}`"
+            ></PlayerVideo>
         </Transition>
     </div>
 </template>

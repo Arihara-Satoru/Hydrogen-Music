@@ -73,6 +73,8 @@ export const usePlayerStore = defineStore('playerStore', {
             localBase64Img: null, //如果是本地歌曲，获取封面
             forbidLastRouter: false, //在主动跳转router时禁用回到上次离开的路由的地址功能
             musicVideo: false,
+            musicVideoMode: 'song', // song: 单曲绑定视频，pool: 本地随机视频池
+            musicVideoPoolRevision: 0,
             addMusicVideo: false,
             currentMusicVideo: null,
             musicVideoDOM: null,
@@ -93,6 +95,6 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     persist: {
         storage: persistedPlayerStorage,
-        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','audioVisualizer','coverBlur','dynamicTheme','customThemeColor','chorusMode']
+        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','musicVideoMode','lyricBlur','showSongTranslation','audioVisualizer','coverBlur','dynamicTheme','customThemeColor','chorusMode']
     },
 })

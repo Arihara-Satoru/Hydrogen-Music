@@ -50,6 +50,57 @@ function normalizeDirectoryList(list) {
   );
 }
 
+const localMusicVideoExtensions = new Set([".mp4", ".m4v", ".webm", ".mov"]);
+
+function normalizeLocalMusicVideoPath(value) {
+  const rawPath =
+    typeof value === "string"
+      ? value
+      : typeof value?.path === "string"
+        ? value.path
+        : "";
+  if (!rawPath.trim()) return null;
+
+  const filePath = path.resolve(rawPath.trim());
+  return localMusicVideoExtensions.has(path.extname(filePath).toLowerCase())
+    ? filePath
+    : null;
+}
+
+function getLocalMusicVideoPathKey(filePath) {
+  const normalized = path.normalize(filePath);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function normalizeLocalMusicVideoPool(list) {
+  const videos = [];
+  const seen = new Set();
+
+  for (const value of Array.isArray(list) ? list : []) {
+    const filePath = normalizeLocalMusicVideoPath(value);
+    if (!filePath) continue;
+    const key = getLocalMusicVideoPathKey(filePath);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    videos.push(filePath);
+  }
+
+  return videos;
+}
+
+function describeLocalMusicVideo(filePath) {
+  let available = false;
+  try {
+    available = fs.statSync(filePath).isFile();
+  } catch (_) {}
+
+  return {
+    path: filePath,
+    name: path.basename(filePath),
+    available,
+  };
+}
+
 function normalizeSearchAssistLimit(value) {
   const num = Number.parseInt(value, 10);
   if (!Number.isFinite(num)) return 8;
@@ -574,6 +625,72 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   ipcMain.handle("system-fonts:list", () => listSystemFonts());
   ipcMain.handle("dialog:openDirectory", openDirectoryDialog);
   ipcMain.handle("dialog:openFile", openDirectoryDialog);
+
+  const readLocalMusicVideoPool = async () =>
+    normalizeLocalMusicVideoPool(
+      await musicVideoStore.get("localMusicVideoPool"),
+    );
+  const writeLocalMusicVideoPool = async (videos) => {
+    const normalized = normalizeLocalMusicVideoPool(videos);
+    await musicVideoStore.set("localMusicVideoPool", normalized);
+    return normalized;
+  };
+  const getLocalMusicVideoPoolPayload = async () => ({
+    videos: (await readLocalMusicVideoPool()).map(describeLocalMusicVideo),
+  });
+
+  ipcMain.handle("music-video-pool:get", getLocalMusicVideoPoolPayload);
+  ipcMain.handle("music-video-pool:add", async () => {
+    const currentVideos = await readLocalMusicVideoPool();
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: "选择本地音乐视频",
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        {
+          name: "视频文件",
+          extensions: ["mp4", "m4v", "webm", "mov"],
+        },
+      ],
+    });
+
+    if (canceled) {
+      return {
+        canceled: true,
+        addedCount: 0,
+        ...(await getLocalMusicVideoPoolPayload()),
+      };
+    }
+
+    // ponytail: keep user videos as external references; add managed imports/transcoding only if codec support becomes a real need.
+    const selectedVideos = normalizeLocalMusicVideoPool(filePaths).filter(
+      (filePath) => describeLocalMusicVideo(filePath).available,
+    );
+    const nextVideos = await writeLocalMusicVideoPool([
+      ...currentVideos,
+      ...selectedVideos,
+    ]);
+
+    return {
+      canceled: false,
+      addedCount: nextVideos.length - currentVideos.length,
+      videos: nextVideos.map(describeLocalMusicVideo),
+    };
+  });
+  ipcMain.handle("music-video-pool:remove", async (_event, filePath) => {
+    const normalizedPath = normalizeLocalMusicVideoPath(filePath);
+    if (!normalizedPath) return getLocalMusicVideoPoolPayload();
+
+    const targetKey = getLocalMusicVideoPathKey(normalizedPath);
+    const nextVideos = (await readLocalMusicVideoPool()).filter(
+      (videoPath) => getLocalMusicVideoPathKey(videoPath) !== targetKey,
+    );
+    await writeLocalMusicVideoPool(nextVideos);
+    return { videos: nextVideos.map(describeLocalMusicVideo) };
+  });
+  ipcMain.handle("music-video-pool:clear", async () => {
+    await writeLocalMusicVideoPool([]);
+    return { videos: [] };
+  });
   ipcMain.on("register-shortcuts", () => {
     registerShortcuts(win, app);
   });
@@ -607,6 +724,9 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     const rootPath = path.resolve(folderPath);
     const musicVideo = await musicVideoStore.get("musicVideo");
     if (!Array.isArray(musicVideo)) return 0;
+    const externalPoolPaths = new Set(
+      (await readLocalMusicVideoPool()).map(getLocalMusicVideoPathKey),
+    );
 
     let deleted = 0;
     for (const item of musicVideo) {
@@ -614,6 +734,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       if (!itemPath) continue;
 
       const filePath = path.resolve(itemPath);
+      if (externalPoolPaths.has(getLocalMusicVideoPathKey(filePath))) continue;
       if (filePath !== rootPath && !filePath.startsWith(rootPath + path.sep)) {
         continue;
       }
@@ -922,10 +1043,22 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     const folderPath = settings.local.videoFolder;
     if (!folderPath) return "noSavePath";
     const musicVideo = await musicVideoStore.get("musicVideo");
+    const localMusicVideoPool = await readLocalMusicVideoPool();
+    const referencedVideoPaths = new Set(
+      [
+        ...(Array.isArray(musicVideo) ? musicVideo : []).map(
+          (video) => video?.path,
+        ),
+        ...localMusicVideoPool,
+      ]
+        .map(normalizeLocalMusicVideoPath)
+        .filter(Boolean)
+        .map(getLocalMusicVideoPathKey),
+    );
     const files = fs.readdirSync(folderPath);
     files.forEach((filename) => {
       const filePath = path.join(folderPath, filename);
-      if (!musicVideo.some((video) => video.path == filePath)) {
+      if (!referencedVideoPaths.has(getLocalMusicVideoPathKey(filePath))) {
         fs.unlinkSync(filePath);
       }
     });
