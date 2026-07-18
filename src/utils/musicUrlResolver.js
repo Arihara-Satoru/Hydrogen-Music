@@ -35,11 +35,14 @@ function extractPlayableUrl(value) {
         return ''
     }
     if (typeof value !== 'object') return ''
-    const direct = value.url || value.play_url || value.playurl || value.music_url || value.downurl
-    if (direct) return extractPlayableUrl(direct)
-    if (Array.isArray(value.backupdownurl) && value.backupdownurl[0]) return value.backupdownurl[0]
-    if (Array.isArray(value.tracker_url) && value.tracker_url[0]) return value.tracker_url[0]
-    return extractPlayableUrl(value.data)
+    return extractPlayableUrl(
+        value.url
+        || value.play_url
+        || value.playurl
+        || value.music_url
+        || value.downurl
+        || value.data
+    )
 }
 
 /**
@@ -49,26 +52,18 @@ function extractPlayableUrl(value) {
 async function requestTrack(song, level) {
     // 云盘歌曲优先走酷狗专用接口，拿不到时再回退到普通歌曲地址接口。
     if (song && typeof song === 'object' && song.source === 'cloud') {
-        const cloudHash = song?.hash || song?.cloudUrlParams?.hash
-        if (cloudHash) {
-            try {
-                const cloudUrlResult = await getCloudDiskSongUrl({
-                    hash: cloudHash,
-                    album_id: song?.cloudUrlParams?.album_id,
-                    album_audio_id: song?.album_audio_id || song?.cloudUrlParams?.album_audio_id,
-                    audio_id: song?.cloudUrlParams?.audio_id,
-                    name: song?.cloudUrlParams?.name || song?.name,
-                })
-                const cloudUrl = extractPlayableUrl(cloudUrlResult?.data || cloudUrlResult)
-                if (cloudUrl) {
-                    return {
-                        url: cloudUrl,
-                        level,
-                        type: cloudUrlResult?.data?.extName || cloudUrlResult?.data?.ext || cloudUrlResult?.extName || 'mp3',
-                    }
-                }
-            } catch (error) {
-                console.warn('云盘专用地址获取失败，回退到普通歌曲接口:', error)
+        const cloudUrlResult = await getCloudDiskSongUrl({
+            hash: song?.hash || song?.cloudUrlParams?.hash,
+            album_id: song?.cloudUrlParams?.album_id,
+            album_audio_id: song?.album_audio_id || song?.cloudUrlParams?.album_audio_id,
+            name: song?.cloudUrlParams?.name || song?.name,
+        })
+        const cloudUrl = extractPlayableUrl(cloudUrlResult?.data || cloudUrlResult)
+        if (cloudUrl) {
+            return {
+                url: cloudUrl,
+                level,
+                type: cloudUrlResult?.data?.extName || cloudUrlResult?.data?.ext || 'mp3',
             }
         }
     }

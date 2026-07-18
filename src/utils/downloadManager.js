@@ -89,11 +89,11 @@ export const initDownloadManager = () => {
             return
         }
 
-        const id = currentItem.hash || currentItem.id
+        let id = downloadList.value[currentIndex].hash
         checkMusic(id).then(async result => {
             if(result.success == true) {
                 const preferredQuality = getPreferredQuality(quality.value)
-                resolveTrackByQualityPreference(currentItem, preferredQuality).then(async trackInfo => {
+                resolveTrackByQualityPreference(id, preferredQuality).then(async trackInfo => {
                     if (!trackInfo || !trackInfo.url) {
                         noticeOpen("该歌曲无法下载！", 2)
                         downloadList.value.splice(currentIndex, 1)

@@ -1,102 +1,31 @@
 import request from "../utils/request";
 import { normalizePlaylistSong } from "./playlist";
 
-const DEFAULT_CLOUD_PAGE_SIZE = 100;
-const MAX_AUTO_PAGES = 100;
-
-function firstFiniteNumber(...values) {
-  for (const value of values) {
-    if (value === null || value === undefined || value === "") continue;
-    const number = Number(value);
-    if (Number.isFinite(number)) return number;
-  }
-  return null;
-}
-
-function normalizeCloudTimestamp(value) {
-  if (value === null || value === undefined || value === "") return null;
-
-  const number = Number(value);
-  if (Number.isFinite(number) && number > 0) {
-    return number < 1e12 ? number * 1000 : number;
-  }
-
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getCloudResponseParts(result) {
-  const root = result && typeof result === "object" ? result : {};
-  const payload = root?.data && typeof root.data === "object" ? root.data : root;
-  return { root, payload };
-}
-
-function assertCloudResponseSucceeded(root) {
-  const errorCode = firstFiniteNumber(root?.error_code, root?.errcode);
-  const status = firstFiniteNumber(root?.status);
-  const failed = (errorCode !== null && errorCode !== 0)
-    || (status !== null && status !== 1 && status !== 200);
-
-  if (!failed) return;
-
-  const message = root?.error_msg || root?.errmsg || root?.message || root?.msg || "获取云盘数据失败";
-  const error = new Error(message);
-  error.code = errorCode ?? status;
-  throw error;
-}
-
-function extractCloudList(root, payload) {
-  const candidates = [
-    payload,
-    payload?.info,
-    payload?.list,
-    payload?.songs,
-    payload?.items,
-    payload?.data,
-    payload?.data?.info,
-    payload?.data?.list,
-    root?.info,
-    root?.list,
-    root?.songs,
-  ];
-  return candidates.find(Array.isArray) || [];
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  return [value];
 }
 
 function normalizeCloudPagination(params = {}) {
-  const pagesize = Number(params?.pagesize || params?.limit || DEFAULT_CLOUD_PAGE_SIZE);
-  const safePageSize = Number.isFinite(pagesize) && pagesize > 0
-    ? Math.floor(pagesize)
-    : DEFAULT_CLOUD_PAGE_SIZE;
+  const pagesize = Number(params?.pagesize || params?.limit || 30);
+  const safePageSize = Number.isFinite(pagesize) && pagesize > 0 ? pagesize : 30;
   const page = Number(
     params?.page || (params?.offset != null ? Math.floor(Number(params.offset) / safePageSize) + 1 : 1)
   );
 
   return {
-    page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
+    page: Number.isFinite(page) && page > 0 ? page : 1,
     pagesize: safePageSize,
   };
 }
 
 function normalizeCloudSong(item = {}) {
   const baseSong = normalizePlaylistSong(item?.simpleSong || item?.simple_song || item?.song || item?.music || item);
-  const fileName = item?.fileName || item?.FileName || item?.file_name || item?.filename || item?.name || baseSong?.name || "未知文件";
-  const songName = item?.songName || item?.song_name || item?.songname || item?.audio_name || item?.name || baseSong?.name || fileName || "未知歌曲";
-  const fileSize = firstFiniteNumber(
-    item?.fileSize,
-    item?.FileSize,
-    item?.file_size,
-    item?.size,
-    item?.filesize
-  ) || 0;
-  const addTime = normalizeCloudTimestamp(
-    item?.addTime
-      ?? item?.add_time
-      ?? item?.addtime
-      ?? item?.time
-      ?? item?.createTime
-      ?? item?.create_time
-      ?? item?.upload_time
-  );
+  const fileName = item?.fileName || item?.file_name || item?.filename || item?.name || baseSong?.name || "未知文件";
+  const songName = item?.songName || item?.song_name || item?.name || baseSong?.name || "未知歌曲";
+  const fileSize = Number(item?.fileSize || item?.file_size || item?.size || item?.filesize || 0) || 0;
+  const addTime = item?.addTime || item?.add_time || item?.time || item?.createTime || Date.now();
   const cloudHash = String(
     item?.hash ||
       item?.FileHash ||
@@ -104,14 +33,12 @@ function normalizeCloudSong(item = {}) {
       baseSong?.hash ||
       ""
   ).trim();
-  const cloudAudioId = item?.audio_id || item?.audioId || "";
-  const cloudAlbumAudioId = item?.album_audio_id || item?.albumAudioId || baseSong?.album_audio_id || "";
-  const cloudFileId = item?.id || item?.file_id || item?.fileid || "";
-  const normalizedId = cloudFileId || baseSong?.id || cloudAlbumAudioId || cloudAudioId || cloudHash || fileName;
+  const cloudAlbumAudioId = item?.album_audio_id || item?.albumAudioId || item?.audio_id || baseSong?.album_audio_id || baseSong?.id || "";
+  const normalizedId = baseSong?.id || cloudAlbumAudioId || cloudHash || item?.id || fileName;
 
   return {
     ...item,
-    id: normalizedId,
+    id: item?.id || normalizedId,
     songName,
     fileName,
     fileSize,
@@ -128,7 +55,6 @@ function normalizeCloudSong(item = {}) {
         hash: cloudHash || undefined,
         album_id: item?.album_id || baseSong?.al?.id || baseSong?.album?.id || undefined,
         album_audio_id: cloudAlbumAudioId || undefined,
-        audio_id: cloudAudioId || undefined,
         name: songName,
       },
       source: "cloud",
@@ -137,80 +63,32 @@ function normalizeCloudSong(item = {}) {
   };
 }
 
-async function getCloudDiskPage(params) {
-  const result = await request({
-    url: "/user/cloud",
-    method: "get",
-    params,
-  });
-  const { root, payload } = getCloudResponseParts(result);
-  assertCloudResponseSucceeded(root);
-  if (payload !== root) assertCloudResponseSucceeded(payload);
-
-  const list = extractCloudList(root, payload).map((item) => normalizeCloudSong(item));
-  const total = firstFiniteNumber(
-    payload?.total,
-    payload?.count,
-    payload?.total_count,
-    payload?.total_num,
-    root?.total,
-    root?.count
-  );
-
-  return {
-    ...(result && typeof result === "object" && !Array.isArray(result) ? result : {}),
-    count: total ?? list.length,
-    totalKnown: total !== null,
-    size: firstFiniteNumber(
-      payload?.used_size,
-      payload?.usedSize,
-      payload?.size,
-      payload?.total_size,
-      root?.used_size,
-      root?.size
-    ) || 0,
-    maxSize: firstFiniteNumber(
-      payload?.max_size,
-      payload?.maxSize,
-      payload?.capacity,
-      root?.max_size,
-      root?.maxSize
-    ) || 0,
-    data: list,
-  };
-}
-
 /**
  * 获取用户云盘数据。
  * 酷狗接口使用 page/pagesize 分页，这里兼容旧调用方的 limit/offset 参数。
  */
-export async function getCloudDiskData(params = {}) {
-  const pagination = normalizeCloudPagination(params);
-  const songs = [];
-  let firstPage = null;
-  let total = null;
-
-  // ponytail: cap automatic paging at 100 requests; switch to virtual/infinite paging if accounts can exceed this.
-  for (let index = 0; index < MAX_AUTO_PAGES; index += 1) {
-    const pageResult = await getCloudDiskPage({
-      ...params,
-      page: pagination.page + index,
-      pagesize: pagination.pagesize,
-    });
-    firstPage ||= pageResult;
-
-    const pageSongs = Array.isArray(pageResult.data) ? pageResult.data : [];
-    songs.push(...pageSongs);
-    if (pageResult.totalKnown) total = pageResult.count;
-
-    if (pageSongs.length < pagination.pagesize || (total !== null && total > 0 && songs.length >= total)) break;
-  }
-
-  return {
-    ...(firstPage || {}),
-    count: total === null ? songs.length : Math.max(total, songs.length),
-    data: songs,
+export function getCloudDiskData(params = {}) {
+  const requestParams = {
+    ...params,
+    ...normalizeCloudPagination(params),
   };
+
+  return request({
+    url: "/user/cloud",
+    method: "get",
+    params: requestParams,
+  }).then((result) => {
+    const payload = result?.data || result || {};
+    const list = toArray(payload?.list || payload?.songs || payload?.data || payload).map((item) => normalizeCloudSong(item));
+
+    return {
+      ...result,
+      count: Number(payload?.total || payload?.count || list.length) || 0,
+      size: Number(payload?.used_size || payload?.size || 0) || 0,
+      maxSize: Number(payload?.max_size || payload?.maxSize || 0) || 0,
+      data: list,
+    };
+  });
 }
 
 /**
