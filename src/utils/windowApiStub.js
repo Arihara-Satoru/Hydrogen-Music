@@ -81,6 +81,7 @@
     updateDownloadProgress: noop,
     updateDownloaded: noop,
     updateError: noop,
+    waitForKugouApiReady: noopResolve({ ready: true }),
     checkForUpdate: noop,
     downloadUpdate: noop,
     installUpdate: noop,

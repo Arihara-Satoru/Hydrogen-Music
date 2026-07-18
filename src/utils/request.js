@@ -18,6 +18,19 @@ const request = axios.create({
 const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
 
 let cachedAuthCookieString = null
+let kugouApiReadyPromise = null
+
+function waitForKugouApiReady() {
+  const api = globalThis.windowApi
+  if (typeof api?.waitForKugouApiReady !== 'function') return Promise.resolve({ ready: true })
+  if (!kugouApiReadyPromise) {
+    kugouApiReadyPromise = api.waitForKugouApiReady().catch((error) => {
+      kugouApiReadyPromise = null
+      throw error
+    })
+  }
+  return kugouApiReadyPromise
+}
 
 function buildAuthCookieString() {
   if (cachedAuthCookieString !== null) {
@@ -55,7 +68,14 @@ function triggerAutoLogout(reason) {
   noticeOpen(reason || '登录状态已失效，已自动退出，请重新登录', 3)
 }
 
-request.interceptors.request.use(function (config) {
+request.interceptors.request.use(async function (config) {
+  const apiStatus = await waitForKugouApiReady()
+  if (apiStatus?.ready === false) {
+    const error = new Error(apiStatus.error || 'kugou-api-unavailable')
+    error.config = config
+    throw error
+  }
+
   config.params = config.params || {}
   config.headers = config.headers || {}
 

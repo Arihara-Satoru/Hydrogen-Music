@@ -58,6 +58,15 @@ async function start() {
 
     const appExt = await kugouApi.startService();
     kugouApiServer = appExt && appExt.service;
+    if (
+      typeof appExt?.get === "function" &&
+      workerData.healthPath &&
+      workerData.healthToken
+    ) {
+      appExt.get(workerData.healthPath, (_req, res) => {
+        res.status(200).json({ service: workerData.healthToken });
+      });
+    }
     await waitForServerListening(kugouApiServer);
     post("ready");
   } catch (error) {

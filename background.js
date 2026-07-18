@@ -35,11 +35,17 @@ let forceQuit = false;
 const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
 let splashWindow = null;
-// 由 createWindow() 内部赋值，供 app.whenReady() 在 API 就绪后调用
+// 由 createWindow() 内部赋值，供 app.whenReady() 并行启动播放器内容
 let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
 let hasDevServer = false;
+let kugouApiReadyPromise = Promise.resolve({
+  ready: false,
+  error: "kugou-api-not-started",
+});
+
+ipcMain.handle("wait-for-kugou-api-ready", () => kugouApiReadyPromise);
 
 const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
   new Promise((resolve) => {
@@ -186,8 +192,7 @@ if (!gotTheLock) {
       splashWindow.setBounds(myWindow.getBounds());
     }
     setSplashStatus("正在检查本地数据...", 38);
-    // 然后启动 API 后端，等待就绪后再加载前端页面内容
-    // 避免前端在 API 尚未就绪时发起请求导致"请求错误"
+    // 后端与前端并行启动；渲染层的 API 请求会等待服务就绪。
     // 数据迁移：清理旧版可能遗留的不兼容数据
     try {
       const Store = await getElectronStore();
@@ -250,34 +255,42 @@ if (!gotTheLock) {
     } catch (_) {}
 
     setSplashStatus("正在启动音乐服务...", 56);
-    const kugouApiResult = await startKugouMusicApi().catch((err) => {
+    kugouApiReadyPromise = startKugouMusicApi().catch((err) => {
       console.error("KuGou API probe failed:", err);
       return { ready: false, error: err?.message || "unknown error" };
     });
-    const payload =
-      kugouApiResult && typeof kugouApiResult == "object"
-        ? {
-            ready: !!kugouApiResult.ready,
-            ...(kugouApiResult.error ? { error: kugouApiResult.error } : {}),
-          }
-        : { ready: true };
     setSplashStatus("正在加载播放器...", 82);
-    if (payload.ready) {
-      console.log("KuGou API ready");
-      if (typeof loadMainContentRef === "function") loadMainContentRef();
-    } else {
+    if (typeof loadMainContentRef === "function") loadMainContentRef();
+
+    void kugouApiReadyPromise.then((result) => {
+      const payload =
+        result && typeof result == "object"
+          ? {
+              ready: !!result.ready,
+              ...(result.error ? { error: result.error } : {}),
+            }
+          : { ready: true };
+      if (payload.ready) {
+        console.log("KuGou API ready");
+        return;
+      }
+
       console.warn("KuGou API not ready:", payload.error || "unknown error");
-      // 即使 API 启动失败，也要加载前端内容让用户能操作（部分功能可能受限）
-      if (typeof loadMainContentRef === "function") loadMainContentRef();
-      // 将详细的 API 错误信息发送到渲染进程，便于诊断
-      if (myWindow && !myWindow.isDestroyed()) {
+      if (!myWindow || myWindow.isDestroyed()) return;
+      const sendError = () => {
+        if (!myWindow || myWindow.isDestroyed()) return;
         myWindow.webContents.send("kugou-api-error", {
           message: payload.error || "未知错误",
           detail:
             "后端服务启动失败，部分功能（搜索、播放等）可能不可用。请检查日志或重装应用。",
         });
+      };
+      if (myWindow.webContents.isLoadingMainFrame()) {
+        myWindow.webContents.once("did-finish-load", sendError);
+      } else {
+        sendError();
       }
-    }
+    });
     app.on("activate", () => {
       // 在macOS上，当点击dock图标并且没有其他窗口打开时，
       // 应该重新创建一个窗口。
@@ -438,9 +451,7 @@ const createWindow = () => {
     }
   });
 
-  // 窗口创建时不立即加载内容，等待 API 就绪后再通过 loadMainContentRef() 加载
-  // 避免前端在 API 后端尚未启动完成时发起请求导致"请求错误"
-  // 见 app.whenReady() 中的调用顺序
+  // 窗口结构创建后由 app.whenReady() 调用；API 请求会在渲染层等待服务就绪。
   loadMainContentRef = () => {
     if (!win || win.isDestroyed()) return;
     // 开发模式下自动打开 DevTools，便于调试启动时的请求

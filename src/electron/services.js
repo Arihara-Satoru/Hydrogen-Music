@@ -8,7 +8,9 @@ const API_PORT = 36530;
 const API_READY_TIMEOUT_MS = 12000;
 const API_READY_POLL_INTERVAL_MS = 150;
 const API_READY_SETTLE_DELAY_MS = 250;
-const API_WORKER_READY_TIMEOUT_MS = 45000;
+const API_WORKER_SLOW_WARNING_MS = 15000;
+const API_HEALTH_PATH = "/__hydrogen/health";
+const API_HEALTH_TOKEN = "hydrogen-kugou-api-v1";
 
 let kugouApiWorker = null;
 let kugouApiStartupPromise = null;
@@ -105,11 +107,11 @@ function probeServer(url, timeoutMs = 1000) {
 
 /**
  * 验证端口上的服务是否真的是 KuGou API（而非旧版残留或其他程序）
- * 通过请求一个已知的 KuGou API 端点来确认身份
+ * 通过只访问本机的健康检查端点确认身份，避免启动被上游网络拖慢。
  */
-function verifyApiIdentity(port, timeoutMs = 3000) {
+function verifyApiIdentity(port, timeoutMs = 1000) {
   return new Promise((resolve) => {
-    const url = `http://127.0.0.1:${port}/lyric?id=1`;
+    const url = `http://127.0.0.1:${port}${API_HEALTH_PATH}`;
     const req = http.get(url, { timeout: timeoutMs }, (res) => {
       let body = "";
       res.on("data", (chunk) => {
@@ -118,11 +120,7 @@ function verifyApiIdentity(port, timeoutMs = 3000) {
       res.on("end", () => {
         try {
           const data = JSON.parse(body);
-          // KuGou API 响应特征：包含 errcode / data 等字段
-          const isKugouApi =
-            data &&
-            typeof data === "object" &&
-            ("errcode" in data || "data" in data || "status" in data);
+          const isKugouApi = data?.service === API_HEALTH_TOKEN;
           if (isKugouApi) {
             console.log("[KuGou API] 端口已有 KuGou API 运行，身份验证通过");
             resolve(true);
@@ -179,6 +177,8 @@ function startKugouApiWorker(backendModule) {
       port: API_PORT,
       host: "127.0.0.1",
       platform: process.env.platform || "lite",
+      healthPath: API_HEALTH_PATH,
+      healthToken: API_HEALTH_TOKEN,
     },
   });
 
@@ -208,13 +208,14 @@ function startKugouApiWorker(backendModule) {
   return worker;
 }
 
-function waitForWorkerReady(worker, timeoutMs = API_WORKER_READY_TIMEOUT_MS) {
+function waitForWorkerReady(worker, slowWarningMs = API_WORKER_SLOW_WARNING_MS) {
   return new Promise((resolve, reject) => {
     let cleanup = () => {};
     const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("kugou-api-worker-ready-timeout"));
-    }, timeoutMs);
+      console.warn(
+        `[KuGou API] worker 启动已超过 ${slowWarningMs}ms，继续在后台等待`,
+      );
+    }, slowWarningMs);
     cleanup = () => {
       clearTimeout(timer);
       worker.off("message", onMessage);
@@ -356,5 +357,8 @@ module.exports = {
   API_READY_TIMEOUT_MS,
   API_READY_POLL_INTERVAL_MS,
   API_READY_SETTLE_DELAY_MS,
-  API_WORKER_READY_TIMEOUT_MS,
+  API_WORKER_SLOW_WARNING_MS,
+  API_HEALTH_PATH,
+  API_HEALTH_TOKEN,
+  waitForWorkerReady,
 };

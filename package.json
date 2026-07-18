@@ -13,6 +13,7 @@
     "build": "vite build",
     "check:dynamic-theme": "node scripts/check-dynamic-theme.mjs",
     "check:music-video-pool": "node scripts/check-music-video-pool.mjs",
+    "check:player-restore": "node scripts/check-player-restore.mjs",
     "check:playback-performance": "node scripts/check-playback-performance.mjs",
     "check:platform-builds": "node scripts/check-platform-builds.cjs",
     "check:siren-duration-concurrency": "node scripts/check-siren-duration-concurrency.mjs",

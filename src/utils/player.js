@@ -309,35 +309,44 @@ function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
   }
 }
 
+function getAdjacentSongInfo(direction) {
+  if (listInfo.value && listInfo.value.type === "personalfm") return null;
+  const isShuffle = playMode.value === 3;
+  const list = isShuffle ? shuffledList.value : songList.value;
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  const step = direction < 0 ? -1 : 1;
+  const storedIndex = isShuffle ? shuffleIndex.value : currentIndex.value;
+  const targetId = songId.value == null ? "" : String(songId.value);
+  let activeIndex =
+    Number.isInteger(storedIndex) && storedIndex >= 0 && storedIndex < list.length
+      ? storedIndex
+      : -1;
+
+  if (
+    targetId &&
+    (activeIndex < 0 || String(list[activeIndex]?.id ?? "") !== targetId)
+  ) {
+    activeIndex = list.findIndex(
+      (song) => song && String(song.id ?? "") === targetId,
+    );
+  }
+  if (activeIndex < 0) activeIndex = step > 0 ? list.length - 1 : 0;
+
+  for (let offset = 1; offset <= list.length; offset++) {
+    const index =
+      ((activeIndex + step * offset) % list.length + list.length) % list.length;
+    const id = list[index]?.id;
+    if (id !== undefined && id !== null && id !== "") return { id, index };
+  }
+  return null;
+}
+
 /**
  * 计算副歌结束后下一首将要播放的歌曲信息（与 playNext 逻辑一致）
  */
 function getNextSongInfo() {
-  if (listInfo.value && listInfo.value.type === "personalfm") return null;
-  if (!Array.isArray(songList.value) || songList.value.length === 0)
-    return null;
-
-  let id = null;
-  let index = null;
-  if (playMode.value !== 3) {
-    if (currentIndex.value >= songList.value.length - 1) {
-      index = 0;
-    } else {
-      index = currentIndex.value + 1;
-    }
-    id = songList.value[index]?.id;
-  } else {
-    if (!Array.isArray(shuffledList.value) || shuffledList.value.length === 0)
-      return null;
-    if (shuffleIndex.value >= shuffledList.value.length - 1) {
-      index = 0;
-    } else {
-      index = shuffleIndex.value + 1;
-    }
-    id = shuffledList.value[index]?.id;
-  }
-  if (id == null) return null;
-  return { id, index };
+  return getAdjacentSongInfo(1);
 }
 
 /**
@@ -1355,6 +1364,29 @@ function startRestoredMusicAfterWidgetEnter() {
   setTimeout(() => startMusic(), 650);
 }
 
+function hasSameSongIds(firstList, secondList) {
+  if (
+    !Array.isArray(firstList) ||
+    !Array.isArray(secondList) ||
+    firstList.length !== secondList.length
+  )
+    return false;
+
+  const normalizeIds = (list) =>
+    list
+      .map((song) =>
+        song?.id === undefined || song?.id === null || song?.id === ""
+          ? null
+          : String(song.id),
+      )
+      .sort();
+  const firstIds = normalizeIds(firstList);
+  return (
+    !firstIds.includes(null) &&
+    JSON.stringify(firstIds) === JSON.stringify(normalizeIds(secondList))
+  );
+}
+
 export function loadLastSong(options = {}) {
   if (loadLast) {
     const autoPlay = options.autoPlay === true;
@@ -1374,16 +1406,59 @@ export function loadLastSong(options = {}) {
         }
       }
       syncWindowsTaskbarPlaybackState();
-      if (songList.value) {
-        const restoreIndex =
-          Number.isInteger(currentIndex.value) && currentIndex.value >= 0
-            ? currentIndex.value
-            : 0;
+      if (Array.isArray(songList.value) && songList.value.length > 0) {
+        const storedSongIndex = findSongIndexById(songId.value);
+        let restoreIndex =
+          storedSongIndex >= 0
+            ? storedSongIndex
+            : Number.isInteger(currentIndex.value) &&
+                currentIndex.value >= 0 &&
+                currentIndex.value < songList.value.length
+              ? currentIndex.value
+              : 0;
+        if (
+          songList.value[restoreIndex]?.id === undefined ||
+          songList.value[restoreIndex]?.id === null ||
+          songList.value[restoreIndex]?.id === ""
+        ) {
+          restoreIndex = songList.value.findIndex(
+            (song) =>
+              song?.id !== undefined && song?.id !== null && song?.id !== "",
+          );
+        }
         const restoredSong = songList.value[restoreIndex];
         if (!restoredSong) return;
 
-        // 恢复播放状态时，需要先设置歌曲ID
-        setId(restoredSong.id, restoreIndex);
+        if (playMode.value === 3) {
+          const restoredShuffleList = Array.isArray(shuffledList.value)
+            ? shuffledList.value
+            : [];
+          const storedShuffleIndex =
+            Number.isInteger(shuffleIndex.value) &&
+            shuffleIndex.value >= 0 &&
+            shuffleIndex.value < restoredShuffleList.length &&
+            String(restoredShuffleList[shuffleIndex.value]?.id ?? "") ===
+              String(restoredSong.id)
+              ? shuffleIndex.value
+              : restoredShuffleList.findIndex(
+                  (song) =>
+                    song && String(song.id ?? "") === String(restoredSong.id),
+                );
+
+          if (
+            storedShuffleIndex >= 0 &&
+            hasSameSongIds(songList.value, restoredShuffleList)
+          ) {
+            setId(restoredSong.id, storedShuffleIndex);
+          } else {
+            // 持久化的随机队列与主列表失配时，以当前歌曲为队首重建。
+            setId(restoredSong.id, 0);
+            setShuffledList();
+            savePlaylist();
+          }
+        } else {
+          setId(restoredSong.id, restoreIndex);
+        }
         syncWindowsTaskbarPlaybackState();
 
         if (restoredSong.type == "local") {
@@ -2454,35 +2529,8 @@ export function playLast() {
     return;
   }
 
-  // 非FM模式下的原有逻辑
-  const list = Array.isArray(songList.value) ? songList.value : [];
-  const shuffleList = Array.isArray(shuffledList.value)
-    ? shuffledList.value
-    : [];
-  if (playMode.value != 3 && list.length === 0) return;
-  if (playMode.value == 3 && shuffleList.length === 0) return;
-
-  let id = null;
-  let index = null;
-  if (playMode.value != 3) {
-    if (currentIndex.value - 1 < 0) {
-      index = list.length - 1;
-      id = list[index].id;
-    } else {
-      id = list[currentIndex.value - 1].id;
-      index = currentIndex.value - 1;
-    }
-  }
-  if (playMode.value == 3) {
-    if (shuffleIndex.value - 1 < 0) {
-      index = shuffleList.length - 1;
-      id = shuffleList[index].id;
-    } else {
-      index = shuffleIndex.value - 1;
-      id = shuffleList[index].id;
-    }
-  }
-  addSong(id, index, true);
+  const previous = getAdjacentSongInfo(-1);
+  if (previous) addSong(previous.id, previous.index, true);
 }
 export function playNext() {
   // FM模式下的特殊逻辑：触发自定义事件播放下一首FM歌曲
@@ -2495,35 +2543,8 @@ export function playNext() {
     return;
   }
 
-  // 非FM模式下的原有逻辑
-  const list = Array.isArray(songList.value) ? songList.value : [];
-  const shuffleList = Array.isArray(shuffledList.value)
-    ? shuffledList.value
-    : [];
-  if (playMode.value != 3 && list.length === 0) return;
-  if (playMode.value == 3 && shuffleList.length === 0) return;
-
-  let id = null;
-  let index = null;
-  if (playMode.value != 3) {
-    if (list.length - 1 == currentIndex.value) {
-      index = 0;
-      id = list[index].id;
-    } else {
-      index = currentIndex.value + 1;
-      id = list[index].id;
-    }
-  }
-  if (playMode.value == 3) {
-    if (shuffleIndex.value == shuffleList.length - 1) {
-      index = 0;
-      id = shuffleList[index].id;
-    } else {
-      index = shuffleIndex.value + 1;
-      id = shuffleList[index].id;
-    }
-  }
-  addSong(id, index, true);
+  const next = getNextSongInfo();
+  if (next) addSong(next.id, next.index, true);
 }
 const clearLycAnimation = () => {
   isLyricDelay.value = false;

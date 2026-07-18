@@ -175,6 +175,10 @@ function onKugouApiError(callback) {
   ipcRenderer.on("kugou-api-error", (_event, info) => callback?.(info));
 }
 
+function waitForKugouApiReady() {
+  return ipcRenderer.invoke("wait-for-kugou-api-ready");
+}
+
 function sendMetaData(metadata) {
   ipcRenderer.send("metadata", metadata);
 }
@@ -281,6 +285,7 @@ contextBridge.exposeInMainWorld("windowApi", {
   updateDownloaded,
   updateError,
   onKugouApiError,
+  waitForKugouApiReady,
   checkForUpdate,
   downloadUpdate,
   installUpdate,
