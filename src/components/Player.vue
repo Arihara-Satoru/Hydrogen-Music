@@ -545,7 +545,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     t="1673355036226"
-                    v-if="musicVideo"
+                    v-if="musicVideo && playerStore.musicVideoMode !== 'pool'"
                     @click="toAddMusicVideo()"
                     v-delayed-tooltip="'添加视频'"
                     class="icon"

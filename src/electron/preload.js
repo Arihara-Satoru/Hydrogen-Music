@@ -264,6 +264,11 @@ contextBridge.exposeInMainWorld("windowApi", {
   downloadVideoProgress,
   cancelDownloadMusicVideo,
   musicVideoIsExists: (obj) => ipcRenderer.invoke("music-video-isexists", obj),
+  getMusicVideoPool: () => ipcRenderer.invoke("music-video-pool:get"),
+  addMusicVideoPoolFiles: () => ipcRenderer.invoke("music-video-pool:add"),
+  removeMusicVideoPoolFile: (filePath) =>
+    ipcRenderer.invoke("music-video-pool:remove", filePath),
+  clearMusicVideoPool: () => ipcRenderer.invoke("music-video-pool:clear"),
   clearUnusedVideo: (state) => ipcRenderer.invoke("clear-unused-video", state),
   deleteMusicVideo: (id) => ipcRenderer.invoke("delete-music-video", id),
   getLocalMusicLyric: (filePath, options) =>

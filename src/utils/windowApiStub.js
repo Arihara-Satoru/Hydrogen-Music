@@ -63,6 +63,7 @@
     getLocalMusicHashTracks: noopResolve({}),
     clearLocalMusicData: noop,
     openLocalFolder: noop,
+    openDirectory: noopResolve(""),
     openFile: noopResolve(""),
     toFileUrl: (path) => path || "",
     getLocalMusicImage: noopResolve(""),
@@ -101,6 +102,14 @@
 
     // ── 视频 ──
     musicVideoIsExists: noopResolve(false),
+    getMusicVideoPool: noopResolve({ videos: [] }),
+    addMusicVideoPoolFiles: noopResolve({
+      canceled: true,
+      addedCount: 0,
+      videos: [],
+    }),
+    removeMusicVideoPoolFile: noopResolve({ videos: [] }),
+    clearMusicVideoPool: noopResolve({ videos: [] }),
     clearUnusedVideo: noopResolve([]),
     deleteMusicVideo: noop,
     downloadVideoProgress: noop,

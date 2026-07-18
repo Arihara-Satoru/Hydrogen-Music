@@ -20,6 +20,7 @@ import { syncLyricIndexForSeek } from "../composables/usePlayerRuntime";
 import { schedulePlaylistCacheInvalidation } from "./cacheInvalidation";
 import { isLogin } from "./authority";
 import { createDecodedAudioPlayer } from "./webAudioGapless";
+import { pickMusicVideoPoolEntry } from "./musicVideoPool.mjs";
 import {
   PLAYBACK_TICK_FAST_INTERVAL_MS,
   subscribePlaybackTick,
@@ -54,6 +55,8 @@ const {
   widgetState,
   localBase64Img,
   musicVideo,
+  musicVideoMode,
+  musicVideoPoolRevision,
   currentMusicVideo,
   musicVideoDOM,
   videoIsPlaying,
@@ -1017,6 +1020,9 @@ function updateWindowTitleDock() {
 let currentTiming = null;
 let videoCheckInterval = null;
 let closedVideoMemory = new Set(); // 记录用户主动关闭视频的歌曲ID
+let musicVideoLoadToken = 0;
+let lastPoolVideoPath = "";
+const failedPoolVideoPaths = new Set();
 const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3]);
 let preFmPlayMode = null;
 const DEFAULT_FAVORITE_PLAYLIST_NAME = "我喜欢的音乐";
@@ -1132,37 +1138,82 @@ watch(
 /**
  * 基于当前歌曲ID检查并加载对应的视频
  */
+async function loadLocalMusicVideoPoolForSong(targetSongId, loadToken) {
+  try {
+    const result = await windowApi.getMusicVideoPool();
+    if (
+      loadToken !== musicVideoLoadToken ||
+      !musicVideo.value ||
+      musicVideoMode.value !== "pool" ||
+      songId.value !== targetSongId ||
+      closedVideoMemory.has(targetSongId)
+    ) {
+      return;
+    }
+
+    const entries = (Array.isArray(result?.videos) ? result.videos : []).filter(
+      (entry) => !failedPoolVideoPaths.has(entry?.path),
+    );
+    const selected = pickMusicVideoPoolEntry(entries, lastPoolVideoPath);
+    if (!selected) return;
+
+    lastPoolVideoPath = selected.path;
+    currentMusicVideo.value = {
+      id: targetSongId,
+      name: selected.name,
+      path: selected.path,
+      source: "local-pool",
+    };
+    videoIsPlaying.value = true;
+    playerShow.value = false;
+  } catch (error) {
+    if (loadToken === musicVideoLoadToken) {
+      console.error("加载本地音乐视频池失败:", error);
+    }
+  }
+}
+
 export function checkAndLoadVideoForCurrentSong() {
+  const targetSongId = songId.value;
+  const loadToken = ++musicVideoLoadToken;
+
   // 首先清理现有的视频状态
   unloadMusicVideo();
 
   // 检查是否启用了音乐视频功能
-  if (!musicVideo.value || !songId.value) {
+  if (!musicVideo.value || !targetSongId) {
     return;
   }
 
   // 检查用户是否主动关闭了该歌曲的视频显示
-  if (closedVideoMemory.has(songId.value)) {
+  if (closedVideoMemory.has(targetSongId)) {
+    return;
+  }
+
+  if (musicVideoMode.value === "pool") {
+    void loadLocalMusicVideoPoolForSong(targetSongId, loadToken);
     return;
   }
 
   // 立即检查当前歌曲是否有对应的视频文件
   windowApi
-    .musicVideoIsExists({ id: songId.value, method: "verify" })
+    .musicVideoIsExists({ id: targetSongId, method: "verify" })
     .then((result) => {
       // 验证歌曲ID是否仍然匹配（防止快速切歌）
       if (
+        loadToken === musicVideoLoadToken &&
+        musicVideoMode.value !== "pool" &&
         result &&
         result !== "404" &&
         result !== false &&
         result.data &&
         result.data.path &&
-        result.data.id === songId.value &&
+        result.data.id === targetSongId &&
         songId.value &&
-        songId.value === result.data.id
+        songId.value === targetSongId
       ) {
         // 再次检查记忆状态（防止异步过程中状态变化）
-        if (closedVideoMemory.has(songId.value)) {
+        if (closedVideoMemory.has(targetSongId)) {
           return;
         }
 
@@ -1172,10 +1223,12 @@ export function checkAndLoadVideoForCurrentSong() {
         setTimeout(() => {
           // 再次确认歌曲ID仍然匹配且未被用户关闭
           if (
-            songId.value === result.data.id &&
+            loadToken === musicVideoLoadToken &&
+            musicVideoMode.value !== "pool" &&
+            songId.value === targetSongId &&
             currentMusicVideo.value &&
-            currentMusicVideo.value.id === songId.value &&
-            !closedVideoMemory.has(songId.value)
+            currentMusicVideo.value.id === targetSongId &&
+            !closedVideoMemory.has(targetSongId)
           ) {
             // 根据歌曲类型启动对应的视频时间检查
             if (
@@ -1192,8 +1245,24 @@ export function checkAndLoadVideoForCurrentSong() {
       }
     })
     .catch((error) => {
-      console.error("检查视频文件时出错:", error);
+      if (loadToken === musicVideoLoadToken) {
+        console.error("检查视频文件时出错:", error);
+      }
     });
+}
+
+export function handleMusicVideoPlaybackError(filePath) {
+  if (
+    currentMusicVideo.value?.source !== "local-pool" ||
+    currentMusicVideo.value.path !== filePath
+  ) {
+    return false;
+  }
+
+  failedPoolVideoPaths.add(filePath);
+  noticeOpen("本地视频无法播放，已跳过该文件", 2);
+  checkAndLoadVideoForCurrentSong();
+  return true;
 }
 
 /**
@@ -1253,6 +1322,28 @@ export function reopenCurrentMusicVideo() {
 export function isVideoClosedByUser(songId) {
   return closedVideoMemory.has(songId);
 }
+
+watch(
+  [musicVideo, musicVideoMode, musicVideoPoolRevision],
+  ([enabled, mode, revision], [wasEnabled, previousMode, previousRevision]) => {
+    if (mode !== previousMode) {
+      closedVideoMemory.delete(songId.value);
+      failedPoolVideoPaths.clear();
+    } else if (revision !== previousRevision) {
+      failedPoolVideoPaths.clear();
+    }
+
+    if (!enabled) {
+      musicVideoLoadToken++;
+      unloadMusicVideo();
+      return;
+    }
+
+    if (!wasEnabled || mode !== previousMode || revision !== previousRevision) {
+      checkAndLoadVideoForCurrentSong();
+    }
+  },
+);
 
 function loadStoredPlaylist() {
   // 复用主进程保存的上次播放列表，避免再读一份渲染端缓存。
@@ -1823,53 +1914,8 @@ export function unloadMusicVideo() {
   }
 }
 export function loadMusicVideo(id) {
-  // 强制清理任何现有的视频状态
-  unloadMusicVideo();
-
-  // FM模式下需要稍长的延迟，等待FM切歌异步操作完成
-  const delay =
-    listInfo.value && listInfo.value.type === "personalfm" ? 300 : 100;
-
-  // 等待一个短暂的时间确保清理完成，然后检查视频
-  setTimeout(() => {
-    windowApi
-      .musicVideoIsExists({ id: id, method: "verify" })
-      .then((result) => {
-        // 严格检查 - 只有明确返回有效结果且文件存在时才加载视频
-        if (
-          result &&
-          result !== "404" &&
-          result !== false &&
-          result.data &&
-          result.data.path &&
-          result.data.id === id
-        ) {
-          // 再次验证当前歌曲ID是否仍然匹配（防止快速切歌导致的异步问题）
-          if (songId.value === id) {
-            currentMusicVideo.value = result.data;
-
-            // 为所有类型的音乐启动视频检查
-            if (
-              songList.value &&
-              songList.value[currentIndex.value] &&
-              songList.value[currentIndex.value].type == "local"
-            ) {
-              startLocalMusicVideo();
-            } else {
-              startMusicVideo();
-            }
-          }
-        } else {
-          // 确保彻底清理
-          unloadMusicVideo();
-        }
-      })
-      .catch((error) => {
-        console.error("检查视频文件时出错:", error);
-        // 出错时确保清理
-        unloadMusicVideo();
-      });
-  }, delay);
+  if (songId.value !== id) return;
+  checkAndLoadVideoForCurrentSong();
 }
 
 export function addSong(id, index, autoplay, isLocal) {
@@ -2357,6 +2403,11 @@ export function startMusic() {
     if (musicVideoDOM.value) {
       musicVideoDOM.value.play();
     }
+    if (currentMusicVideo.value.source === "local-pool") {
+      videoIsPlaying.value = true;
+      playerShow.value = false;
+      return;
+    }
     // 根据歌曲类型启动对应的视频时间检查
     if (
       songList.value &&
@@ -2386,7 +2437,7 @@ export function pauseMusic() {
     });
   }
   if (videoIsPlaying.value) {
-    musicVideoDOM.value.pause();
+    musicVideoDOM.value?.pause?.();
     // 为所有类型的音乐清理视频检查
     clearInterval(videoCheckInterval);
   }
