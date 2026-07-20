@@ -5,8 +5,7 @@
   "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
-    "name": "ldx123000",
-    "email": "ldx123000@gmail.com"
+    "name": "Arihara-Satoru"
   },
   "scripts": {
     "dev": "vite",

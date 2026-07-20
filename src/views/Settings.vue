@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, onActivated, watch } from "vue";
 import { onBeforeRouteLeave, useRouter } from "vue-router";
+import { author, version } from "../../package.json";
 import { noticeOpen, dialogOpen } from "@/utils/dialog";
 import { initSettings } from "@/utils/initApp";
 import { getVipInfo } from "@/api/user";
@@ -1555,14 +1556,14 @@ const clearFmRecent = () => {
         <div class="app-icon">
           <img src="../assets/icon/icon.ico" alt="" />
         </div>
-        <div class="version">V0.6.2</div>
+        <div class="version">V{{ version }}</div>
         <div class="update-check">
           <button class="check-update-btn" @click="checkForUpdates">
             检查更新
           </button>
         </div>
         <div class="app-author" @click="toGithub()">
-          Made by ldx123000 | Modified from Hydrogen Music
+          Made by {{ author.name }} | Modified from Hydrogen Music
         </div>
       </div>
     </div>
