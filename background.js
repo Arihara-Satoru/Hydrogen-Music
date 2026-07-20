@@ -192,7 +192,7 @@ if (!gotTheLock) {
       splashWindow.setBounds(myWindow.getBounds());
     }
     setSplashStatus("正在检查本地数据...", 38);
-    // 后端与前端并行启动；渲染层的 API 请求会等待服务就绪。
+    // 先完成数据迁移，再启动音乐服务；主界面内容会在服务就绪后加载。
     // 数据迁移：清理旧版可能遗留的不兼容数据
     try {
       const Store = await getElectronStore();
@@ -259,6 +259,7 @@ if (!gotTheLock) {
       console.error("KuGou API probe failed:", err);
       return { ready: false, error: err?.message || "unknown error" };
     });
+    await kugouApiReadyPromise;
     setSplashStatus("正在加载播放器...", 82);
     if (typeof loadMainContentRef === "function") loadMainContentRef();
 
