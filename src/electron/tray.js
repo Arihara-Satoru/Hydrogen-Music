@@ -233,7 +233,7 @@ module.exports = function InitTray(win, app, iconPath) {
             {
                 label: '退出',
                 click: () => {
-                    sendPlayerCommand('player-save')
+                    app.quit()
                 }
             }
         ])

@@ -708,7 +708,14 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   });
   ipcMain.on("exit-app", (e, playlist) => {
     saveStoredPlaylistPayload(playlist);
-    app.exit();
+    if (typeof lyricFunctions.handlePlayerSaved === "function") {
+      lyricFunctions.handlePlayerSaved();
+    } else {
+      app.exit();
+    }
+  });
+  ipcMain.on("shutdown-animation-complete", () => {
+    lyricFunctions.handleShutdownAnimationComplete?.();
   });
   ipcMain.handle("get-last-playlist", async () => {
     const lastPlaylist = await lastPlaylistStore.get("playlist");
@@ -1502,7 +1509,11 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   ipcMain.on("install-update", () => {
     const { autoUpdater } = require("electron-updater");
     console.log("开始安装更新并重启应用...");
-    autoUpdater.quitAndInstall();
+    if (typeof lyricFunctions.requestAppQuit === "function") {
+      lyricFunctions.requestAppQuit(() => autoUpdater.quitAndInstall());
+    } else {
+      autoUpdater.quitAndInstall();
+    }
   });
 
   ipcMain.on("cancel-update", () => {
