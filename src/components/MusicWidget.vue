@@ -1,5 +1,5 @@
 <script setup>
-  import { computed, ref, watch} from 'vue'
+  import { computed, nextTick, ref, watch} from 'vue'
   import { useRouter } from 'vue-router'
   import { songTime2 } from '../utils/player';
   import VueSlider from 'vue-slider-component'
@@ -7,10 +7,11 @@
   import PlayList from './PlayList.vue'
   import OverflowMarquee from './base/OverflowMarquee.vue'
 
-  import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode } from '../utils/player'
+  import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, getPlaybackPlaylistRoute, toggleChorusMode } from '../utils/player'
   import { usePlayerStore } from '../store/playerStore'
   import { useOtherStore } from '../store/otherStore'
   import { resolveImageUrl } from '../utils/imageUtils'
+  import { noticeOpen } from '../utils/dialog'
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
   import { vDelayedTooltip } from '../utils/delayedTooltip'
@@ -124,9 +125,20 @@
     }
   }
 
-  const isPlaylistPage = computed(() => String(router.currentRoute.value.name || '').replace(/^~/, '') === 'playlist')
-  const locateCurrentSong = () => {
+  const playbackPlaylistRoute = computed(() => getPlaybackPlaylistRoute(listInfo.value))
+  const locateCurrentSong = async () => {
     if (!currentSong.value) return
+    const sourceRoute = playbackPlaylistRoute.value
+    const currentRouteName = String(router.currentRoute.value.name || '').replace(/^~/, '')
+    if (!sourceRoute && currentRouteName !== 'playlist') {
+      noticeOpen('当前歌曲没有可定位的来源歌单', 2)
+      return
+    }
+    if (sourceRoute && router.resolve(sourceRoute).fullPath !== router.currentRoute.value.fullPath) {
+      playerStore.forbidLastRouter = true
+      await router.push(sourceRoute)
+      await nextTick()
+    }
     window.dispatchEvent(new CustomEvent('library:locate-current-song', {
       detail: { songId: currentSong.value.id },
     }))
@@ -227,7 +239,7 @@
             <!-- 播放列表按钮：只在非FM模式下显示 -->
             <svg t="1668787624519" @click="playlistWidgetShow = !playlistWidgetShow" v-delayed-tooltip="'播放列表'" v-show="!isInFMMode" class="playlist-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="15157" width="200" height="200"><path d="M85.333333 768h426.666667v85.333333H85.333333v-85.333333z m0-298.666667h597.333334v85.333334H85.333333v-85.333334z m0-298.666666h853.333334v85.333333H85.333333V170.666667z m725.333334 476.586666V384h213.333333v85.333333h-128v298.666667a128 128 0 1 1-85.333333-120.746667zM768 810.666667a42.666667 42.666667 0 1 0 0-85.333334 42.666667 42.666667 0 0 0 0 85.333334z" p-id="15158"></path></svg>
             <svg
-                v-if="isPlaylistPage && currentSong"
+                v-if="currentSong"
                 @click="locateCurrentSong()"
                 @keydown.enter.prevent="locateCurrentSong()"
                 @keydown.space.prevent="locateCurrentSong()"

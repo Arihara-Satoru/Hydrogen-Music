@@ -218,6 +218,21 @@ const locateCurrentSongInPlaylist = async event => {
 const currentLibraryRouteName = computed(() => normalizeRouteName(router.currentRoute.value.name));
 const isPlaylistRoute = computed(() => currentLibraryRouteName.value == 'playlist');
 const isAlbumRoute = computed(() => currentLibraryRouteName.value == 'album');
+const playbackQueueMeta = computed(() => {
+    const route = router.currentRoute.value;
+    const routeId = String(route.params?.id || '');
+    const listId = libraryInfo.value?.id || routeId;
+    if (!routeId || !isRestorableLibraryRouteName(currentLibraryRouteName.value)) return { id: listId };
+
+    return {
+        id: listId,
+        sourceRoute: {
+            name: currentLibraryRouteName.value,
+            params: { id: routeId },
+            query: { ...route.query },
+        },
+    };
+});
 const isArtistTopSongRoute = computed(() => currentLibraryRouteName.value == 'artist' && artistPageType.value == 0);
 const isArtistAlbumRoute = computed(() => currentLibraryRouteName.value == 'artist' && artistPageType.value == 1);
 const isArtistMVRoute = computed(() => currentLibraryRouteName.value == 'artist' && artistPageType.value == 2);
@@ -688,7 +703,7 @@ const waitCurrentPlaylistHydration = async () => {
 
 const playAllSafe = async () => {
     await waitCurrentPlaylistHydration();
-    playAll('other', librarySongs.value || []);
+    playAll(currentLibraryRouteName.value || 'other', librarySongs.value || [], playbackQueueMeta.value);
 };
 
 //下载本歌单/专辑全部歌曲
@@ -1023,6 +1038,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         v-else
                         :songlist="visibleLibrarySongs"
                         :queue-songlist="hasSongSearchKeyword ? librarySongs : null"
+                        :queue-meta="playbackQueueMeta"
                         :source-indexes="visibleLibrarySourceIndexes"
                         @list-scroll="handleArtistListScroll"
                         class="library-content"

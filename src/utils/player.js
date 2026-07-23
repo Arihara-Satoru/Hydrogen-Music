@@ -1852,6 +1852,26 @@ export function findSongIndexById(
   );
 }
 
+export function getPlaybackPlaylistRoute(info) {
+  const sourceRoute = info?.sourceRoute;
+  const routeName = String(sourceRoute?.name || info?.type || "").replace(
+    /^~/,
+    "",
+  );
+  if (routeName !== "playlist") return null;
+
+  const id = String(sourceRoute?.params?.id ?? info?.id ?? "").trim();
+  if (!id || id === "none") return null;
+
+  const query =
+    sourceRoute?.query &&
+    typeof sourceRoute.query === "object" &&
+    !Array.isArray(sourceRoute.query)
+      ? { ...sourceRoute.query }
+      : {};
+  return { name: "playlist", params: { id }, query };
+}
+
 function getSongByIdOrIndex(id, index = currentIndex.value) {
   const list = Array.isArray(songList.value) ? songList.value : [];
   const resolvedIndex = findSongIndexById(id);
@@ -1937,6 +1957,7 @@ export function addToList(listType, songlist, listMeta = null) {
   listInfo.value = {
     id: listId,
     type: listType,
+    ...(listMeta?.sourceRoute ? { sourceRoute: listMeta.sourceRoute } : {}),
   };
   songList.value = normalizedSongList.slice(0, normalizedSongList.length + 1);
   syncWindowsTaskbarPlaybackState();

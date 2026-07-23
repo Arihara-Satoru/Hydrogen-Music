@@ -91,7 +91,7 @@
     const currentSong = songList.value?.[currentIndex.value]
     const targetIndex = findSongIndexById(songId.value, songList.value, currentSong)
     if(targetIndex < 0) return
-    playlistScroller.value?.scrollToItem(targetIndex, { behavior: 'smooth' })
+    playlistScroller.value?.scrollToItem(targetIndex, { align: 'center', smooth: true })
   }
 </script>
 
