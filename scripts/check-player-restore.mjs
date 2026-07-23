@@ -24,6 +24,7 @@ function extractFunction(name) {
 }
 
 const hasSameSongIdsSource = extractFunction("hasSameSongIds");
+const findSongIndexByIdSource = extractFunction("findSongIndexById");
 const loadLastSongSource = extractFunction("loadLastSong");
 const getAdjacentSongInfoSource = extractFunction("getAdjacentSongInfo");
 
@@ -37,10 +38,10 @@ function createRestoreHarness(snapshot, initialShuffleIndex) {
   const playMode = { value: 3 };
   let repaired = 0;
 
-  const findSongIndexById = (id) =>
-    (songList.value || []).findIndex(
-      (song) => song && String(song.id) === String(id),
-    );
+  const findSongIndexById = Function(
+    "songList",
+    `${findSongIndexByIdSource}\nreturn findSongIndexById;`,
+  )(songList);
   const setId = (id, index) => {
     songId.value = id;
     shuffleIndex.value = index;
@@ -119,6 +120,20 @@ const valid = createRestoreHarness(
 await valid.loadLastSong();
 assert.equal(valid.state.shuffleIndex.value, validQueue.indexOf(songs[27]));
 assert.equal(valid.repaired(), 0);
+
+const duplicateSongA = { id: "duplicate" };
+const duplicateSongB = { id: "duplicate" };
+const duplicateSongs = [duplicateSongA, duplicateSongB];
+const findDuplicateSongIndex = Function(
+  "songList",
+  `${findSongIndexByIdSource}\nreturn findSongIndexById;`,
+)({ value: duplicateSongs });
+assert.equal(findDuplicateSongIndex("duplicate"), 0);
+assert.equal(
+  findDuplicateSongIndex("duplicate", duplicateSongs, duplicateSongB),
+  1,
+);
+assert.equal(findDuplicateSongIndex("missing", duplicateSongs), -1);
 
 const navigationRefs = {
   listInfo: { value: null },

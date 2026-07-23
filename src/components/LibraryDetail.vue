@@ -7,7 +7,7 @@ import { collectPlaylist, deletePlaylist } from '../api/playlist';
 import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
-import { playAll } from '../utils/player';
+import { findSongIndexById, playAll } from '../utils/player';
 import { resolveImageUrl } from '../utils/imageUtils';
 import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation, schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation';
 import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
@@ -44,6 +44,8 @@ const pendingScrollPolicy = ref('none');
 const pendingTargetFullPath = ref('');
 const artistScrollCheckRafId = ref(null);
 const ARTIST_LIST_PREFETCH_PX = 220;
+// ponytail: 歌曲虚拟列表当前固定为 42px；若改成动态行高，改由 RecycleScroller.scrollToItem 定位。
+const LIBRARY_SONG_ROW_HEIGHT = 42;
 const normalizeRouteName = routeName => {
     const normalized = String(routeName || '');
     if (!normalized) return '';
@@ -180,6 +182,38 @@ const resetSongSearch = () => {
 const resetSongSearchResultScroll = async () => {
     await nextTick();
     setLibraryScrollTop(0);
+};
+const locateCurrentSongInPlaylist = async event => {
+    if (!isPlaylistRoute.value) return;
+
+    const targetSongId = String(event?.detail?.songId ?? '');
+    if (!targetSongId) return;
+
+    const targetPlaylistRoute = String(router.currentRoute.value.fullPath || '');
+    await waitCurrentPlaylistHydration();
+    if (!isPlaylistRoute.value || String(router.currentRoute.value.fullPath || '') != targetPlaylistRoute) return;
+
+    const songs = Array.isArray(librarySongs.value) ? librarySongs.value : [];
+    const currentQueueSong = playerStore.songList?.[playerStore.currentIndex];
+    const targetIndex = findSongIndexById(targetSongId, songs, currentQueueSong);
+
+    if (targetIndex < 0) {
+        noticeOpen('当前歌曲不在此歌单中', 2);
+        return;
+    }
+
+    if (hasSongSearchKeyword.value) {
+        resetSongSearch();
+        await nextTick();
+        await waitForAnimationFrame();
+    }
+
+    const scroller = await waitForLibraryScroller();
+    if (!scroller) return;
+
+    const centeredTop = targetIndex * LIBRARY_SONG_ROW_HEIGHT
+        - (scroller.clientHeight - LIBRARY_SONG_ROW_HEIGHT) / 2;
+    scroller.scrollTo({ top: Math.max(0, centeredTop), behavior: 'smooth' });
 };
 const currentLibraryRouteName = computed(() => normalizeRouteName(router.currentRoute.value.name));
 const isPlaylistRoute = computed(() => currentLibraryRouteName.value == 'playlist');
@@ -751,6 +785,7 @@ onActivated(async () => {
 });
 onMounted(async () => {
     window.addEventListener('popstate', markHistoryNavigationPending);
+    window.addEventListener('library:locate-current-song', locateCurrentSongInPlaylist);
     if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
     await applyPendingScrollPolicy();
 });
@@ -759,6 +794,7 @@ onDeactivated(() => {
 });
 onBeforeUnmount(() => {
     window.removeEventListener('popstate', markHistoryNavigationPending);
+    window.removeEventListener('library:locate-current-song', locateCurrentSongInPlaylist);
     clearArtistScrollCheckRaf();
 });
 

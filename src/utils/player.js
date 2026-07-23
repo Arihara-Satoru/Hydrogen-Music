@@ -1799,12 +1799,23 @@ export function startProgress() {
   startGaplessTransitionMonitor();
 }
 
-function findSongIndexById(id) {
-  const list = Array.isArray(songList.value) ? songList.value : [];
+export function findSongIndexById(
+  id,
+  list = songList.value,
+  exactSong = null,
+) {
+  const targetList = Array.isArray(list) ? list : [];
   const targetId = id == null ? "" : String(id);
   if (!targetId) return -1;
 
-  return list.findIndex((song) => song && String(song.id) === targetId);
+  if (exactSong && String(exactSong.id ?? "") === targetId) {
+    const exactIndex = targetList.indexOf(exactSong);
+    if (exactIndex >= 0) return exactIndex;
+  }
+
+  return targetList.findIndex(
+    (song) => song && String(song.id) === targetId,
+  );
 }
 
 function getSongByIdOrIndex(id, index = currentIndex.value) {

@@ -1,8 +1,9 @@
 <script setup>
+  import { ref } from 'vue'
   import { RecycleScroller } from 'vue-virtual-scroller'
   import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
   import { pauseMusic } from '../utils/player';
-  import { addSong, setShuffledList } from '../utils/player'
+  import { addSong, findSongIndexById, setShuffledList } from '../utils/player'
   import { useRouter } from 'vue-router';
   import { usePlayerStore } from '../store/playerStore'
   import { storeToRefs } from 'pinia'
@@ -10,6 +11,7 @@
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { playing, progress, playMode, currentMusic, currentIndex, listInfo, songList, shuffledList, shuffleIndex, songId, widgetState, playlistWidgetShow, lyricShow, showSongTranslation } = storeToRefs(playerStore)
+  const playlistScroller = ref(null)
 
   const clearPlaylist = () => {
     playlistWidgetShow.value = false
@@ -85,9 +87,11 @@
       }
     }
   }
-  const getPositon = () => {
-    document.getElementsByClassName('playlist-widget-item')[0].scrollTo({top: currentIndex.value * 37,behavior: 'smooth'})
-    document.getElementsByClassName('playlist-widget-item')[1].scrollTo({top: currentIndex.value * 37,behavior: 'smooth'})
+  const locateCurrentSong = () => {
+    const currentSong = songList.value?.[currentIndex.value]
+    const targetIndex = findSongIndexById(songId.value, songList.value, currentSong)
+    if(targetIndex < 0) return
+    playlistScroller.value?.scrollToItem(targetIndex, { behavior: 'smooth' })
   }
 </script>
 
@@ -99,12 +103,13 @@
           <span class="info-num">({{songList.length}})</span>
         </div>
         <div>
-          <svg t="1676113510483" @click="getPositon()" class="playlist-widget-position" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2631" width="200" height="200"><path d="M927.282215 479.83544l-83.4629 0c-15.068184-158.75777-141.389194-285.078781-300.146964-300.146964L543.67235 95.835695c0-17.622356-14.285355-31.907711-31.907711-31.907711-17.622356 0-31.907711 14.285355-31.907711 31.907711l0 83.85278c-158.75777 15.068184-285.078781 141.389194-300.146964 300.146964l-83.826174 0c-17.622356 0-31.907711 14.285355-31.907711 31.907711 0 17.622356 14.285355 31.907711 31.907711 31.907711l83.826174 0c15.068184 158.75777 141.389194 285.078781 300.146964 300.146964l0 83.946924c0 17.622356 14.285355 31.907711 31.907711 31.907711 17.622356 0 31.907711-14.285355 31.907711-31.907711l0-83.946924c158.75777-15.068184 285.078781-141.389194 300.146964-300.146964l83.4629 0c17.622356 0 31.907711-14.285355 31.907711-31.907711C959.189925 494.120794 944.904571 479.83544 927.282215 479.83544zM511.76464 793.112446c-155.396209 0-281.369296-125.973086-281.369296-281.369296s125.973086-281.369296 281.369296-281.369296 281.369296 125.973086 281.369296 281.369296S667.159826 793.112446 511.76464 793.112446z" fill="#000000" p-id="2632"></path><path d="M511.76464 511.74315m-69.616544 0a68.031 68.031 0 1 0 139.233088 0 68.031 68.031 0 1 0-139.233088 0Z" fill="#000000" p-id="2633"></path></svg>
+          <svg t="1676113510483" @click="locateCurrentSong()" @keydown.enter.prevent="locateCurrentSong()" @keydown.space.prevent="locateCurrentSong()" class="playlist-widget-position" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2631" width="200" height="200" role="button" tabindex="0" aria-label="定位到当前歌曲"><path d="M927.282215 479.83544l-83.4629 0c-15.068184-158.75777-141.389194-285.078781-300.146964-300.146964L543.67235 95.835695c0-17.622356-14.285355-31.907711-31.907711-31.907711-17.622356 0-31.907711 14.285355-31.907711 31.907711l0 83.85278c-158.75777 15.068184-285.078781 141.389194-300.146964 300.146964l-83.826174 0c-17.622356 0-31.907711 14.285355-31.907711 31.907711 0 17.622356 14.285355 31.907711 31.907711 31.907711l83.826174 0c15.068184 158.75777 141.389194 285.078781 300.146964 300.146964l0 83.946924c0 17.622356 14.285355 31.907711 31.907711 31.907711 17.622356 0 31.907711-14.285355 31.907711-31.907711l0-83.946924c158.75777-15.068184 285.078781-141.389194 300.146964-300.146964l83.4629 0c17.622356 0 31.907711-14.285355 31.907711-31.907711C959.189925 494.120794 944.904571 479.83544 927.282215 479.83544zM511.76464 793.112446c-155.396209 0-281.369296-125.973086-281.369296-281.369296s125.973086-281.369296 281.369296-281.369296 281.369296 125.973086 281.369296 281.369296S667.159826 793.112446 511.76464 793.112446z" fill="#000000" p-id="2632"></path><path d="M511.76464 511.74315m-69.616544 0a68.031 68.031 0 1 0 139.233088 0 68.031 68.031 0 1 0-139.233088 0Z" fill="#000000" p-id="2633"></path></svg>
           <svg t="1670563159799" @click="clearPlaylist()" class="playlist-widget-delete" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4514" width="200" height="200"><path d="M224.561403 320 224.561403 896 778.105263 896 778.105263 320 712.982456 320 712.982456 832 289.68421 832 289.68421 320 224.561403 320 224.561403 320ZM387.368421 320.664062 452.491228 320.664062 452.491228 768.664062 387.368421 768.664062 387.368421 320.664062 387.368421 320.664062ZM550.175438 320.664062 615.298246 320.664062 615.298246 768.664062 550.175438 768.664062 550.175438 320.664062 550.175438 320.664062ZM387.368421 192 192 192 192 256 810.666664 256 810.666664 192 647.859649 192 647.859649 128 387.368421 128 387.368421 192 387.368421 192Z" p-id="4515"></path></svg>
         </div>
       </div>
       <div class="line"></div>
       <RecycleScroller
+        ref="playlistScroller"
         class="playlist-widget-item"
         :items="songList.slice(0, songList.length + 1)"
         :item-size="36"

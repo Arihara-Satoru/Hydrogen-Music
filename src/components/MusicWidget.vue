@@ -124,6 +124,14 @@
     }
   }
 
+  const isPlaylistPage = computed(() => String(router.currentRoute.value.name || '').replace(/^~/, '') === 'playlist')
+  const locateCurrentSong = () => {
+    if (!currentSong.value) return
+    window.dispatchEvent(new CustomEvent('library:locate-current-song', {
+      detail: { songId: currentSong.value.id },
+    }))
+  }
+
 </script>
 <template>
   <div class="music-widget">
@@ -218,6 +226,22 @@
             </svg>
             <!-- 播放列表按钮：只在非FM模式下显示 -->
             <svg t="1668787624519" @click="playlistWidgetShow = !playlistWidgetShow" v-delayed-tooltip="'播放列表'" v-show="!isInFMMode" class="playlist-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="15157" width="200" height="200"><path d="M85.333333 768h426.666667v85.333333H85.333333v-85.333333z m0-298.666667h597.333334v85.333334H85.333333v-85.333334z m0-298.666666h853.333334v85.333333H85.333333V170.666667z m725.333334 476.586666V384h213.333333v85.333333h-128v298.666667a128 128 0 1 1-85.333333-120.746667zM768 810.666667a42.666667 42.666667 0 1 0 0-85.333334 42.666667 42.666667 0 0 0 0 85.333334z" p-id="15158"></path></svg>
+            <svg
+                v-if="isPlaylistPage && currentSong"
+                @click="locateCurrentSong()"
+                @keydown.enter.prevent="locateCurrentSong()"
+                @keydown.space.prevent="locateCurrentSong()"
+                v-delayed-tooltip="'定位当前歌曲'"
+                class="locate-current-icon"
+                viewBox="0 0 1024 1024"
+                xmlns="http://www.w3.org/2000/svg"
+                role="button"
+                tabindex="0"
+                aria-label="定位到当前歌曲"
+            >
+                <path d="M927.282 479.835h-83.463c-15.068-158.758-141.389-285.079-300.147-300.147V95.836c0-17.623-14.285-31.908-31.907-31.908s-31.908 14.285-31.908 31.908v83.852c-158.758 15.068-285.079 141.389-300.147 300.147H95.884c-17.622 0-31.908 14.285-31.908 31.908s14.286 31.907 31.908 31.907h83.826c15.068 158.758 141.389 285.079 300.147 300.147v83.947c0 17.622 14.286 31.908 31.908 31.908s31.907-14.286 31.907-31.908v-83.947c158.758-15.068 285.079-141.389 300.147-300.147h83.463c17.622 0 31.908-14.285 31.908-31.907s-14.286-31.908-31.908-31.908zM511.765 793.112c-155.396 0-281.37-125.973-281.37-281.369s125.974-281.369 281.37-281.369 281.369 125.973 281.369 281.369-125.973 281.369-281.369 281.369z" fill="currentColor"></path>
+                <circle cx="511.765" cy="511.743" r="69.617" fill="currentColor"></circle>
+            </svg>
         </div>
     </div>
     <PlayList class="playlist-widget" :class="{'playlist-widget-open': playlistWidgetShow}"></PlayList>
@@ -435,6 +459,9 @@
                 &:active{
                     transform: scale(0.90);
                 }
+            }
+            .locate-current-icon{
+                margin-right: 0;
             }
         }
     }
