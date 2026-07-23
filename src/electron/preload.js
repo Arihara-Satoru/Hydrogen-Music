@@ -93,6 +93,16 @@ function hidePlayer(callback) {
 function setSettings(settings) {
   ipcRenderer.send("set-settings", settings);
 }
+function getOtherAudioMonitorState() {
+  return ipcRenderer.invoke("get-other-audio-monitor-state");
+}
+function onOtherAudioStateChanged(callback) {
+  const listener = (_event, state) => callback?.(state);
+  ipcRenderer.on("other-audio-state-changed", listener);
+  return () => {
+    ipcRenderer.removeListener("other-audio-state-changed", listener);
+  };
+}
 function clearLocalMusicData(type) {
   ipcRenderer.send("clear-local-music-data", type);
 }
@@ -253,6 +263,8 @@ contextBridge.exposeInMainWorld("windowApi", {
   hidePlayer,
   setSettings,
   getSettings: () => ipcRenderer.invoke("get-settings"),
+  getOtherAudioMonitorState,
+  onOtherAudioStateChanged,
   getSystemFonts: () => ipcRenderer.invoke("system-fonts:list"),
   openDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
   openFile: () => ipcRenderer.invoke("dialog:openFile"),

@@ -168,7 +168,7 @@
         type: 'cloud',
       }))
       .filter(Boolean)
-    addSong(songId, playIndex, true)
+    addSong(songId, playIndex, true, undefined, { userInitiated: true })
     if (playerStore.playMode == 3) setShuffledList()
   }
 </script>

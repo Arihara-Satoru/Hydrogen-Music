@@ -130,10 +130,10 @@ export function initMediaSession() {
 
   // Initial registration of action handlers (SMTC hooks)
   try {
-    navigator.mediaSession.setActionHandler('play', () => { startMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) })
+    navigator.mediaSession.setActionHandler('play', () => { startMusic({ userInitiated: true }); updatePlaybackState(); updatePositionThrottled({ force: true }) })
     navigator.mediaSession.setActionHandler('pause', () => { pauseMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) })
-    navigator.mediaSession.setActionHandler('previoustrack', () => playLast())
-    navigator.mediaSession.setActionHandler('nexttrack', () => playNext())
+    navigator.mediaSession.setActionHandler('previoustrack', () => playLast({ userInitiated: true }))
+    navigator.mediaSession.setActionHandler('nexttrack', () => playNext({ userInitiated: true }))
     navigator.mediaSession.setActionHandler('stop', () => { pauseMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) })
     navigator.mediaSession.setActionHandler('seekto', (details) => {
       if (details && typeof details.seekTime === 'number') {

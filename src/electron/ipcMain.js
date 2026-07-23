@@ -27,6 +27,7 @@ try {
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require("./shortcuts");
 const { getElectronStore } = require("./store");
+const { replaceOtherAudioMonitor } = require("./otherAudioMonitor");
 const CancelToken = axios.CancelToken;
 let cancel = null;
 
@@ -134,6 +135,7 @@ function normalizeMusicSettings(music = {}) {
   normalized.showSongTranslation = normalized.showSongTranslation !== false;
   normalized.audioVisualizer = normalized.audioVisualizer === true;
   normalized.autoPlayOnStartup = normalized.autoPlayOnStartup === true;
+  normalized.pauseOnOtherAudio = normalized.pauseOnOtherAudio === true;
   // 兼容历史版本：读取后清理旧迁移标记字段。
   delete normalized.levelMigratedToLosslessV1;
   delete normalized.gaplessPlayback;
@@ -325,6 +327,26 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   const lastPlaybackProgressStore = new Store({ name: "lastPlaybackProgress" });
   const musicVideoStore = new Store({ name: "musicVideo" });
   const localMusicStore = new Store({ name: "localMusic" });
+  const otherAudioMonitor = replaceOtherAudioMonitor({
+    onStateChange: (active) => {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+      win.webContents.send("other-audio-state-changed", {
+        supported: process.platform === "win32",
+        active,
+      });
+    },
+  });
+  const disposeOtherAudioMonitor = () => otherAudioMonitor.destroy();
+  win.once("closed", disposeOtherAudioMonitor);
+  app.once("will-quit", disposeOtherAudioMonitor);
+  ipcMain.removeHandler("get-other-audio-monitor-state");
+  ipcMain.handle("get-other-audio-monitor-state", () =>
+    otherAudioMonitor.getState(),
+  );
+  const initialSettings = await settingsStore.get("settings");
+  otherAudioMonitor.setEnabled(
+    initialSettings?.music?.pauseOnOtherAudio === true,
+  );
 
   // 全局存储桌面歌词窗口引用
   let globalLyricWindow = null;
@@ -523,6 +545,9 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   ipcMain.on("set-settings", (e, settings) => {
     const parsedSettings = normalizeStoredSettings(JSON.parse(settings), app.getVersion());
     settingsStore.set("settings", parsedSettings);
+    otherAudioMonitor.setEnabled(
+      parsedSettings.music.pauseOnOtherAudio === true,
+    );
     registerShortcuts(win);
   });
   ipcMain.handle("get-settings", async () => {
@@ -544,6 +569,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           showSongTranslation: true,
           audioVisualizer: false,
           autoPlayOnStartup: false,
+          pauseOnOtherAudio: false,
           coverSize: 400,
         },
         local: {

@@ -1189,7 +1189,10 @@ const scheduleCoverRelease = () => {
   }, releaseDelay);
 };
 
-const togglePlay = async () => {
+const togglePlay = async (options = {}) => {
+  const playbackOptions = {
+    userInitiated: options?.userInitiated !== false,
+  };
   console.log("togglePlay clicked!");
   console.log("currentSong:", currentSong.value);
 
@@ -1208,7 +1211,7 @@ const togglePlay = async () => {
       pauseMusic();
     } else {
       console.log("Resuming current FM song");
-      startMusic();
+      startMusic(playbackOptions);
     }
     return;
   }
@@ -1266,7 +1269,7 @@ const togglePlay = async () => {
       time.value = Number.isFinite(durationSeconds) ? durationSeconds : 0;
 
       // 直接播放音乐
-      play(musicUrl, true);
+      play(musicUrl, true, null, null, playbackOptions);
       if (chorusMode.value) {
         const startChorusPlayback = () => {
           if (
@@ -1308,13 +1311,13 @@ const togglePlay = async () => {
   }
 };
 
-const nextSong = async () => {
+const nextSong = async (options = {}) => {
   // 如果有下一首已播放的歌曲，直接播放
   if (currentIndex.value < playedSongs.value.length - 1) {
     currentIndex.value++;
     if (currentSong.value) {
       console.log("Playing next FM song from history:", currentSong.value.name);
-      await togglePlay();
+      await togglePlay(options);
     }
     return;
   }
@@ -1333,7 +1336,7 @@ const nextSong = async () => {
     currentIndex.value = playedSongs.value.length - 1;
 
     console.log("Playing new FM song:", nextSongFromPool.name);
-    await togglePlay();
+    await togglePlay(options);
     // 低水位预取，保持池内始终有歌可播
     if (fmSongs.value.length < 2) {
       refreshFM({ silent: true });
@@ -1350,7 +1353,7 @@ const nextSong = async () => {
         rememberRecent(nextSongFromPool.id);
         currentIndex.value = playedSongs.value.length - 1;
         console.log("Playing retry FM song:", nextSongFromPool.name);
-        await togglePlay();
+        await togglePlay(options);
         if (fmSongs.value.length < 2) {
           refreshFM({ silent: true });
         }
@@ -1359,19 +1362,22 @@ const nextSong = async () => {
   }
 };
 
-const prevSong = async () => {
+const prevSong = async (options = {}) => {
   if (currentIndex.value > 0) {
     currentIndex.value--;
     if (currentSong.value) {
       console.log("Playing previous FM song:", currentSong.value.name);
-      await togglePlay();
+      await togglePlay(options);
     }
   } else {
     console.log("Already at first song, cannot go to previous");
   }
 };
 
-const goNext = async () => {
+const goNext = async (options = {}) => {
+  const playbackOptions = {
+    userInitiated: options?.userInitiated !== false,
+  };
   if (coverNavigating.value) {
     queueCoverDirection("next");
     interruptCoverNavigation();
@@ -1384,13 +1390,16 @@ const goNext = async () => {
   setCoverTransitionDirection("next");
 
   try {
-    await nextSong();
+    await nextSong(playbackOptions);
   } finally {
     scheduleCoverRelease();
   }
 };
 
-const goPrev = async () => {
+const goPrev = async (options = {}) => {
+  const playbackOptions = {
+    userInitiated: options?.userInitiated !== false,
+  };
   if (coverNavigating.value) {
     queueCoverDirection("prev");
     interruptCoverNavigation();
@@ -1404,7 +1413,7 @@ const goPrev = async () => {
   setCoverTransitionDirection("prev");
 
   try {
-    await prevSong();
+    await prevSong(playbackOptions);
   } finally {
     scheduleCoverRelease();
   }
@@ -1797,11 +1806,11 @@ const handleFMPlayModeResponse = async (event) => {
   if (action === "loop") {
     // 单曲循环模式：重新播放当前歌曲
     console.log("Loop mode: replaying current song");
-    await togglePlay();
+    await togglePlay({ userInitiated: false });
   } else if (action === "next") {
     // FM模式：播放下一首漫游歌曲
     console.log("FM mode: playing next song");
-    await goNext();
+    await goNext({ userInitiated: false });
   }
 };
 
@@ -1812,7 +1821,9 @@ const handleFMPreviousResponse = async (event) => {
 
   if (action === "previous") {
     console.log("Playing previous FM song from player controls");
-    await goPrev();
+    await goPrev({
+      userInitiated: event.detail?.userInitiated === true,
+    });
   }
 };
 
@@ -1823,7 +1834,9 @@ const handleFMNextResponse = async (event) => {
 
   if (action === "next") {
     console.log("Playing next FM song from player controls");
-    await goNext();
+    await goNext({
+      userInitiated: event.detail?.userInitiated === true,
+    });
   }
 };
 

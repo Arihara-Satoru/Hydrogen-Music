@@ -119,7 +119,13 @@ const play = async (song, index) => {
     const targetQueueSongs = queueSongs.value || []
     const targetIndex = targetQueueSongs.findIndex(item => item?.id == song.id)
     await addToList(props.queueListType || router.currentRoute.value.name, targetQueueSongs, props.queueMeta || null)
-    await addSong(song.id, targetIndex >= 0 ? targetIndex : index, true)
+    await addSong(
+        song.id,
+        targetIndex >= 0 ? targetIndex : index,
+        true,
+        undefined,
+        { userInitiated: true },
+    )
     if (playMode.value == 3) await setShuffledList()
 }
 
@@ -128,7 +134,7 @@ const togglePlay = (song, index) => {
         if (playing.value) {
             pauseMusic()
         } else {
-            startMusic()
+            startMusic({ userInitiated: true })
         }
         return
     }

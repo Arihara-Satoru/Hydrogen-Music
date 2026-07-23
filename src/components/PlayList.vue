@@ -45,7 +45,7 @@
   }
 
   const play = (id, index) => {
-    addSong(id, index, true)
+    addSong(id, index, true, undefined, { userInitiated: true })
   }
 
   const delCurrentSong = async (index, id) => {

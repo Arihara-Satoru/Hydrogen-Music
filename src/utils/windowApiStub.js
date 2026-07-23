@@ -40,6 +40,7 @@
         searchAssistLimit: 8,
         showSongTranslation: true,
         autoPlayOnStartup: false,
+        pauseOnOtherAudio: false,
         coverSize: 400,
       },
       local: {
@@ -53,6 +54,11 @@
       },
     }),
     setSettings: noop,
+    getOtherAudioMonitorState: noopResolve({
+      supported: false,
+      active: false,
+    }),
+    onOtherAudioStateChanged: () => noop,
 
     // ── 本地音乐 / 文件 ──
     scanLocalMusic: noop,

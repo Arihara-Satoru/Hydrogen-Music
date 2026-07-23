@@ -36,7 +36,7 @@
   const togglePlay = (song) => {
     if (songId.value === song.id) {
       if (playing.value) pauseMusic()
-      else startMusic()
+      else startMusic({ userInitiated: true })
       return
     }
     play(song)

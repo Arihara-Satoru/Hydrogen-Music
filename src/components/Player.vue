@@ -423,7 +423,7 @@ const addToPlaylist = () => {
                 </div>
 
                 <div class="control">
-                    <svg @click="playLast()" v-delayed-tooltip="'上一首'" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
+                    <svg @click="playLast({ userInitiated: true })" v-delayed-tooltip="'上一首'" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
                         <g opacity="1" transform="translate(0 0)  rotate(0 100 100)">
                             <mask id="bg-mask-0" fill="white"><use xlink:href="#path_0" /></mask>
@@ -472,7 +472,7 @@ const addToPlaylist = () => {
                     </svg>
                     <svg
                         v-show="!playing"
-                        @click="startMusic()"
+                        @click="startMusic({ userInitiated: true })"
                         v-delayed-tooltip="'播放'"
                         xmlns="http://www.w3.org/2000/svg"
                         xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -495,7 +495,7 @@ const addToPlaylist = () => {
                             </g>
                         </g>
                     </svg>
-                    <svg @click="playNext()" v-delayed-tooltip="'下一首'" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
+                    <svg @click="playNext({ userInitiated: true })" v-delayed-tooltip="'下一首'" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
                         <g opacity="1" transform="translate(0 0)  rotate(0 100 100)">
                             <mask id="bg-mask-0" fill="white"><use xlink:href="#path_0" /></mask>

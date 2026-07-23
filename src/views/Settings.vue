@@ -112,6 +112,8 @@ const rlyricSize = ref(12);
 const lyricInterlude = ref(13);
 const searchAssistLimit = ref(8);
 const autoPlayOnStartup = ref(false);
+const pauseOnOtherAudio = ref(false);
+const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
 const startupAnimation = ref("signal");
@@ -252,6 +254,8 @@ onActivated(() => {
     );
     coverSize.value = settings.music.coverSize ?? 400;
     autoPlayOnStartup.value = settings?.music?.autoPlayOnStartup === true;
+    pauseOnOtherAudio.value =
+      settings?.music?.pauseOnOtherAudio === true;
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
     playerStore.audioVisualizer = settings?.music?.audioVisualizer === true;
@@ -344,6 +348,7 @@ const setAppSettings = () => {
       audioVisualizer: playerStore.audioVisualizer,
       // 启动恢复上次歌单后是否自动播放。
       autoPlayOnStartup: autoPlayOnStartup.value,
+      pauseOnOtherAudio: pauseOnOtherAudio.value,
     },
     local: {
       videoFolder: videoFolder.value,
@@ -1113,6 +1118,35 @@ const clearFmRecent = () => {
                 </div>
               </div>
             </div>
+            <div class="option" v-if="isWindows">
+              <div class="option-name">其他应用发声时暂停</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  role="switch"
+                  tabindex="0"
+                  :aria-checked="pauseOnOtherAudio"
+                  aria-label="其他应用发声时暂停"
+                  @click="pauseOnOtherAudio = !pauseOnOtherAudio"
+                  @keydown.enter.prevent="
+                    pauseOnOtherAudio = !pauseOnOtherAudio
+                  "
+                  @keydown.space.prevent="
+                    pauseOnOtherAudio = !pauseOnOtherAudio
+                  "
+                >
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': pauseOnOtherAudio }"
+                  >
+                    {{ pauseOnOtherAudio ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div class="toggle-on" v-show="pauseOnOtherAudio"></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
             <div class="option">
               <div class="option-name">搜索下拉条目数量</div>
               <div class="option-operation">
@@ -1816,6 +1850,10 @@ const clearFmRecent = () => {
               overflow: hidden;
               &:hover {
                 cursor: pointer;
+              }
+              &:focus-visible {
+                outline: 2px solid black;
+                outline-offset: 2px;
               }
               .toggle-on,
               .toggle-off {
