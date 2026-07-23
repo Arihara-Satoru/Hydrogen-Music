@@ -27,36 +27,6 @@ const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 const userStore = useUserStore();
 const sirenStore = useSirenStore();
-let removeShutdownAnimationListener = null;
-let shutdownAppElement = null;
-let shutdownStarted = false;
-let shutdownCompleted = false;
-
-const completeShutdownAnimation = () => {
-    if (shutdownCompleted) return;
-    shutdownCompleted = true;
-    windowApi.completeShutdownAnimation?.();
-};
-
-const handleShutdownAnimationEnd = (event) => {
-    if (event.target !== shutdownAppElement) return;
-    if (!['crt-window-collapse', 'crt-window-fade'].includes(event.animationName)) return;
-    completeShutdownAnimation();
-};
-
-const startShutdownAnimation = () => {
-    if (shutdownStarted) return;
-    shutdownStarted = true;
-    shutdownAppElement = document.getElementById('app');
-    if (!shutdownAppElement) {
-        completeShutdownAnimation();
-        return;
-    }
-
-    shutdownAppElement.addEventListener('animationend', handleShutdownAnimationEnd);
-    document.body.classList.add('crt-shutdown-active');
-};
-
 const visualizerActive = computed(() => {
     return playerStore.audioVisualizer && playerStore.playerShow && !playerStore.widgetState && !!playerStore.currentMusic;
 });
@@ -76,7 +46,6 @@ watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, curre
 }, { immediate: true });
 
 onMounted(() => {
-    removeShutdownAnimationListener = windowApi.onShutdownAnimation?.(startShutdownAnimation) || null;
     initLyricRuntime();
     initDesktopLyric();
 
@@ -92,11 +61,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    removeShutdownAnimationListener?.();
-    removeShutdownAnimationListener = null;
-    shutdownAppElement?.removeEventListener('animationend', handleShutdownAnimationEnd);
-    shutdownAppElement = null;
-    document.body.classList.remove('crt-shutdown-active');
     clearDynamicTheme();
     destroyDesktopLyric();
     destroyLyricRuntime();
@@ -176,222 +140,6 @@ const handleTitleBarDoubleClick = () => {
     justify-content: center;
     align-items: center;
 }
-
-body.crt-shutdown-active {
-    overflow: hidden;
-    background: transparent !important;
-    cursor: none;
-}
-
-body.crt-shutdown-active #app {
-    transform-origin: 50% 50%;
-    background: transparent !important;
-    -webkit-mask-image: repeating-linear-gradient(
-        to bottom,
-        #000 0,
-        #000 2px,
-        rgba(0, 0, 0, 0.82) 2px,
-        rgba(0, 0, 0, 0.82) 3px
-    );
-    mask-image: repeating-linear-gradient(
-        to bottom,
-        #000 0,
-        #000 2px,
-        rgba(0, 0, 0, 0.82) 2px,
-        rgba(0, 0, 0, 0.82) 3px
-    );
-    animation: crt-window-collapse 1000ms linear both;
-    will-change: transform, filter, opacity;
-}
-
-body.crt-shutdown-active::before,
-body.crt-shutdown-active::after {
-    content: '';
-    position: fixed;
-    z-index: 2147483647;
-    pointer-events: none;
-}
-
-body.crt-shutdown-active::before {
-    top: 50%;
-    left: 50%;
-    width: calc(100vw - 2px);
-    height: 1px;
-    opacity: 0;
-    background: linear-gradient(
-        to right,
-        transparent 0,
-        rgba(255, 255, 255, 0.72) 3%,
-        #fff 12%,
-        #fff 88%,
-        rgba(255, 255, 255, 0.72) 97%,
-        transparent 100%
-    );
-    box-shadow:
-        0 -1px 1px rgba(145, 223, 255, 0.7),
-        0 1px 1px rgba(255, 188, 190, 0.4),
-        0 0 4px 1px #fff,
-        0 0 12px 3px rgba(213, 247, 255, 0.95),
-        0 0 34px 9px rgba(126, 211, 225, 0.58);
-    transform: translate3d(-50%, -50%, 0) scaleX(1) scaleY(0.2);
-    transform-origin: center;
-    will-change: transform, opacity, filter;
-    animation: crt-beam-collapse 1000ms linear both;
-}
-
-body.crt-shutdown-active::after {
-    top: 50%;
-    left: 50%;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    opacity: 0;
-    background: #fff;
-    box-shadow:
-        0 0 3px 2px #fff,
-        0 0 13px 6px rgba(220, 249, 255, 0.95),
-        0 0 34px 12px rgba(118, 207, 222, 0.62);
-    transform: translate3d(-50%, -50%, 0) scale(0.15);
-    will-change: transform, opacity;
-    animation: crt-dot-afterglow 1000ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes crt-window-collapse {
-    0% {
-        transform: translate3d(0, 0, 0) scaleY(1);
-        filter: brightness(1) contrast(1) saturate(1);
-        opacity: 1;
-    }
-    4% {
-        transform: translate3d(0, -0.5px, 0) scaleY(0.998);
-        filter: brightness(1.16) contrast(1.08) saturate(0.9);
-    }
-    8% {
-        transform: translate3d(0, 0.6px, 0) scaleY(0.992);
-        filter: brightness(0.8) contrast(1.22) saturate(0.78);
-    }
-    12% {
-        transform: translate3d(0, -0.25px, 0) scaleY(0.985);
-        filter: brightness(1.3) contrast(1.12) saturate(0.7);
-    }
-    16% {
-        transform: translate3d(0, 0, 0) scaleY(0.96);
-        filter: brightness(1.08) contrast(1.15) saturate(0.62);
-    }
-    24% {
-        transform: translate3d(0, 0, 0) scaleY(0.66);
-        filter: brightness(1.28) contrast(1.22) saturate(0.46);
-    }
-    31% {
-        transform: translate3d(0, 0, 0) scaleY(0.18);
-        filter: brightness(1.9) contrast(1.34) saturate(0.25);
-    }
-    36% {
-        transform: translate3d(0, 0, 0) scaleY(0.006);
-        filter: brightness(4) contrast(1.5) saturate(0);
-        opacity: 1;
-    }
-    40%,
-    100% {
-        transform: translate3d(0, 0, 0) scaleY(0.002);
-        filter: brightness(5) contrast(1.5) saturate(0);
-        opacity: 0;
-    }
-}
-
-@keyframes crt-beam-collapse {
-    0%,
-    29% {
-        opacity: 0;
-        transform: translate3d(-50%, -50%, 0) scaleX(1) scaleY(0.2);
-        filter: brightness(1);
-    }
-    33% {
-        opacity: 0.35;
-        transform: translate3d(-50%, -50%, 0) scaleX(1) scaleY(0.5);
-        filter: brightness(1.5);
-    }
-    36% {
-        opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scaleX(1) scaleY(1);
-        filter: brightness(2.4);
-    }
-    43% {
-        opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scaleX(1) scaleY(1.25);
-        filter: brightness(3.2);
-    }
-    52% {
-        opacity: 0.96;
-        transform: translate3d(-50%, -50%, 0) scaleX(1) scaleY(0.9);
-        filter: brightness(2.2);
-    }
-    60% {
-        opacity: 0.94;
-        transform: translate3d(-50%, -50%, 0) scaleX(0.72) scaleY(0.82);
-        filter: brightness(2.5);
-    }
-    70% {
-        opacity: 0.9;
-        transform: translate3d(-50%, -50%, 0) scaleX(0.22) scaleY(0.72);
-        filter: brightness(3);
-    }
-    77% {
-        opacity: 0.86;
-        transform: translate3d(-50%, -50%, 0) scaleX(0.008) scaleY(0.68);
-        filter: brightness(3.4);
-    }
-    80%,
-    100% {
-        opacity: 0;
-        transform: translate3d(-50%, -50%, 0) scaleX(0.002) scaleY(0.5);
-        filter: brightness(1);
-    }
-}
-
-@keyframes crt-dot-afterglow {
-    0%,
-    72% {
-        opacity: 0;
-        transform: translate3d(-50%, -50%, 0) scale(0.15);
-    }
-    76% {
-        opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scale(1.35);
-    }
-    82% {
-        opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scale(0.9);
-    }
-    90% {
-        opacity: 0.5;
-        transform: translate3d(-50%, -50%, 0) scale(0.45);
-    }
-    100% {
-        opacity: 0;
-        transform: translate3d(-50%, -50%, 0) scale(0.08);
-    }
-}
-
-@keyframes crt-window-fade {
-    from { opacity: 1; }
-    to { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    body.crt-shutdown-active #app {
-        -webkit-mask-image: none;
-        mask-image: none;
-        animation: crt-window-fade 150ms ease-out both;
-        filter: none;
-    }
-
-    body.crt-shutdown-active::before,
-    body.crt-shutdown-active::after {
-        display: none;
-    }
-}
-
 .mainWindow {
     width: 100%;
     height: 100%;

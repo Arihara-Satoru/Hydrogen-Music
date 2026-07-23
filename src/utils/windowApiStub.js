@@ -129,8 +129,6 @@
     sendPlayerCurrentTrackTime: noop,
     beforeQuit: noop,
     exitApp: noop,
-    onShutdownAnimation: () => noop,
-    completeShutdownAnimation: noop,
 
     // ── 杂项 ──
     lyricControl: noop,

@@ -60,7 +60,11 @@ function createMpris(window){
   player.on('play', () => getRenderer()?.send('play'));
   player.on('pause', () => getRenderer()?.send('pause'));
   player.on('stop', () => getRenderer()?.send('pause'));
-  player.on('quit', () => app.quit());
+  player.on('quit', () => {
+    const activeRenderer = getRenderer();
+    if (activeRenderer) activeRenderer.send('player-save');
+    else app.exit();
+  });
   player.on('seek', offset => {
     const currentPosition = Number(player.getPosition?.() || 0);
     const nextPosition = Math.max(0, currentPosition + Number(offset || 0));

@@ -29,16 +29,6 @@ function beforeQuit(callback) {
 function exitApp(playlist) {
   ipcRenderer.send("exit-app", playlist);
 }
-function onShutdownAnimation(callback) {
-  const listener = () => callback?.();
-  ipcRenderer.on("shutdown-animation", listener);
-  return () => {
-    ipcRenderer.removeListener("shutdown-animation", listener);
-  };
-}
-function completeShutdownAnimation() {
-  ipcRenderer.send("shutdown-animation-complete");
-}
 function startDownload() {
   ipcRenderer.send("download-start");
 }
@@ -231,8 +221,6 @@ contextBridge.exposeInMainWorld("windowApi", {
   toRegister,
   beforeQuit,
   exitApp,
-  onShutdownAnimation,
-  completeShutdownAnimation,
   startDownload,
   download,
   downloadNext,

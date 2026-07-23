@@ -34,11 +34,6 @@ let lyricWindow = null;
 let forceQuit = false;
 const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
-const PLAYER_SAVE_TIMEOUT_MS = 750;
-const SHUTDOWN_ANIMATION_TIMEOUT_MS = 1500;
-let shutdownPhase = "idle";
-let shutdownTimer = null;
-let shutdownFinalizer = null;
 let splashWindow = null;
 // 由 createWindow() 内部赋值，供 app.whenReady() 并行启动播放器内容
 let loadMainContentRef = null;
@@ -140,100 +135,6 @@ const closeSplashWindow = () => {
   const win = splashWindow;
   splashWindow = null;
   if (win && !win.isDestroyed()) win.close();
-};
-
-const clearShutdownTimer = () => {
-  if (!shutdownTimer) return;
-  clearTimeout(shutdownTimer);
-  shutdownTimer = null;
-};
-
-const hasUsableMainRenderer = () =>
-  myWindow &&
-  !myWindow.isDestroyed() &&
-  myWindow.webContents &&
-  !myWindow.webContents.isDestroyed();
-
-const finishAppQuit = (destroyMainWindow = false) => {
-  if (shutdownPhase === "finalizing") return;
-
-  shutdownPhase = "finalizing";
-  clearShutdownTimer();
-  forceQuit = true;
-
-  if (destroyMainWindow && myWindow && !myWindow.isDestroyed()) {
-    const animatedWindow = myWindow;
-    myWindow = null;
-    animatedWindow.destroy();
-  }
-
-  const finalizer = shutdownFinalizer;
-  shutdownFinalizer = null;
-  if (typeof finalizer === "function") {
-    try {
-      finalizer();
-    } catch (error) {
-      console.error("退出收尾失败，改为常规退出:", error);
-      app.quit();
-    }
-  } else {
-    app.quit();
-  }
-};
-
-const beginShutdownAnimation = () => {
-  if (shutdownPhase === "animating" || shutdownPhase === "finalizing") return;
-
-  clearShutdownTimer();
-  if (
-    !hasUsableMainRenderer() ||
-    !myWindow.isVisible() ||
-    myWindow.isMinimized()
-  ) {
-    finishAppQuit();
-    return;
-  }
-
-  shutdownPhase = "animating";
-  try {
-    myWindow.setIgnoreMouseEvents(true);
-    myWindow.setHasShadow?.(false);
-    myWindow.setBackgroundColor("#00000000");
-    if (process.platform === "darwin") {
-      myWindow.setWindowButtonVisibility?.(false);
-    }
-  } catch (error) {
-    console.warn("无法完全移除关机窗口装饰:", error);
-  }
-  myWindow.webContents.send("shutdown-animation");
-  shutdownTimer = setTimeout(
-    () => finishAppQuit(true),
-    SHUTDOWN_ANIMATION_TIMEOUT_MS,
-  );
-};
-
-const requestAppQuit = (finalizer) => {
-  if (forceQuit || shutdownPhase !== "idle") return;
-
-  shutdownPhase = "saving";
-  shutdownFinalizer = typeof finalizer === "function" ? finalizer : null;
-  if (!hasUsableMainRenderer()) {
-    finishAppQuit();
-    return;
-  }
-
-  myWindow.webContents.send("player-save");
-  shutdownTimer = setTimeout(beginShutdownAnimation, PLAYER_SAVE_TIMEOUT_MS);
-};
-
-const handlePlayerSaved = () => {
-  // Tray/MPRIS builds from older renderers may still initiate with player-save.
-  if (shutdownPhase === "idle") shutdownPhase = "saving";
-  beginShutdownAnimation();
-};
-
-const handleShutdownAnimationComplete = () => {
-  if (shutdownPhase === "animating") finishAppQuit(true);
 };
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock();
@@ -429,10 +330,8 @@ if (!gotTheLock) {
     stopKugouMusicApi();
   });
 
-  app.on("before-quit", (event) => {
-    if (forceQuit) return;
-    event.preventDefault();
-    requestAppQuit();
+  app.on("before-quit", () => {
+    forceQuit = true;
   });
 }
 
@@ -516,8 +415,7 @@ const createWindow = () => {
       "./src/assets/icon/" +
         (process.platform === "win32" ? "icon.ico" : "icon.png"),
     ),
-    transparent: true,
-    backgroundColor: "#00000000",
+    backgroundColor: "#fff",
     //记录窗口大小
     ...winstate.winOptions,
     show: false,
@@ -723,25 +621,55 @@ const createWindow = () => {
   winstate.manage(win);
   win.on("close", async (event) => {
     if (forceQuit) {
+      // 如果是强制退出 (Cmd+Q)，则不阻止默认行为
       myWindow = null;
       return;
     }
 
-    event.preventDefault();
-    try {
+    // 在macOS上，'close'事件通常意味着窗口将被销毁，而不是隐藏
+    if (process.platform === "darwin") {
+      // 如果用户设置为“最小化”，则阻止关闭并隐藏窗口
       const Store = await getElectronStore();
       const settingsStore = new Store({ name: "settings" });
       const settings = await settingsStore.get("settings");
-      if (settings?.other?.quitApp === "quit") {
-        requestAppQuit();
-      } else {
+      if (settings && settings.other && settings.other.quitApp === "minimize") {
+        event.preventDefault();
         win.hide();
+      } else {
+        // 否则，允许窗口关闭，但不退出应用
+        // `window-all-closed`事件会处理后续逻辑
+        myWindow = null;
       }
-    } catch (error) {
-      console.error("读取退出设置失败，改为隐藏主窗口:", error);
-      win.hide();
+    } else {
+      // 在非macOS平台上，保留您原有的逻辑
+      event.preventDefault();
+      const Store = await getElectronStore();
+      const settingsStore = new Store({ name: "settings" });
+      const settings = await settingsStore.get("settings");
+      if (settings && settings.other && settings.other.quitApp === "minimize") {
+        win.hide();
+      } else if (
+        settings &&
+        settings.other &&
+        settings.other.quitApp === "quit"
+      ) {
+        win.webContents.send("player-save");
+        // 在发送保存指令后，需要一个机制来真正退出
+        // 监听 'player-saved' 是一个好方法，但为了简单起见，我们设置一个超时
+        setTimeout(() => {
+          app.quit();
+        }, 500);
+      } else {
+        app.quit(); // 默认行为
+      }
     }
   });
+
+  // 监听 'player-save' 完成后的事件，以便安全退出
+  // (需要在渲染器进程中添加 ipcRenderer.send('player-saved'))
+  // ipcMain.on('player-saved', () => {
+  //     app.quit();
+  // });
   //ipcMain初始化（懒加载模块，减少主进程冷启动解析量）
   const IpcMainEvent = require("./src/electron/ipcMain");
   const MusicDownload = require("./src/electron/download");
@@ -754,9 +682,6 @@ const createWindow = () => {
     closeLyricWindow,
     setLyricWindowMovable,
     getLyricWindow: () => lyricWindow,
-    requestAppQuit,
-    handlePlayerSaved,
-    handleShutdownAnimationComplete,
   });
   MusicDownload(win);
   LocalFiles(win, app);
