@@ -851,7 +851,7 @@ onUnmounted(() => {
     filter: drop-shadow(var(--ef-shadow));
 }
 
-:global(.dark) .endfield-lyric[data-ark-theme='endfield'] {
+:global(html.dark .endfield-lyric[data-ark-theme='endfield']) {
     --ef-paper: #181916;
     --ef-surface: #22231f;
     --ef-ink: #f1f1eb;
@@ -861,6 +861,7 @@ onUnmounted(() => {
     --ef-rule: rgb(255 255 255 / 18%);
     --ef-rule-strong: rgb(255 255 255 / 46%);
     --ef-grid: rgb(255 255 255 / 7%);
+    --ef-danger: #f06d61;
     --ef-shadow: 0 18px 48px rgb(0 0 0 / 48%);
 }
 
@@ -1417,7 +1418,7 @@ onUnmounted(() => {
 
 .media-controls button:hover,
 .media-controls button:focus-visible {
-    color: var(--ef-ink);
+    color: var(--ef-on-signal);
     background: var(--ef-on-dock);
     border-color: var(--ef-on-dock);
     outline: 0;
