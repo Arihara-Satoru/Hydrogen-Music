@@ -153,6 +153,36 @@
                     </div>
                 </Transition>
                 <div class="media-segments" aria-hidden="true"></div>
+                <nav
+                    v-if="!locked && !compactMode && currentSong"
+                    class="media-controls"
+                    aria-label="歌曲播放控制"
+                    @pointerdown.stop
+                    @mousedown.stop
+                >
+                    <button type="button" aria-label="上一首" title="上一首" @click="controlPlayback('previous')">
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="M6 5v14M18 6l-9 6 9 6z" />
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
+                        class="media-control--primary"
+                        :aria-label="playing ? '暂停' : '播放'"
+                        :title="playing ? '暂停' : '播放'"
+                        @click="controlPlayback('playpause')"
+                    >
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path v-if="playing" d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                            <path v-else d="m8 5 11 7-11 7z" />
+                        </svg>
+                    </button>
+                    <button type="button" aria-label="下一首" title="下一首" @click="controlPlayback('next')">
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="M18 5v14M6 6l9 6-9 6z" />
+                        </svg>
+                    </button>
+                </nav>
                 <div class="media-caption">
                     <span>COVER FIELD</span>
                     <strong>{{ trackOrigin }}</strong>
@@ -164,16 +194,23 @@
                     <span>ELAPSED</span>
                     <strong>{{ formattedCurrentTime }}</strong>
                 </div>
-                <div
-                    class="track-meter"
-                    role="progressbar"
-                    aria-label="歌曲播放进度"
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    :aria-valuenow="trackProgressRounded"
-                >
+                <div class="track-meter">
                     <span class="track-meter__fill"></span>
                     <span class="track-meter__cursor" aria-hidden="true"></span>
+                    <input
+                        class="track-meter__input"
+                        type="range"
+                        min="0"
+                        :max="duration"
+                        step="0.1"
+                        :value="displayedCurrentTime"
+                        :disabled="locked || duration <= 0"
+                        aria-label="歌曲播放进度"
+                        :aria-valuetext="timelineValueText"
+                        @pointerdown.stop
+                        @input="previewTimelineSeek"
+                        @change="commitTimelineSeek"
+                    />
                 </div>
                 <div class="time-readout time-readout--end">
                     <span>DURATION</span>
@@ -309,6 +346,7 @@ const currentTime = ref(0);
 const duration = ref(0);
 const playing = ref(false);
 const locked = ref(false);
+const seekPreviewTime = ref(null);
 const lyricFontSize = ref(28);
 const selectedLyricType = ref('auto');
 const compactMode = ref(false);
@@ -423,7 +461,12 @@ const lineProgress = computed(() =>
 );
 
 const lineProgressRounded = computed(() => Math.round(lineProgress.value));
-const trackProgressRounded = computed(() => Math.round(trackProgress.value));
+const displayedCurrentTime = computed(() => seekPreviewTime.value ?? currentTime.value);
+const displayedTrackProgress = computed(() =>
+    duration.value > 0
+        ? clampPercentage((displayedCurrentTime.value / duration.value) * 100)
+        : trackProgress.value,
+);
 
 const formatClock = seconds => {
     const value = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -435,8 +478,9 @@ const formatClock = seconds => {
         : `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 };
 
-const formattedCurrentTime = computed(() => formatClock(currentTime.value));
+const formattedCurrentTime = computed(() => formatClock(displayedCurrentTime.value));
 const formattedDuration = computed(() => formatClock(duration.value));
+const timelineValueText = computed(() => `${formattedCurrentTime.value} / ${formattedDuration.value}`);
 const lineKey = computed(
     () => `${currentSong.value?.name || 'idle'}-${displayedLyricIndex.value}-${selectedLyricType.value}`,
 );
@@ -446,6 +490,7 @@ const rootClasses = computed(() => ({
     'is-paused': !playing.value,
     'is-locked': locked.value,
     'is-dragging': isDragging.value,
+    'is-seeking': seekPreviewTime.value !== null,
     'has-cover': Boolean(coverUrl.value),
     'is-empty': !currentSong.value || lyricsArray.value.length === 0,
     'is-compact': compactMode.value,
@@ -454,7 +499,7 @@ const rootClasses = computed(() => ({
 
 const rootStyle = computed(() => ({
     '--line-progress': `${lineProgress.value}%`,
-    '--track-progress': `${trackProgress.value}%`,
+    '--track-progress': `${displayedTrackProgress.value}%`,
     '--lyric-size': `${lyricFontSize.value}px`,
 }));
 
@@ -494,6 +539,7 @@ const handleLyricUpdate = (_event, data) => {
         currentTime.value = 0;
         duration.value = 0;
         trackProgress.value = 0;
+        seekPreviewTime.value = null;
         coverFailed.value = false;
         ensureAvailableLyricType();
         return;
@@ -622,6 +668,34 @@ const adjustFontSize = delta => {
     lyricFontSize.value = Math.max(18, Math.min(52, lyricFontSize.value + delta));
 };
 
+const clampTimelineTime = value => {
+    const nextTime = Number(value);
+    if (!Number.isFinite(nextTime) || duration.value <= 0) return 0;
+    return Math.max(0, Math.min(duration.value, nextTime));
+};
+
+const previewTimelineSeek = event => {
+    if (locked.value || duration.value <= 0) return;
+    seekPreviewTime.value = clampTimelineTime(event.currentTarget.value);
+};
+
+const commitTimelineSeek = event => {
+    if (locked.value || duration.value <= 0) {
+        seekPreviewTime.value = null;
+        return;
+    }
+
+    const targetTime = clampTimelineTime(seekPreviewTime.value ?? event.currentTarget.value);
+    currentTime.value = targetTime;
+    trackProgress.value = clampPercentage((targetTime / duration.value) * 100);
+    seekPreviewTime.value = null;
+    window.electronAPI?.seekDesktopLyric?.(targetTime)?.catch?.(() => {});
+};
+
+const controlPlayback = action => {
+    window.electronAPI?.controlDesktopLyricPlayback?.(action)?.catch?.(() => {});
+};
+
 const finishDrag = () => {
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', finishDrag);
@@ -706,6 +780,7 @@ const onDragMove = event => {
 
 const toggleLock = () => {
     if (isDragging.value) finishDrag();
+    seekPreviewTime.value = null;
     locked.value = !locked.value;
     window.electronAPI?.setLyricWindowMovable?.(!locked.value);
 };
@@ -1294,6 +1369,73 @@ onUnmounted(() => {
     letter-spacing: .1em;
 }
 
+.media-controls {
+    position: absolute;
+    z-index: 4;
+    inset: 0 0 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin: 0;
+    padding: 5px;
+    background: rgb(15 15 14 / 64%);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition:
+        opacity 180ms ease,
+        transform 180ms ease;
+    -webkit-app-region: no-drag;
+}
+
+.media-field:hover .media-controls,
+.media-controls:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.media-controls button {
+    display: grid;
+    place-items: center;
+    width: clamp(28px, 4.5vw, 34px);
+    height: clamp(32px, 4.8vw, 36px);
+    flex: 0 0 auto;
+    padding: 0;
+    color: var(--ef-on-dock);
+    background: rgb(15 15 14 / 84%);
+    border: 1px solid rgb(255 255 255 / 38%);
+    border-radius: 0;
+    cursor: pointer;
+    transition:
+        color 150ms ease,
+        background-color 150ms ease,
+        border-color 150ms ease,
+        transform 150ms ease;
+}
+
+.media-controls button:hover,
+.media-controls button:focus-visible {
+    color: var(--ef-ink);
+    background: var(--ef-on-dock);
+    border-color: var(--ef-on-dock);
+    outline: 0;
+    transform: translateY(-2px);
+}
+
+.media-controls .media-control--primary {
+    color: var(--ef-on-signal);
+    background: var(--ef-signal);
+    border-color: var(--ef-signal);
+}
+
+.media-controls svg {
+    width: 17px;
+    height: 17px;
+    fill: currentColor;
+}
+
 .timeline-dock {
     position: relative;
     z-index: 5;
@@ -1339,6 +1481,11 @@ onUnmounted(() => {
         linear-gradient(rgb(255 255 255 / 14%), rgb(255 255 255 / 14%)) center / 100% 2px no-repeat;
 }
 
+.track-meter:focus-within {
+    outline: 1px solid var(--ef-signal);
+    outline-offset: 3px;
+}
+
 .track-meter__fill {
     position: absolute;
     top: 4px;
@@ -1358,6 +1505,40 @@ onUnmounted(() => {
     background: var(--ef-signal);
     transform: translateX(-2px);
     transition: left 280ms linear;
+}
+
+.track-meter__input {
+    position: absolute;
+    z-index: 2;
+    inset: -8px 0;
+    width: 100%;
+    height: 26px;
+    margin: 0;
+    appearance: none;
+    background: transparent;
+    cursor: ew-resize;
+    outline: 0;
+}
+
+.track-meter__input::-webkit-slider-runnable-track {
+    height: 26px;
+    background: transparent;
+}
+
+.track-meter__input::-webkit-slider-thumb {
+    width: 16px;
+    height: 26px;
+    appearance: none;
+    background: transparent;
+}
+
+.track-meter__input:disabled {
+    cursor: default;
+}
+
+.is-seeking .track-meter__fill,
+.is-seeking .track-meter__cursor {
+    transition: none;
 }
 
 .control-dock {
@@ -1933,6 +2114,10 @@ onUnmounted(() => {
         background: rgb(15 15 14 / 82%);
         border-top: 0;
         border-left: 1px solid rgb(255 255 255 / 20%);
+    }
+
+    .media-controls {
+        inset: 0 132px 0 0;
     }
 
     .timeline-dock {

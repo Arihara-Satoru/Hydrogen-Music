@@ -1197,6 +1197,44 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     win.webContents.send("get-current-lyric-data");
   });
 
+  ipcMain.handle("seek-desktop-lyric", (event, position) => {
+    const lyricWindow = getLyricWindow && getLyricWindow();
+    if (
+      !lyricWindow ||
+      lyricWindow.isDestroyed() ||
+      event.sender !== lyricWindow.webContents ||
+      typeof position !== "number" ||
+      !Number.isFinite(position) ||
+      position < 0
+    ) {
+      return { success: false, error: "播放位置无效" };
+    }
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: "播放器窗口不存在" };
+    }
+
+    win.webContents.send("setPosition", position);
+    return { success: true };
+  });
+
+  ipcMain.handle("control-desktop-lyric-playback", (event, action) => {
+    const lyricWindow = getLyricWindow && getLyricWindow();
+    if (
+      !lyricWindow ||
+      lyricWindow.isDestroyed() ||
+      event.sender !== lyricWindow.webContents ||
+      !["previous", "playpause", "next"].includes(action)
+    ) {
+      return { success: false, error: "播放操作无效" };
+    }
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: "播放器窗口不存在" };
+    }
+
+    win.webContents.send(action);
+    return { success: true };
+  });
+
   ipcMain.on("current-lyric-data", (event, data) => {
     const lyricWindow = getLyricWindow && getLyricWindow();
     if (lyricWindow && !lyricWindow.isDestroyed()) {

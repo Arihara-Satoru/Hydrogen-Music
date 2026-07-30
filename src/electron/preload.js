@@ -330,6 +330,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   requestLyricData: () => ipcRenderer.send("request-lyric-data"),
   updateLyricData: (data) => ipcRenderer.send("update-lyric-data", data),
+  seekDesktopLyric: (position) =>
+    ipcRenderer.invoke("seek-desktop-lyric", position),
+  controlDesktopLyricPlayback: (action) =>
+    ipcRenderer.invoke("control-desktop-lyric-playback", action),
   getCurrentLyricData: (callback) =>
     ipcRenderer.on("get-current-lyric-data", callback),
   sendCurrentLyricData: (data) => ipcRenderer.send("current-lyric-data", data),
