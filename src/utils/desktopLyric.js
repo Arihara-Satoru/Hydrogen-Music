@@ -24,6 +24,7 @@ const {
     currentIndex,
     currentLyricIndex,
     isDesktopLyricOpen,
+    localBase64Img,
     lyricsObjArr,
     playing,
     progress,
@@ -94,15 +95,27 @@ function buildSongChangePayload() {
     const list = Array.isArray(songList.value) ? songList.value : [];
     const index = Number.isInteger(currentIndex.value) ? currentIndex.value : -1;
     const currentSong = index >= 0 && index < list.length ? list[index] : null;
+    const rawArtists = currentSong?.ar || currentSong?.artist;
+    const artists = Array.isArray(rawArtists) ? rawArtists : [rawArtists].filter(Boolean);
 
     return {
         type: 'song-change',
         song: currentSong
             ? {
                   name: String(getSongDisplayName(currentSong, '未知歌曲', showSongTranslation.value)),
-                  ar: Array.isArray(currentSong.ar)
-                      ? currentSong.ar.map(artist => ({ name: String(artist?.name || '未知艺术家') }))
+                  ar: artists.length
+                      ? artists.map(artist => ({
+                            name: String(typeof artist === 'string' ? artist : artist?.name || '未知艺术家'),
+                        }))
                       : [{ name: '未知艺术家' }],
+                  coverUrl: String(
+                      currentSong.coverUrl ||
+                          currentSong.al?.picUrl ||
+                          currentSong.blurPicUrl ||
+                          currentSong.img1v1Url ||
+                          localBase64Img.value ||
+                          '',
+                  ),
                   type: String(currentSong.type || 'online'),
               }
             : null,
@@ -125,11 +138,15 @@ function buildPlayStatePayload() {
 }
 
 function buildLyricProgressPayload() {
+    const currentTime = Math.max(0, Number(progress.value) || 0);
+    const duration = Math.max(0, Number(time.value) || 0);
+
     return {
         type: 'lyric-progress',
         currentIndex: Number.isInteger(currentLyricIndex.value) ? currentLyricIndex.value : -1,
-        progress: Number(progress.value || 0),
-        currentTime: Number((progress.value / 100) * time.value || 0),
+        progress: duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0,
+        currentTime,
+        duration,
     };
 }
 
@@ -250,7 +267,7 @@ export const initDesktopLyric = () => {
     );
 
     unwatchSongSnapshot = watch(
-        () => [songId.value, currentIndex.value, lyricsObjArr.value, showSongTranslation.value],
+        () => [songId.value, currentIndex.value, lyricsObjArr.value, showSongTranslation.value, localBase64Img.value],
         () => {
             scheduleSongChangePush(0);
         }

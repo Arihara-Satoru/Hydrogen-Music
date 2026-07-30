@@ -710,12 +710,12 @@ const createLyricWindow = () => {
   }
 
   const lyricWin = new BrowserWindow({
-    width: 500,
-    height: 350,
-    minWidth: 500,
-    minHeight: 250,
-    maxWidth: 900,
-    maxHeight: 500,
+    width: 760,
+    height: 360,
+    minWidth: 520,
+    minHeight: 280,
+    maxWidth: 1200,
+    maxHeight: 640,
     frame: false,
     transparent: true,
     alwaysOnTop: true,

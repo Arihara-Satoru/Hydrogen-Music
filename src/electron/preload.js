@@ -323,7 +323,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setLyricWindowMovable: (movable) =>
     ipcRenderer.invoke("set-lyric-window-movable", movable),
   lyricWindowReady: () => ipcRenderer.send("lyric-window-ready"),
-  onLyricUpdate: (callback) => ipcRenderer.on("lyric-update", callback),
+  onLyricUpdate: (callback) => {
+    const listener = (event, data) => callback?.(event, data);
+    ipcRenderer.on("lyric-update", listener);
+    return () => ipcRenderer.removeListener("lyric-update", listener);
+  },
   requestLyricData: () => ipcRenderer.send("request-lyric-data"),
   updateLyricData: (data) => ipcRenderer.send("update-lyric-data", data),
   getCurrentLyricData: (callback) =>
