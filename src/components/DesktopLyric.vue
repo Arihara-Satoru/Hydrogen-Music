@@ -94,7 +94,11 @@
                 </div>
             </header>
 
-            <main class="lyric-stage">
+            <main
+                class="lyric-stage"
+                :class="{ 'native-drag': nativeDragEnabled && compactMode }"
+                @mousedown="onCompactDragStart"
+            >
                 <div class="stage-guides" aria-hidden="true"></div>
 
                 <div class="lyric-stack">
@@ -226,6 +230,29 @@
 
                 <fieldset class="control-group">
                     <legend>
+                        显示模式
+                        <span>VIEW MODE</span>
+                    </legend>
+                    <label class="mode-option">
+                        <span class="mode-option__label">
+                            <strong>精简模式</strong>
+                            <small>仅显示当前歌词与下一句</small>
+                        </span>
+                        <input
+                            v-model="compactMode"
+                            type="checkbox"
+                            role="switch"
+                            :aria-checked="compactMode"
+                            @change="handleCompactModeChange"
+                        />
+                        <span class="mode-switch" aria-hidden="true">
+                            <span></span>
+                        </span>
+                    </label>
+                </fieldset>
+
+                <fieldset class="control-group">
+                    <legend>
                         字体尺寸
                         <span>TYPE SCALE</span>
                     </legend>
@@ -269,6 +296,11 @@ const LYRIC_TYPE_OPTIONS = Object.freeze([
     { value: 'roma', label: '罗马音', code: 'ROMANIZATION', glyph: 'R' },
 ]);
 
+const WINDOW_LIMITS = Object.freeze({
+    expanded: { minWidth: 520, minHeight: 280, maxWidth: 1200, maxHeight: 640 },
+    compact: { minWidth: 360, minHeight: 180, targetWidth: 500, targetHeight: 220 },
+});
+
 const currentSong = ref(null);
 const lyricsArray = ref([]);
 const currentLyricIndex = ref(-1);
@@ -279,6 +311,7 @@ const playing = ref(false);
 const locked = ref(false);
 const lyricFontSize = ref(28);
 const selectedLyricType = ref('auto');
+const compactMode = ref(false);
 const coverFailed = ref(false);
 const controlDockVisible = ref(false);
 const isClosing = ref(false);
@@ -301,6 +334,7 @@ const originalMinMax = ref(null);
 
 let removeLyricListener = null;
 let closingTimer = null;
+let expandedWindowSize = null;
 
 const qaEnabled =
     import.meta.env.DEV &&
@@ -414,6 +448,7 @@ const rootClasses = computed(() => ({
     'is-dragging': isDragging.value,
     'has-cover': Boolean(coverUrl.value),
     'is-empty': !currentSong.value || lyricsArray.value.length === 0,
+    'is-compact': compactMode.value,
     'is-closing': isClosing.value,
 }));
 
@@ -520,6 +555,56 @@ const toggleControlDock = () => {
     openControlDock();
 };
 
+const handleCompactModeChange = async () => {
+    hideControlDock(false);
+
+    const getBounds = window.electronAPI?.getLyricWindowBounds;
+    const setLimits = window.electronAPI?.setLyricWindowMinMax;
+    const resizeWindow = window.electronAPI?.resizeWindow;
+    if (typeof getBounds !== 'function' || typeof setLimits !== 'function' || typeof resizeWindow !== 'function') {
+        return;
+    }
+
+    try {
+        const bounds = await getBounds();
+        if (compactMode.value) {
+            if (bounds) expandedWindowSize = { width: bounds.width, height: bounds.height };
+            await setLimits(
+                WINDOW_LIMITS.compact.minWidth,
+                WINDOW_LIMITS.compact.minHeight,
+                WINDOW_LIMITS.expanded.maxWidth,
+                WINDOW_LIMITS.expanded.maxHeight,
+            );
+            await nextTick();
+            await resizeWindow(
+                Math.max(
+                    WINDOW_LIMITS.compact.minWidth,
+                    Math.min(WINDOW_LIMITS.compact.targetWidth, bounds?.width || WINDOW_LIMITS.compact.targetWidth),
+                ),
+                Math.max(
+                    WINDOW_LIMITS.compact.minHeight,
+                    Math.min(WINDOW_LIMITS.compact.targetHeight, bounds?.height || WINDOW_LIMITS.compact.targetHeight),
+                ),
+            );
+            return;
+        }
+
+        await setLimits(
+            WINDOW_LIMITS.expanded.minWidth,
+            WINDOW_LIMITS.expanded.minHeight,
+            WINDOW_LIMITS.expanded.maxWidth,
+            WINDOW_LIMITS.expanded.maxHeight,
+        );
+        await resizeWindow(
+            Math.max(WINDOW_LIMITS.expanded.minWidth, expandedWindowSize?.width || 760),
+            Math.max(WINDOW_LIMITS.expanded.minHeight, expandedWindowSize?.height || 360),
+        );
+        expandedWindowSize = null;
+    } catch (_) {
+        // Keep the CSS mode switch usable when the native window rejects a resize.
+    }
+};
+
 const handleDocumentPointerDown = event => {
     if (!controlDockVisible.value) return;
     if (controlDockRef.value?.contains(event.target) || settingsButtonRef.value?.contains(event.target)) return;
@@ -547,7 +632,9 @@ const finishDrag = () => {
 
     if (originalMinMax.value) {
         const { minWidth, minHeight, maxWidth, maxHeight } = originalMinMax.value;
-        window.electronAPI?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight);
+        window.electronAPI
+            ?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight)
+            ?.catch?.(() => {});
     }
     window.electronAPI?.setLyricWindowResizable?.(true);
 };
@@ -579,7 +666,7 @@ const onDragStart = async event => {
 
         window.electronAPI.setLyricWindowResizable?.(false);
         originalMinMax.value = await window.electronAPI.getLyricWindowMinMax?.();
-        window.electronAPI.setLyricWindowMinMax?.(
+        await window.electronAPI.setLyricWindowMinMax?.(
             activeBounds.width,
             activeBounds.height,
             activeBounds.width,
@@ -591,6 +678,10 @@ const onDragStart = async event => {
     } catch (_) {
         finishDrag();
     }
+};
+
+const onCompactDragStart = event => {
+    if (compactMode.value) onDragStart(event);
 };
 
 const onDragMove = event => {
@@ -1456,6 +1547,76 @@ onUnmounted(() => {
     outline-offset: 2px;
 }
 
+.mode-option {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    min-height: 56px;
+    margin-top: 10px;
+    padding: 9px 11px;
+    background: var(--ef-surface);
+    border: 1px solid var(--ef-rule);
+    cursor: pointer;
+}
+
+.mode-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.mode-option__label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.mode-option__label strong {
+    font-size: 11px;
+}
+
+.mode-option__label small {
+    color: var(--ef-muted);
+    font-size: 9px;
+    line-height: 1.35;
+}
+
+.mode-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    background: var(--ef-paper);
+    border: 1px solid var(--ef-rule-strong);
+    transition: background-color 180ms ease;
+}
+
+.mode-switch span {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    background: var(--ef-ink);
+    transition: transform 180ms cubic-bezier(.22, .8, .2, 1);
+}
+
+.mode-option:has(input:checked) .mode-switch {
+    background: var(--ef-signal);
+    border-color: var(--ef-ink);
+}
+
+.mode-option:has(input:checked) .mode-switch span {
+    transform: translateX(20px);
+}
+
+.mode-option:has(input:focus-visible) {
+    outline: 2px solid var(--ef-signal);
+    outline-offset: 2px;
+}
+
 .font-stepper {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr) 40px;
@@ -1834,6 +1995,46 @@ onUnmounted(() => {
         right: 8px;
         bottom: 8px;
     }
+}
+
+.endfield-lyric.is-compact .field-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.endfield-lyric.is-compact .field-rail,
+.endfield-lyric.is-compact .field-header,
+.endfield-lyric.is-compact .media-field,
+.endfield-lyric.is-compact .timeline-dock {
+    display: none;
+}
+
+.endfield-lyric.is-compact .lyric-stage {
+    grid-column: 1;
+    grid-row: 1;
+    padding: clamp(9px, 2vw, 14px);
+    cursor: move;
+}
+
+.endfield-lyric.is-compact.is-locked .lyric-stage {
+    cursor: default;
+}
+
+.endfield-lyric.is-compact .lyric-stack {
+    gap: 7px;
+    -webkit-app-region: no-drag;
+}
+
+.endfield-lyric.is-compact .current-line {
+    min-height: 76px;
+    gap: 6px;
+    padding: 10px 16px 12px 19px;
+}
+
+.endfield-lyric.is-compact .next-line {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px;
+    padding-block: 5px;
 }
 
 @media (prefers-contrast: more) {

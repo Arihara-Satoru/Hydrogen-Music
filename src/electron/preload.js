@@ -350,7 +350,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("move-lyric-window-to", { x, y, width, height }),
   getLyricWindowMinMax: () => ipcRenderer.invoke("get-lyric-window-min-max"),
   setLyricWindowMinMax: (minWidth, minHeight, maxWidth, maxHeight) =>
-    ipcRenderer.send("set-lyric-window-min-max", {
+    ipcRenderer.invoke("set-lyric-window-min-max", {
       minWidth,
       minHeight,
       maxWidth,

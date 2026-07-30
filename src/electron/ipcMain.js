@@ -1297,9 +1297,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     }
   });
 
-  // 读取窗口最小/最大尺寸（Windows专用）
+  // 读取窗口最小/最大尺寸
   ipcMain.handle("get-lyric-window-min-max", () => {
-    if (process.platform === "darwin") return null;
     const lyricWindow = getLyricWindow && getLyricWindow();
     if (lyricWindow && !lyricWindow.isDestroyed()) {
       try {
@@ -1313,30 +1312,29 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     return null;
   });
 
-  // 设置窗口最小/最大尺寸（Windows专用）
-  ipcMain.on(
+  // 设置窗口最小/最大尺寸；精简模式会在缩放前等待该约束生效
+  ipcMain.handle(
     "set-lyric-window-min-max",
-    (event, { minWidth, minHeight, maxWidth, maxHeight }) => {
-      if (process.platform === "darwin") return;
+    (_event, { minWidth, minHeight, maxWidth, maxHeight } = {}) => {
       const lyricWindow = getLyricWindow && getLyricWindow();
       if (lyricWindow && !lyricWindow.isDestroyed()) {
         try {
-          if (typeof minWidth === "number" && typeof minHeight === "number") {
-            lyricWindow.setMinimumSize(
-              Math.max(0, Math.round(minWidth)),
-              Math.max(0, Math.round(minHeight)),
-            );
+          if (![minWidth, minHeight, maxWidth, maxHeight].every(Number.isFinite)) {
+            return { success: false, error: "窗口尺寸无效" };
           }
-          if (typeof maxWidth === "number" && typeof maxHeight === "number") {
-            lyricWindow.setMaximumSize(
-              Math.max(0, Math.round(maxWidth)),
-              Math.max(0, Math.round(maxHeight)),
-            );
-          }
+
+          const safeMinWidth = Math.max(0, Math.round(minWidth));
+          const safeMinHeight = Math.max(0, Math.round(minHeight));
+          const safeMaxWidth = Math.max(safeMinWidth, Math.round(maxWidth));
+          const safeMaxHeight = Math.max(safeMinHeight, Math.round(maxHeight));
+          lyricWindow.setMaximumSize(safeMaxWidth, safeMaxHeight);
+          lyricWindow.setMinimumSize(safeMinWidth, safeMinHeight);
+          return { success: true };
         } catch (error) {
-          // 忽略错误
+          return { success: false, error: error.message };
         }
       }
+      return { success: false, error: "窗口不存在" };
     },
   );
 
