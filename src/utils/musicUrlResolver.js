@@ -1,27 +1,64 @@
 import { getCloudDiskSongUrl } from '../api/cloud'
-import { getMusicUrl, getMusicUrlNew } from '../api/song'
+import { getMusicUrl, getMusicUrlNew, getSongPrivilegeLite } from '../api/song'
 import { getPreferredQuality } from './quality'
-import request from './request'
+import { getCookie, updateStoredAuthCookies } from './authority'
+import request, { invalidateNcmApiCookieCache } from './request'
 
 const QUALITY_FALLBACK_ORDER = ['high', 'flac', '320', '128']
+const PLAYBACK_PPAGE_ID = 356753938
+const QUALITY_BY_LEVEL = {
+    2: '128',
+    4: '320',
+    5: 'flac',
+    6: 'high',
+}
+const QUALITY_ALIASES = {
+    128: '128',
+    320: '320',
+    hq: '320',
+    flac: 'flac',
+    sq: 'flac',
+    high: 'high',
+    hires: 'high',
+    'hi-res': 'high',
+}
 
 let deviceRegistered = false
+let deviceRegistrationPromise = null
 
 /**
  * 注册设备（酷狗要求播放前先注册设备）
  * 仅在首次调用时执行一次，后续复用设备标识。
  */
 async function ensureDeviceRegistered() {
-  if (deviceRegistered) return
-  try {
-    await request({
-      url: '/register/dev',
-      method: 'get',
+    if (deviceRegistered || getCookie('dfid')) {
+        deviceRegistered = true
+        return
+    }
+    if (deviceRegistrationPromise) return deviceRegistrationPromise
+
+    deviceRegistrationPromise = request({
+        url: '/register/dev',
+        method: 'get',
+    }).then((response) => {
+        const dfid = String(
+            response?.body?.data?.dfid
+            || response?.data?.dfid
+            || response?.dfid
+            || ''
+        ).trim()
+        if (!dfid) return
+
+        updateStoredAuthCookies({ cookie: `dfid=${dfid}` })
+        invalidateNcmApiCookieCache()
+        deviceRegistered = true
+    }).catch((error) => {
+        console.warn('设备注册失败，继续尝试播放:', error)
+    }).finally(() => {
+        deviceRegistrationPromise = null
     })
-    deviceRegistered = true
-  } catch (error) {
-    console.warn('设备注册失败，继续尝试播放:', error)
-  }
+
+    return deviceRegistrationPromise
 }
 
 function extractPlayableUrl(value) {
@@ -45,11 +82,48 @@ function extractPlayableUrl(value) {
     )
 }
 
+function buildQualityHashMap(response) {
+    const body = response?.body || response
+    const songs = Array.isArray(body?.data) ? body.data : []
+    const firstSong = songs[0]
+    if (!firstSong) return null
+
+    const relatedSongs = Array.isArray(firstSong?.relate_goods) ? firstSong.relate_goods : []
+    const qualityHashes = new Map()
+
+    for (const item of [firstSong, ...relatedSongs]) {
+        const hash = String(item?.hash || '').trim()
+        if (!/^[A-Fa-f0-9]{32}$/.test(hash)) continue
+
+        const qualityName = String(item?.quality || '').toLowerCase()
+        const quality = QUALITY_ALIASES[qualityName] || QUALITY_BY_LEVEL[Number(item?.level)]
+        if (quality && !qualityHashes.has(quality)) qualityHashes.set(quality, hash)
+    }
+
+    return qualityHashes.size ? qualityHashes : null
+}
+
+function withSongHash(song, hash) {
+    return song && typeof song === 'object' ? { ...song, hash } : hash
+}
+
+async function getQualityHashes(song) {
+    if (song && typeof song === 'object' && song.source === 'cloud') return null
+
+    try {
+        return buildQualityHashMap(await getSongPrivilegeLite(song))
+    } catch (error) {
+        console.warn('获取歌曲音质信息失败，使用原始 hash 继续尝试:', error)
+        return null
+    }
+}
+
 /**
  * 尝试用指定品质获取歌曲播放地址
- * 优先走 /song/url，拿不到时降级到 /song/url/new
  */
 async function requestTrack(song, level) {
+    let lastError = null
+
     // 云盘歌曲优先走酷狗专用接口，拿不到时再回退到普通歌曲地址接口。
     if (song && typeof song === 'object' && song.source === 'cloud') {
         const cloudUrlResult = await getCloudDiskSongUrl({
@@ -69,21 +143,24 @@ async function requestTrack(song, level) {
     }
 
     // 先尝试 /song/url（基础接口）
-    const songInfo = await getMusicUrl(song, level)
-    if (songInfo && songInfo.data && songInfo.data[0] && songInfo.data[0].url) {
-        return songInfo.data[0]
-    }
-
-    // /song/url 未返回有效地址，降级到 /song/url/new（支持 VIP 凭证）
     try {
-        const songInfoNew = await getMusicUrlNew(song, level)
-        if (songInfoNew && songInfoNew.data && songInfoNew.data[0] && songInfoNew.data[0].url) {
-            return songInfoNew.data[0]
-        }
-    } catch (fallbackError) {
-        console.warn('/song/url/new 降级请求也失败:', fallbackError)
+        const songInfo = await getMusicUrl(song, level)
+        if (songInfo?.data?.[0]?.url) return songInfo.data[0]
+    } catch (error) {
+        lastError = error
     }
 
+    // 部分版权资源只有使用概念版播放页 ID 时才会返回 URL。
+    try {
+        const songInfo = await getMusicUrl(song, level, {
+            ppage_id: PLAYBACK_PPAGE_ID,
+        })
+        if (songInfo?.data?.[0]?.url) return songInfo.data[0]
+    } catch (error) {
+        lastError = error
+    }
+
+    if (lastError) throw lastError
     return null
 }
 
@@ -101,15 +178,30 @@ export async function resolveTrackByQualityPreference(song, preferredLevel) {
 
     // 在发起首次音质请求前确保设备已注册
     await ensureDeviceRegistered()
+    const qualityHashes = await getQualityHashes(song)
 
     for (const level of fallbackLevels) {
+        const qualityHash = qualityHashes?.get(level)
+        if (qualityHashes && !qualityHash) continue
+
         try {
-            const trackInfo = await requestTrack(song, level)
+            const trackInfo = await requestTrack(
+                qualityHash ? withSongHash(song, qualityHash) : song,
+                level
+            )
             if (trackInfo?.url) return trackInfo
         } catch (error) {
             // 记录最后一次错误，继续尝试更低一档音质。
             lastError = error
         }
+    }
+
+    // 新接口自身会返回所有可用音质，只需要在普通接口全部失败后请求一次。
+    try {
+        const songInfoNew = await getMusicUrlNew(song, fallbackLevels[0])
+        if (songInfoNew?.data?.[0]?.url) return songInfoNew.data[0]
+    } catch (fallbackError) {
+        console.warn('/song/url/new 降级请求也失败:', fallbackError)
     }
 
     if (lastError) throw lastError

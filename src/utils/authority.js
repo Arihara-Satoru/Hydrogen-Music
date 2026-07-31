@@ -1,6 +1,7 @@
 import Cookies from "js-cookie";
 
 const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
+const LOGIN_COOKIE_KEYS = AUTH_COOKIE_KEYS.filter(key => key !== 'dfid')
 
 function extractAuthCookieValues(rawCookie) {
   const cookieText = String(rawCookie || '')
@@ -75,8 +76,7 @@ export function isLogin() {
 // 清理登录相关Cookie与本地存储（不影响其他设置）
 export function clearLoginCookies() {
   try {
-    const keys = AUTH_COOKIE_KEYS
-    keys.forEach((k) => {
+    LOGIN_COOKIE_KEYS.forEach((k) => {
       // 移除 localStorage 中持久化的 cookie 值
       try { localStorage.removeItem('cookie:' + k) } catch (_) {}
       // 通过设置过期来移除浏览器 cookie

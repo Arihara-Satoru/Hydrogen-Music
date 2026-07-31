@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:music-url": "node --experimental-vm-modules scripts/check-music-url-resolver.cjs",
     "check:splash": "node scripts/check-splash.cjs",
     "preview": "vite preview",
     "start": "node scripts/set-console-encoding.cjs && electron .",

@@ -193,6 +193,22 @@ function resolveSongHash(input) {
     return String(input || '').trim()
 }
 
+/**
+ * 获取歌曲各音质对应的资源哈希。
+ * 酷狗不同音质使用不同 hash，不能只修改 quality 后复用原始 hash。
+ */
+export function getSongPrivilegeLite(input) {
+    const hash = resolveSongHash(input)
+    if (!isHashLike(hash)) return Promise.resolve(null)
+
+    const source = input && typeof input === 'object' ? input : {}
+    const albumId = source?.album_id || source?.albumid || source?.albumId || source?.al?.id || source?.album?.id
+    return get('/privilege/lite', {
+        hash,
+        ...(albumId ? { album_id: albumId } : {}),
+    })
+}
+
 function normalizeLyricDuration(value) {
     const duration = Number(value)
     if (!Number.isFinite(duration) || duration <= 0) return 0
