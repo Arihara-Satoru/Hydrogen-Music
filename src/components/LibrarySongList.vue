@@ -181,7 +181,8 @@ const openMenu = (e, item) => {
 
 <template>
     <div class="library-content">
-        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" key-field="rowKey" @scroll.passive="emit('list-scroll')" v-slot="{ item }">
+        <!-- ponytail: prerender only the first 12 rows so an initially offscreen list is visible without giving up virtualization. -->
+        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" :prerender="Math.min(scrollerItems.length, 12)" key-field="rowKey" @scroll.passive="emit('list-scroll')" v-slot="{ item }">
             <div
                 class="list-item"
                 :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"
