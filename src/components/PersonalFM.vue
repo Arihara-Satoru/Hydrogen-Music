@@ -1,7 +1,12 @@
 <template>
-  <div
+  <section
     class="personal-fm"
     :class="{ 'fm-cover-interrupting': coverInterrupting }"
+    data-ark-theme="adaptive"
+    data-ark-light-theme="endfield"
+    data-ark-dark-theme="exa"
+    data-ark-depth="moderate"
+    aria-labelledby="personal-fm-title"
   >
     <div class="fm-stage">
       <div
@@ -11,27 +16,32 @@
           'fm-panel-outline-ready': isPanelOutlineReady,
         }"
       >
-        <span class="frame-corner frame-tl"></span>
-        <span class="frame-corner frame-tr"></span>
-        <span class="frame-corner frame-bl"></span>
-        <span class="frame-corner frame-br"></span>
         <div class="fm-outline-draw" aria-hidden="true">
           <span class="outline-seg top"></span>
           <span class="outline-seg right"></span>
           <span class="outline-seg bottom"></span>
           <span class="outline-seg left"></span>
         </div>
+        <aside class="fm-archive-rail" aria-label="私人漫游档案">
+          <span class="archive-index">01</span>
+          <span class="archive-rule" aria-hidden="true"></span>
+          <span class="archive-name">PERSONAL FM</span>
+          <span class="archive-status">PRIVATE ROAMING</span>
+        </aside>
         <div
           class="fm-mode-floating"
           ref="modePanelRef"
           :class="{ open: modePanelOpen }"
         >
           <button
+            type="button"
             class="fm-mode-trigger"
             :disabled="loading || modeSwitching"
+            :aria-expanded="modePanelOpen"
+            aria-controls="fm-mode-options"
             @click.stop="toggleModePanel"
           >
-            <span class="mode-trigger-code">MODE</span>
+            <span class="mode-trigger-code">ROAMING MODE</span>
             <span class="mode-trigger-value">{{ selectedFmModeSummary }}</span>
             <svg
               class="mode-trigger-arrow"
@@ -47,13 +57,14 @@
           <Transition name="fm-mode-float">
             <div
               v-if="modePanelOpen"
+              id="fm-mode-options"
               class="fm-mode-dropdown"
               role="group"
               aria-label="私人漫游模式"
               @click.stop
             >
               <div class="fm-mode-title">
-                <span class="fm-mode-title-code">MODE SELECT</span>
+                <span class="fm-mode-title-code">SELECT ROUTE</span>
                 <span class="fm-mode-title-text">{{
                   selectedFmModeSummary
                 }}</span>
@@ -62,8 +73,10 @@
                 <button
                   v-for="mode in FM_MODE_OPTIONS"
                   :key="mode.value"
+                  type="button"
                   class="fm-mode-btn"
                   :class="{ active: selectedFmMode === mode.value }"
+                  :aria-pressed="selectedFmMode === mode.value"
                   :disabled="loading || modeSwitching"
                   @click="changeFmMode(mode.value)"
                 >
@@ -75,8 +88,10 @@
                 <button
                   v-for="scene in FM_SCENE_SUBMODE_OPTIONS"
                   :key="scene.value"
+                  type="button"
                   class="fm-submode-btn"
                   :class="{ active: selectedFmSubmode === scene.value }"
+                  :aria-pressed="selectedFmSubmode === scene.value"
                   :disabled="loading || modeSwitching"
                   @click="changeFmSubmode(scene.value)"
                 >
@@ -89,23 +104,27 @@
         </div>
 
         <div class="fm-header">
-          <div class="fm-headline">PERSONAL FM</div>
-          <h1>私人漫游</h1>
-          <span class="fm-subtitle">根据你的音乐喜好为你推荐</span>
+          <p class="fm-headline">PERSONAL ARCHIVE / 01</p>
+          <h1 id="personal-fm-title">
+            私人
+            <em>漫游</em>
+          </h1>
+          <p class="fm-subtitle">沿着你的听觉轨迹，抵达下一首音乐。</p>
         </div>
 
         <div class="fm-content" v-if="currentSong && !loading">
           <div class="fm-main">
-            <div class="fm-cover-carousel">
+            <div class="fm-cover-carousel" aria-label="漫游歌曲序列">
               <TransitionGroup
                 :name="coverTransitionName"
                 :css="!modeSwitching"
                 tag="div"
                 class="fm-cover-track"
               >
-                <div
+                <button
                   v-for="item in coverTrackItems"
                   :key="item.key"
+                  type="button"
                   class="fm-cover-slot"
                   :class="[
                     `slot-${item.role}`,
@@ -116,23 +135,39 @@
                       'slot-clickable': item.clickable,
                     },
                   ]"
+                  :disabled="!item.clickable"
+                  :aria-label="
+                    item.role === 'center'
+                      ? isPlaying
+                        ? '暂停当前歌曲'
+                        : '播放当前歌曲'
+                      : item.role === 'left'
+                        ? '播放上一首'
+                        : '播放下一首'
+                  "
+                  :aria-pressed="item.role === 'center' ? isPlaying : undefined"
                   @click="handleCoverSlotClick(item)"
                 >
                   <template v-if="item.song && !item.isPlaceholder">
                     <img
                       :src="
                         getFmSongCover(item.song) ||
-                        '/src/assets/default-cover.png'
+                        '/src/assets/img/default-cover.svg'
                       "
-                      :alt="item.song.name || 'FM Cover'"
+                      :alt="
+                        item.role === 'center'
+                          ? `${item.song.name || '当前歌曲'}封面`
+                          : ''
+                      "
                     />
-                    <div v-if="item.role === 'center'" class="fm-play-overlay">
+                    <span v-if="item.role === 'center'" class="fm-play-overlay">
                       <svg
                         v-if="!isPlaying"
                         width="40"
                         height="40"
                         viewBox="0 0 24 24"
                         fill="currentColor"
+                        aria-hidden="true"
                       >
                         <path d="M8 5v14l11-7z" />
                       </svg>
@@ -142,23 +177,28 @@
                         height="40"
                         viewBox="0 0 24 24"
                         fill="currentColor"
+                        aria-hidden="true"
                       >
                         <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                       </svg>
-                    </div>
-                    <div v-else class="slot-side-overlay"></div>
+                    </span>
+                    <span v-else class="slot-side-overlay" aria-hidden="true"></span>
                   </template>
                   <template v-else>
-                    <div class="slot-placeholder-text">
+                    <span class="slot-placeholder-text">
                       {{ item.placeholderText }}
-                    </div>
+                    </span>
                   </template>
-                </div>
+                </button>
               </TransitionGroup>
             </div>
 
-            <div class="fm-info">
-              <h2 class="song-name">
+            <article class="fm-dossier" aria-labelledby="fm-current-song">
+              <div class="fm-info">
+              <p class="fm-record-kicker">
+                CURRENT RECORD / {{ currentIndex + 1 }}
+              </p>
+              <h2 id="fm-current-song" class="song-name">
                 {{ getSongDisplayName(currentSong, "", showSongTranslation) }}
               </h2>
               <p class="artist-name">
@@ -166,11 +206,15 @@
                   v-for="(artist, index) in currentSongArtists"
                   :key="artist?.id || artist?.name || index"
                 >
-                  <span
-                    class="artist-link"
-                    :class="{ clickable: canOpenArtist(artist) }"
+                  <button
+                    v-if="canOpenArtist(artist)"
+                    type="button"
+                    class="artist-link clickable"
                     @click="openArtist(artist)"
                   >
+                    {{ artist?.name || "" }}
+                  </button>
+                  <span v-else class="artist-link">
                     {{ artist?.name || "" }}
                   </span>
                   <span
@@ -180,92 +224,135 @@
                   >
                 </template>
               </p>
-              <p
-                class="album-name"
-                :class="{ clickable: canOpenAlbum(currentSongAlbum) }"
+              <button
+                v-if="canOpenAlbum(currentSongAlbum)"
+                type="button"
+                class="album-name clickable"
                 @click="openAlbum(currentSongAlbum)"
               >
                 {{ getFmSongAlbumName(currentSong) }}
+              </button>
+              <p v-else class="album-name">
+                {{ getFmSongAlbumName(currentSong) }}
               </p>
-            </div>
-          </div>
+              </div>
 
-          <div class="fm-actions">
-            <div class="action-btn prev" @click="goPrev" title="上一首">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-              </svg>
-            </div>
-
-            <div class="action-btn trash" @click="trashSong" title="不喜欢">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path
-                  d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                />
-              </svg>
-            </div>
-
-            <div
-              class="action-btn like"
-              @click="likeSong"
-              :class="{ active: isCurrentSongLiked }"
-              title="喜欢"
+            <div class="fm-actions" aria-label="播放决策">
+            <button
+              type="button"
+              class="action-btn prev"
+              :disabled="currentIndex <= 0"
+              @click="goPrev"
             >
               <svg
                 width="20"
                 height="20"
                 viewBox="0 0 24 24"
                 fill="currentColor"
+                aria-hidden="true"
               >
-                <path
-                  d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                />
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
               </svg>
-            </div>
+              <span><small>PREV</small>上一首</span>
+            </button>
 
-            <div class="action-btn next" @click="goNext" title="下一首">
+            <button
+              type="button"
+              class="action-btn trash"
+              @click="trashSong"
+            >
               <svg
                 width="20"
                 height="20"
                 viewBox="0 0 24 24"
                 fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                />
+              </svg>
+              <span><small>SKIP</small>不喜欢</span>
+            </button>
+
+            <button
+              type="button"
+              class="action-btn like"
+              @click="likeSong"
+              :class="{ active: isCurrentSongLiked }"
+              :aria-pressed="isCurrentSongLiked"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                />
+              </svg>
+              <span><small>SAVE</small>喜欢</span>
+            </button>
+
+            <button type="button" class="action-btn next" @click="goNext">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
               >
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
+              <span><small>NEXT</small>下一首</span>
+            </button>
             </div>
+            </article>
+          </div>
+          <div class="fm-status-strip" aria-label="漫游状态">
+            <span>
+              <small>ARCHIVE POSITION</small>
+              <strong>{{ currentIndex + 1 }} / {{ playedSongs.length }}</strong>
+            </span>
+            <span>
+              <small>NEXT RECORD</small>
+              <strong>{{
+                isPrefetching
+                  ? "检索中"
+                  : nextCandidateSong
+                    ? "已就绪"
+                    : "待检索"
+              }}</strong>
+            </span>
           </div>
         </div>
 
-        <div class="fm-loading" v-else-if="loading">
-          <div class="loading-spinner"></div>
+        <div class="fm-loading" v-else-if="loading" aria-live="polite">
+          <div class="loading-spinner" aria-hidden="true"></div>
+          <p class="state-kicker">RECONSTRUCTING ROUTE</p>
           <p>正在为你准备音乐...</p>
         </div>
 
         <div class="fm-empty" v-else>
-          <div class="empty-icon">
+          <div class="empty-icon" aria-hidden="true">
             <svg width="60" height="60" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
               />
             </svg>
           </div>
+          <p class="state-kicker">ROUTE UNAVAILABLE</p>
           <p>无法加载漫游歌曲</p>
           <p class="error-hint">请检查网络连接或稍后重试</p>
-          <div class="refresh-button" @click="refreshFM()">重试</div>
+          <button type="button" class="refresh-button" @click="refreshFM()">
+            重新检索
+          </button>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <script setup>
@@ -804,6 +891,50 @@ let coverReleaseTimer = null;
 let panelIntroTimer = null;
 let panelIntroFrame = null;
 let skipIntroOnNextActivated = true;
+
+// ponytail: dev-only, non-persistent screenshot fixture; use API mocks if QA expands to playback.
+function isFmQaPreview() {
+  return (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.hash.split("?")[1] || "").get(
+      "fm-qa",
+    ) === "1"
+  );
+}
+const FM_QA_SONGS = Object.freeze([
+  {
+    id: "fm-qa-01",
+    name: "远星来信",
+    artists: [{ name: "Hydrogen Archive" }],
+    album: { name: "夜航记录" },
+  },
+  {
+    id: "fm-qa-02",
+    name: "潮汐引力",
+    artists: [{ name: "林间信号" }],
+    album: { name: "漫游样本 II" },
+  },
+  {
+    id: "fm-qa-03",
+    name: "晨昏边界",
+    artists: [{ name: "North Window" }],
+    album: { name: "静默轨道" },
+  },
+]);
+
+function loadFmQaPreview() {
+  playedSongs.value = FM_QA_SONGS.map((song) => ({
+    ...song,
+    artists: song.artists.map((artist) => ({ ...artist })),
+    album: { ...song.album },
+  }));
+  fmSongs.value = [];
+  currentIndex.value = 1;
+  loading.value = false;
+  isPrefetching.value = false;
+}
+
+if (isFmQaPreview()) loadFmQaPreview();
 
 function getCurrentFmUserId() {
   const userId = userStore?.user?.userId;
@@ -1719,11 +1850,15 @@ const prefetchNextCandidate = async () => {
 
 onMounted(() => {
   startPanelIntro();
-  // 恢复持久化的“近期去重队列”（按账号隔离）
-  loadPersistentRecent();
-  // 只有在FM列表为空时才加载新歌
-  if (playedSongs.value.length === 0) {
-    refreshFM();
+  if (isFmQaPreview()) {
+    loadFmQaPreview();
+  } else {
+    // 恢复持久化的“近期去重队列”（按账号隔离）
+    loadPersistentRecent();
+    // 只有在FM列表为空时才加载新歌
+    if (playedSongs.value.length === 0) {
+      refreshFM();
+    }
   }
 
   // 监听播放器控制事件
@@ -1741,6 +1876,7 @@ onActivated(() => {
     return;
   }
   startPanelIntro();
+  if (isFmQaPreview()) return;
   if (getCurrentFmUserId() && lastLoadedUserId.value !== getCurrentFmUserId()) {
     void refreshFM({ silent: true });
   }
@@ -1773,6 +1909,10 @@ watch(
   () => userStore?.user?.userId,
   (nextUserId, previousUserId) => {
     if (nextUserId === previousUserId) return;
+    if (isFmQaPreview()) {
+      loadFmQaPreview();
+      return;
+    }
     resetFmAccountState();
     loadPersistentRecent();
     if (nextUserId) {
@@ -1851,56 +1991,58 @@ const handleFmClearRecent = () => {
 
 <style scoped lang="scss">
 .personal-fm {
+  --ark-ink: #080914;
+  --ark-paper: #f3f2ef;
+  --ark-signal: #46f6e6;
+  --fm-ink: var(--ark-ink);
+  --fm-paper: var(--ark-paper);
+  --fm-signal: var(--ark-signal);
   --fm-stage-bg: transparent;
-  --fm-panel-bg: rgba(239, 245, 247, 0.16);
-  --fm-panel-border: rgba(0, 0, 0, 0.24);
-  --fm-panel-texture: none;
-  --fm-panel-texture-size: 160px;
-  --fm-panel-overlay: linear-gradient(
-    135deg,
-    transparent 0%,
-    transparent 43%,
-    rgba(0, 0, 0, 0.07) 43%,
-    rgba(0, 0, 0, 0.07) 44%,
-    transparent 44%,
-    transparent 100%
+  --fm-panel-bg: linear-gradient(
+    132deg,
+    rgba(14, 16, 34, 0.98),
+    rgba(8, 9, 20, 0.995) 56%,
+    rgba(12, 21, 34, 0.98)
   );
-  --fm-panel-overlay-opacity: 1;
-
-  --fm-text: #111213;
-  --fm-muted: rgba(0, 0, 0, 0.62);
-  --fm-subtle: rgba(0, 0, 0, 0.46);
-  --fm-corner: #111213;
-  --fm-primary-btn-bg: #111213;
-  --fm-primary-btn-text: #ffffff;
-  --fm-primary-btn-border: var(--fm-panel-border);
-  --fm-primary-btn-hover-bg: #24272d;
-  --fm-ghost-btn-bg: rgba(0, 0, 0, 0.06);
-  --fm-ghost-btn-hover-bg: rgba(0, 0, 0, 0.12);
-  --fm-mode-bg: rgba(255, 255, 255, 0.42);
-  --fm-mode-hover-bg: var(--fm-mode-bg);
-  --fm-mode-panel-bg: rgba(255, 255, 255, 0.64);
-  --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.3);
-  --fm-mode-active-bg: var(--fm-primary-btn-bg);
-  --fm-mode-active-text: var(--fm-primary-btn-text);
-  --fm-mode-active-border: var(--fm-primary-btn-border);
-  --fm-play-overlay-bg: rgba(0, 0, 0, 0.72);
-  --fm-play-overlay-hover-bg: rgba(0, 0, 0, 0.82);
-  --fm-play-overlay-border: rgba(0, 0, 0, 0.24);
-  --fm-play-overlay-icon: #ffffff;
-  --fm-danger: #ff3b30;
-  --fm-danger-bg: rgba(255, 59, 48, 0.12);
-  --fm-spinner-track: rgba(0, 0, 0, 0.14);
-  --fm-slot-bg: rgba(0, 0, 0, 0.05);
-  --fm-slot-hover-border: rgba(0, 0, 0, 0.5);
-  --fm-side-opacity: 0.52;
-  --fm-placeholder-bg: rgba(0, 0, 0, 0.03);
-  --fm-placeholder-text: rgba(0, 0, 0, 0.44);
-  --fm-intro-duration: 1.5s;
-  --fm-intro-line-color: var(--fm-panel-border);
+  --fm-panel-border: rgba(243, 242, 239, 0.2);
+  --fm-panel-overlay:
+    radial-gradient(circle at 18% 23%, rgba(70, 246, 230, 0.8) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 72% 17%, rgba(243, 242, 239, 0.44) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 84% 68%, rgba(70, 246, 230, 0.52) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 38% 82%, rgba(243, 242, 239, 0.34) 0 1px, transparent 1.6px);
+  --fm-panel-overlay-opacity: 0.72;
+  --fm-text: var(--fm-paper);
+  --fm-muted: rgba(243, 242, 239, 0.68);
+  --fm-subtle: rgba(243, 242, 239, 0.42);
+  --fm-primary-btn-bg: var(--fm-signal);
+  --fm-primary-btn-text: var(--fm-ink);
+  --fm-primary-btn-border: rgba(70, 246, 230, 0.8);
+  --fm-primary-btn-hover-bg: #77fff1;
+  --fm-ghost-btn-bg: rgba(243, 242, 239, 0.045);
+  --fm-ghost-btn-hover-bg: rgba(70, 246, 230, 0.09);
+  --fm-mode-bg: rgba(8, 9, 20, 0.78);
+  --fm-mode-hover-bg: rgba(70, 246, 230, 0.08);
+  --fm-mode-panel-bg: rgba(12, 14, 29, 0.98);
+  --fm-mode-panel-bg-soft: rgba(8, 9, 20, 0.98);
+  --fm-mode-active-bg: var(--fm-signal);
+  --fm-mode-active-text: var(--fm-ink);
+  --fm-mode-active-border: var(--fm-signal);
+  --fm-play-overlay-bg: rgba(8, 9, 20, 0.84);
+  --fm-play-overlay-hover-bg: rgba(8, 9, 20, 0.96);
+  --fm-play-overlay-border: rgba(70, 246, 230, 0.72);
+  --fm-play-overlay-icon: var(--fm-signal);
+  --fm-danger: #ff8d8d;
+  --fm-danger-bg: rgba(255, 141, 141, 0.1);
+  --fm-spinner-track: rgba(243, 242, 239, 0.14);
+  --fm-slot-bg: rgba(243, 242, 239, 0.035);
+  --fm-slot-hover-border: var(--fm-signal);
+  --fm-side-opacity: 0.36;
+  --fm-placeholder-bg: rgba(243, 242, 239, 0.025);
+  --fm-placeholder-text: rgba(243, 242, 239, 0.38);
+  --fm-intro-line-color: rgba(70, 246, 230, 0.42);
   --fm-intro-line-width: 1px;
-  --fm-intro-content-offset: 8px;
-  --fm-cover-transition-duration: 1.5s;
+  --fm-intro-content-offset: 12px;
+  --fm-cover-transition-duration: 0.72s;
   --fm-cover-transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --fm-cover-ghost-fade-duration: 0.1s;
   --fm-cover-ghost-fade-delay: calc(
@@ -1922,7 +2064,9 @@ const handleFmClearRecent = () => {
 
   height: 100%;
   overflow: auto;
-  padding: 12px 0 8px;
+  padding: 8px 0 10px;
+  color: var(--fm-text);
+  color-scheme: dark;
 
   &::-webkit-scrollbar {
     display: none;
@@ -1940,7 +2084,7 @@ const handleFmClearRecent = () => {
   min-height: 100%;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: stretch;
   padding: 0;
   background: var(--fm-stage-bg) !important;
 }
@@ -1948,16 +2092,17 @@ const handleFmClearRecent = () => {
 .fm-panel {
   width: 100%;
   max-width: 100%;
-  min-height: max(650px, 100%);
-  padding: 24px 34px;
+  min-height: max(600px, 100%);
+  padding: 32px 38px 24px 112px;
   box-sizing: border-box;
   position: relative;
   overflow: hidden;
-  background-color: var(--fm-panel-bg);
-  background-image: var(--fm-panel-texture);
-  background-size: var(--fm-panel-texture-size);
-  border: 1px solid transparent;
-  background-clip: padding-box;
+  isolation: isolate;
+  background: var(--fm-panel-bg);
+  border: 1px solid var(--fm-panel-border);
+  box-shadow:
+    inset 0 0 80px rgba(70, 246, 230, 0.025),
+    0 18px 54px rgba(8, 9, 20, 0.18);
 }
 
 .fm-panel::before {
@@ -1968,6 +2113,7 @@ const handleFmClearRecent = () => {
   background-image: var(--fm-panel-overlay);
   opacity: var(--fm-panel-overlay-opacity);
   clip-path: inset(0 0 0 0);
+  z-index: -1;
 }
 
 .fm-outline-draw {
@@ -2020,15 +2166,6 @@ const handleFmClearRecent = () => {
   transform-origin: top center;
 }
 
-.frame-corner {
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--fm-corner);
-  position: absolute;
-  z-index: 2;
-  pointer-events: none;
-}
-
 .fm-panel-intro-active .fm-outline-draw {
   opacity: 1;
 }
@@ -2053,82 +2190,117 @@ const handleFmClearRecent = () => {
 .fm-panel-intro-active::before {
   opacity: 0;
   clip-path: inset(0 100% 0 0);
-  animation: fm-overlay-reveal 0.68s cubic-bezier(0.25, 0.9, 0.3, 1) 0.16s both;
+  animation: fm-overlay-reveal 0.72s cubic-bezier(0.25, 0.9, 0.3, 1) 0.12s both;
 }
 
-.fm-panel-intro-active .frame-corner {
-  animation: fm-corner-reveal 0.48s cubic-bezier(0.2, 0.9, 0.2, 1) 0.44s both;
-}
-
+.fm-panel-intro-active .fm-archive-rail,
+.fm-panel-intro-active .fm-mode-floating,
 .fm-panel-intro-active .fm-header,
 .fm-panel-intro-active .fm-content,
 .fm-panel-intro-active .fm-loading,
 .fm-panel-intro-active .fm-empty {
-  animation: fm-content-reveal 0.9s cubic-bezier(0.18, 0.92, 0.28, 1) 0.6s both;
+  animation: fm-content-reveal 0.72s cubic-bezier(0.18, 0.92, 0.28, 1) 0.42s both;
 }
 
-.frame-tl {
-  top: -1px;
-  left: -1px;
-  border-right: none;
-  border-bottom: none;
+.fm-archive-rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 76px;
+  padding: 28px 0 22px;
+  border-right: 1px solid var(--fm-panel-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 2;
+  color: var(--fm-muted);
+  background: rgba(8, 9, 20, 0.36);
 }
 
-.frame-tr {
-  top: -1px;
-  right: -1px;
-  border-left: none;
-  border-bottom: none;
+.archive-index {
+  font: 28px/1 Bender-Bold, Consolas, monospace;
+  color: var(--fm-signal);
+  font-variant-numeric: tabular-nums;
 }
 
-.frame-bl {
-  bottom: -1px;
-  left: -1px;
-  border-right: none;
-  border-top: none;
+.archive-rule {
+  width: 1px;
+  flex: 1 1 auto;
+  min-height: 64px;
+  background: linear-gradient(
+    180deg,
+    var(--fm-signal),
+    rgba(70, 246, 230, 0.06)
+  );
 }
 
-.frame-br {
-  bottom: -1px;
-  right: -1px;
-  border-left: none;
-  border-top: none;
+.archive-name,
+.archive-status {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.16em;
+}
+
+.archive-status {
+  color: var(--fm-subtle);
 }
 
 .fm-header {
-  margin-bottom: 28px;
-  text-align: center;
+  width: min(56%, 620px);
+  margin-bottom: 18px;
+  text-align: left;
   position: relative;
   z-index: 1;
 
   h1 {
-    margin: 12px 0 0;
-    font: 30px SourceHanSansCN-Heavy;
-    letter-spacing: 1px;
+    margin: 10px 0 0;
+    display: flex;
+    gap: 0.16em;
+    font-family:
+      "Noto Serif SC", "Source Han Serif SC", STSong, serif;
+    font-size: clamp(44px, 4.4vw, 68px);
+    font-weight: 600;
+    line-height: 0.92;
+    letter-spacing: -0.055em;
     color: var(--fm-text) !important;
+
+    em {
+      color: var(--fm-signal);
+      font-style: normal;
+      font-weight: 400;
+    }
   }
 }
 
 .fm-headline {
-  display: inline-block;
-  padding: 4px 12px;
-  font: 12px Geometos;
-  letter-spacing: 1px;
-  background: var(--fm-primary-btn-bg);
-  color: var(--fm-primary-btn-text) !important;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 10px/1 Geometos, sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--fm-signal) !important;
+
+  &::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: currentColor;
+  }
 }
 
 .fm-subtitle {
-  margin: 6px 0 0;
-  font: 14px SourceHanSansCN-Bold;
+  margin: 14px 0 0;
+  font: 13px/1.7 SourceHanSansCN-Bold, sans-serif;
   color: var(--fm-muted) !important;
   display: block;
 }
 
 .fm-mode-floating {
   position: absolute;
-  top: 18px;
-  right: 22px;
+  top: 30px;
+  right: 36px;
   z-index: 8;
   display: flex;
   flex-direction: column;
@@ -2136,38 +2308,31 @@ const handleFmClearRecent = () => {
 }
 
 .fm-mode-trigger {
-  border: 1px solid var(--fm-panel-border);
-  min-height: 30px;
-  min-width: 170px;
-  max-width: 230px;
-  padding: 0 10px;
-  background: var(--fm-mode-bg);
+  border: 1px solid rgba(70, 246, 230, 0.42);
+  min-height: 42px;
+  min-width: 236px;
+  max-width: 280px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background-color: var(--fm-mode-bg) !important;
   color: var(--fm-text) !important;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  clip-path: polygon(
-    0 0,
-    calc(100% - 8px) 0,
-    100% 8px,
-    100% 100%,
-    8px 100%,
-    0 calc(100% - 8px)
-  );
   cursor: pointer;
-  outline: none;
   box-shadow: none;
   appearance: none;
   -webkit-appearance: none;
   -webkit-tap-highlight-color: transparent;
   transition:
     transform 0.2s ease,
-    background 0.2s ease,
+    background-color 0.2s ease,
     border-color 0.2s ease;
 
   &:hover:not(:disabled) {
-    background: var(--fm-mode-hover-bg);
+    background-color: var(--fm-mode-hover-bg) !important;
+    border-color: var(--fm-signal);
     transform: translateY(-1px);
   }
 
@@ -2177,26 +2342,29 @@ const handleFmClearRecent = () => {
     transform: none;
   }
 
-  &:focus,
-  &:focus-visible,
   &:active {
     outline: none;
     box-shadow: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 3px;
   }
 }
 
 .mode-trigger-code {
   flex: 0 0 auto;
-  font: 10px Geometos;
-  letter-spacing: 0.8px;
-  opacity: 0.8;
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.12em;
+  color: var(--fm-signal);
 }
 
 .mode-trigger-value {
   flex: 1 1 auto;
   min-width: 0;
   text-align: left;
-  font: 12px SourceHanSansCN-Bold;
+  font: 12px SourceHanSansCN-Bold, sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2212,115 +2380,110 @@ const handleFmClearRecent = () => {
 }
 
 .fm-mode-dropdown {
-  margin-top: 8px;
-  width: min(360px, calc(100vw - 72px));
-  padding: 10px;
-  border: 1px solid var(--fm-panel-border);
+  margin-top: 10px;
+  width: min(400px, calc(100vw - 72px));
+  padding: 16px;
+  border: 1px solid rgba(70, 246, 230, 0.36);
+  border-radius: 16px 2px 16px 2px;
   background: linear-gradient(
     180deg,
     var(--fm-mode-panel-bg) 0%,
     var(--fm-mode-panel-bg-soft) 100%
   );
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(18px);
 }
 
 .fm-mode-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .fm-mode-title-code {
-  font: 10px Geometos;
-  letter-spacing: 0.8px;
-  color: var(--fm-subtle) !important;
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.14em;
+  color: var(--fm-signal) !important;
 }
 
 .fm-mode-title-text {
-  font: 12px SourceHanSansCN-Bold;
+  font: 12px SourceHanSansCN-Bold, sans-serif;
   color: var(--fm-muted) !important;
 }
 
 .fm-mode-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .fm-submode-grid {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--fm-panel-border);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fm-panel-border);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .fm-mode-btn,
 .fm-submode-btn {
   border: 1px solid var(--fm-panel-border);
-  background: var(--fm-mode-bg);
+  border-radius: 999px;
+  background-color: var(--fm-mode-bg) !important;
   color: var(--fm-text) !important;
-  padding: 5px 6px;
-  min-height: 34px;
+  padding: 7px 10px;
+  min-height: 44px;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  clip-path: polygon(
-    0 0,
-    calc(100% - 7px) 0,
-    100% 7px,
-    100% 100%,
-    7px 100%,
-    0 calc(100% - 7px)
-  );
+  gap: 2px;
   transition:
     transform 0.2s ease,
-    background 0.2s ease,
+    background-color 0.2s ease,
     border-color 0.2s ease,
     color 0.2s ease;
   cursor: pointer;
-  outline: none;
   box-shadow: none;
   appearance: none;
   -webkit-appearance: none;
   -webkit-tap-highlight-color: transparent;
 
   .mode-code {
-    font: 9px Bender-Bold;
-    letter-spacing: 0.6px;
+    font: 8px/1 Bender-Bold, Consolas, monospace;
+    letter-spacing: 0.1em;
     line-height: 1.1;
-    opacity: 0.82;
+    color: var(--fm-subtle);
   }
 
   .mode-label {
-    font: 11px SourceHanSansCN-Bold;
+    font: 11px SourceHanSansCN-Bold, sans-serif;
     line-height: 1.15;
     white-space: nowrap;
   }
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    background: var(--fm-mode-hover-bg);
+    background-color: var(--fm-mode-hover-bg) !important;
+    border-color: rgba(70, 246, 230, 0.64);
   }
 
   &.active {
-    background: var(--fm-mode-active-bg);
+    background-color: var(--fm-mode-active-bg) !important;
     color: var(--fm-mode-active-text) !important;
     border-color: var(--fm-mode-active-border);
 
     .mode-code {
-      opacity: 1;
+      color: var(--fm-mode-active-text);
     }
   }
 
   &.active:hover:not(:disabled) {
     transform: none;
-    background: var(--fm-mode-active-bg);
+    background-color: var(--fm-mode-active-bg) !important;
     color: var(--fm-mode-active-text) !important;
     border-color: var(--fm-mode-active-border);
   }
@@ -2331,11 +2494,14 @@ const handleFmClearRecent = () => {
     transform: none;
   }
 
-  &:focus,
-  &:focus-visible,
   &:active {
     outline: none;
     box-shadow: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 2px;
   }
 }
 
@@ -2353,44 +2519,85 @@ const handleFmClearRecent = () => {
 }
 
 .fm-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 26px;
+  width: 100%;
+  display: grid;
+  gap: 18px;
   position: relative;
   z-index: 1;
 }
 
 .fm-main {
-  display: flex;
-  flex-direction: column;
+  min-height: 390px;
+  display: grid;
+  grid-template-columns: minmax(430px, 1.45fr) minmax(260px, 0.72fr);
   align-items: center;
-  gap: 18px;
+  gap: clamp(28px, 4vw, 64px);
 }
 
 .fm-cover-carousel {
-  width: min(760px, 100%);
+  width: 100%;
+  min-width: 0;
+  padding: 30px 0;
+  position: relative;
   overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    width: 340px;
+    height: 340px;
+    left: 50%;
+    top: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(70, 246, 230, 0.26);
+    box-shadow:
+      0 0 0 14px rgba(70, 246, 230, 0.018),
+      inset 0 0 36px rgba(70, 246, 230, 0.025);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    left: 50%;
+    top: 50%;
+    margin: -2px 0 0 167px;
+    border-radius: 50%;
+    background: var(--fm-signal);
+    box-shadow: 0 0 12px rgba(70, 246, 230, 0.62);
+    transform-origin: -167px 2px;
+    pointer-events: none;
+    animation: fm-orbit-drift 24s linear infinite;
+  }
 }
 
 .fm-cover-track {
-  min-height: 262px;
+  min-height: 286px;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 50px;
+  gap: clamp(16px, 2.2vw, 34px);
   isolation: isolate;
 }
 
 .fm-cover-slot {
   position: relative;
-  width: 168px;
-  height: 168px;
-  padding: 6px;
+  width: 132px;
+  height: 132px;
+  padding: 5px;
   border: 1px solid var(--fm-panel-border);
-  background: var(--fm-slot-bg);
-  transition: border-color 0.2s ease;
+  border-radius: 2px;
+  background-color: var(--fm-slot-bg) !important;
+  color: var(--fm-text) !important;
+  appearance: none;
+  transition:
+    border-color 0.2s ease,
+    opacity 0.2s ease;
   will-change: transform, opacity;
   backface-visibility: hidden;
 
@@ -2398,20 +2605,24 @@ const handleFmClearRecent = () => {
     width: 100%;
     height: 100%;
     border-radius: 2px;
-    object-fit: contain;
+    object-fit: cover;
     background: var(--fm-slot-bg);
-    border: 1px solid var(--fm-panel-border);
+    border: 0;
     display: block;
     transform: translateZ(0);
   }
 }
 
 .fm-cover-slot.slot-center {
-  width: 246px;
-  height: 246px;
-  padding: 8px;
+  width: 258px;
+  height: 258px;
+  padding: 7px;
   opacity: 1;
   z-index: var(--fm-cover-z-center);
+  border-color: rgba(70, 246, 230, 0.54);
+  box-shadow:
+    0 0 0 1px rgba(8, 9, 20, 0.9),
+    0 22px 58px rgba(0, 0, 0, 0.34);
 }
 
 .fm-cover-slot.slot-side {
@@ -2424,17 +2635,26 @@ const handleFmClearRecent = () => {
   border-color: var(--fm-slot-hover-border);
 }
 
+.fm-cover-slot:focus-visible {
+  outline: 2px solid var(--fm-signal);
+  outline-offset: 4px;
+}
+
+.fm-cover-slot:disabled {
+  cursor: default;
+}
+
 .fm-cover-slot.slot-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--fm-placeholder-bg);
-  border-style: dashed;
+  background-color: var(--fm-placeholder-bg) !important;
+  border-style: solid;
 }
 
 .slot-placeholder-text {
-  font: 11px Bender-Bold;
-  letter-spacing: 0.8px;
+  font: 10px/1 Bender-Bold, Consolas, monospace;
+  letter-spacing: 0.12em;
   color: var(--fm-placeholder-text) !important;
 }
 
@@ -2442,9 +2662,9 @@ const handleFmClearRecent = () => {
   position: absolute;
   inset: 0;
   background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.12) 0%,
-    rgba(0, 0, 0, 0.22) 100%
+    90deg,
+    rgba(8, 9, 20, 0.58),
+    rgba(8, 9, 20, 0.18)
   );
   pointer-events: none;
 }
@@ -2456,8 +2676,9 @@ const handleFmClearRecent = () => {
   transform: translate(-50%, -50%);
   width: 64px;
   height: 64px;
+  border-radius: 50%;
   border: 1px solid var(--fm-play-overlay-border);
-  background: var(--fm-play-overlay-bg);
+  background-color: var(--fm-play-overlay-bg) !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2467,7 +2688,7 @@ const handleFmClearRecent = () => {
   transition:
     transform 0.2s ease,
     opacity 0.2s ease,
-    background 0.2s ease;
+    background-color 0.2s ease;
   z-index: 10;
   pointer-events: none;
   -webkit-backdrop-filter: blur(6px);
@@ -2476,39 +2697,86 @@ const handleFmClearRecent = () => {
 
 .fm-cover-slot.slot-center:hover .fm-play-overlay {
   opacity: 1;
-  background: var(--fm-play-overlay-hover-bg);
+  background-color: var(--fm-play-overlay-hover-bg) !important;
   transform: translate(-50%, -50%) scale(1.04);
 }
 
+.fm-dossier {
+  min-width: 0;
+  min-height: 318px;
+  margin: 0;
+  padding: 24px 0 6px 30px;
+  border-left: 1px solid var(--fm-panel-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+}
+
 .fm-info {
-  text-align: center;
+  min-width: 0;
+  text-align: left;
+
+  .fm-record-kicker {
+    margin: 0 0 18px;
+    font: 9px/1 Geometos, sans-serif;
+    letter-spacing: 0.16em;
+    color: var(--fm-signal) !important;
+  }
 
   .song-name {
-    font: 21px SourceHanSansCN-Bold;
+    max-width: 13ch;
+    margin: 0 0 18px;
+    font-family:
+      "Noto Serif SC", "Source Han Serif SC", STSong, serif;
+    font-size: clamp(27px, 2.4vw, 38px);
+    font-weight: 600;
+    line-height: 1.14;
+    letter-spacing: -0.035em;
     color: var(--fm-text) !important;
-    margin: 0 0 8px 0;
+    overflow-wrap: anywhere;
   }
 
   .artist-name {
-    font: 14px SourceHanSansCN-Bold;
+    font: 13px/1.6 SourceHanSansCN-Bold, sans-serif;
     color: var(--fm-muted) !important;
-    margin: 0 0 4px 0;
+    margin: 0 0 6px;
 
     .artist-link {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background-color: transparent !important;
+      color: inherit !important;
+      font: inherit;
       transition: color 0.2s ease;
 
       &.clickable {
         cursor: pointer;
 
         &:hover {
-          color: var(--fm-text) !important;
+          color: var(--fm-signal) !important;
         }
       }
+
+      &:focus-visible {
+        outline: 2px solid var(--fm-signal);
+        outline-offset: 3px;
+      }
+    }
+
+    .artist-separator {
+      margin: 0 0.45em;
+      color: var(--fm-subtle);
     }
   }
 
   .album-name {
-    font: 12px SourceHanSansCN-Bold;
+    width: fit-content;
+    padding: 0;
+    border: 0;
+    background-color: transparent !important;
+    font: 11px/1.6 SourceHanSansCN-Bold, sans-serif;
     color: var(--fm-subtle) !important;
     margin: 0;
 
@@ -2517,71 +2785,150 @@ const handleFmClearRecent = () => {
       transition: color 0.2s ease;
 
       &:hover {
-        color: var(--fm-text) !important;
+        color: var(--fm-signal) !important;
       }
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--fm-signal);
+      outline-offset: 3px;
     }
   }
 }
 
 .fm-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
 }
 
 .action-btn {
-  min-width: 64px;
-  height: 36px;
+  min-width: 0;
+  min-height: 54px;
+  padding: 0 16px;
   border: 1px solid var(--fm-panel-border);
-  background: var(--fm-ghost-btn-bg);
+  border-radius: 999px;
+  background-color: var(--fm-ghost-btn-bg) !important;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 11px;
   cursor: pointer;
   transition:
     transform 0.2s ease,
-    background 0.2s ease,
+    background-color 0.2s ease,
     color 0.2s ease,
     border-color 0.2s ease;
   color: var(--fm-text) !important;
+  font: 12px/1 SourceHanSansCN-Bold, sans-serif;
 
   svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
   }
 
-  &:hover {
+  span {
+    display: grid;
+    gap: 3px;
+    text-align: left;
+  }
+
+  small {
+    font: 8px/1 Geometos, sans-serif;
+    letter-spacing: 0.12em;
+    color: var(--fm-subtle);
+  }
+
+  &:hover:not(:disabled) {
     transform: translateY(-1px);
-    background: var(--fm-ghost-btn-hover-bg);
+    background-color: var(--fm-ghost-btn-hover-bg) !important;
+    border-color: rgba(70, 246, 230, 0.52);
   }
 
   &.trash:hover {
-    background: var(--fm-danger-bg);
+    background-color: var(--fm-danger-bg) !important;
     border-color: var(--fm-danger);
     color: var(--fm-danger) !important;
   }
 
   &.like.active {
-    background: var(--fm-danger-bg);
-    border-color: var(--fm-danger);
-    color: var(--fm-danger) !important;
+    background-color: rgba(70, 246, 230, 0.11) !important;
+    border-color: var(--fm-signal);
+    color: var(--fm-signal) !important;
   }
 
   &.like:hover {
-    background: var(--fm-danger-bg);
-    border-color: var(--fm-danger);
-    color: var(--fm-danger) !important;
+    background-color: rgba(70, 246, 230, 0.11) !important;
+    border-color: var(--fm-signal);
   }
 
-  &.prev,
   &.next {
-    background: var(--fm-primary-btn-bg);
+    background-color: var(--fm-primary-btn-bg) !important;
     color: var(--fm-primary-btn-text) !important;
     border-color: var(--fm-primary-btn-border);
 
-    &:hover {
-      background: var(--fm-primary-btn-hover-bg);
+    small {
+      color: rgba(8, 9, 20, 0.62);
     }
+
+    &:hover {
+      background-color: var(--fm-primary-btn-hover-bg) !important;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 3px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.34;
+  }
+}
+
+.fm-status-strip {
+  min-height: 54px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--fm-panel-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: clamp(30px, 5vw, 76px);
+  color: var(--fm-muted);
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 7%,
+    #000 96%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 7%,
+    #000 96%,
+    transparent
+  );
+
+  span {
+    min-width: 112px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 14px;
+  }
+
+  small {
+    font: 8px/1 Geometos, sans-serif;
+    letter-spacing: 0.12em;
+    color: var(--fm-subtle);
+  }
+
+  strong {
+    font: 11px/1.2 Bender-Bold, Consolas, monospace;
+    color: var(--fm-text);
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -2591,20 +2938,21 @@ const handleFmClearRecent = () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 300px;
+  min-height: 380px;
   position: relative;
   z-index: 1;
   color: var(--fm-muted) !important;
 }
 
 .loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--fm-spinner-track);
-  border-top: 3px solid var(--fm-text);
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--fm-spinner-track);
+  border-top-color: var(--fm-signal);
+  border-right-color: rgba(70, 246, 230, 0.46);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
+  animation: spin 1.2s linear infinite;
+  margin-bottom: 20px;
 }
 
 .fm-loading p,
@@ -2612,11 +2960,28 @@ const handleFmClearRecent = () => {
   color: var(--fm-muted) !important;
 }
 
+.fm-loading .state-kicker,
+.fm-empty .state-kicker {
+  margin: 0 0 10px;
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--fm-signal) !important;
+}
+
 @keyframes spin {
   0% {
     transform: rotate(0deg);
   }
   100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fm-orbit-drift {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
     transform: rotate(360deg);
   }
 }
@@ -2656,17 +3021,6 @@ const handleFmClearRecent = () => {
   }
 }
 
-@keyframes fm-corner-reveal {
-  from {
-    opacity: 0;
-    transform: scale(0.78);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 @keyframes fm-content-reveal {
   from {
     opacity: 0;
@@ -2700,24 +3054,30 @@ const handleFmClearRecent = () => {
 
 .refresh-button {
   margin-top: 18px;
-  min-width: 112px;
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--fm-panel-border);
-  background: var(--fm-ghost-btn-bg);
+  min-width: 132px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--fm-signal);
+  border-radius: 999px;
+  background-color: transparent !important;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition:
     transform 0.2s ease,
-    background 0.2s ease;
-  font: 14px SourceHanSansCN-Bold;
-  color: var(--fm-text) !important;
+    background-color 0.2s ease;
+  font: 13px SourceHanSansCN-Bold, sans-serif;
+  color: var(--fm-signal) !important;
 
   &:hover {
     transform: translateY(-1px);
-    background: var(--fm-ghost-btn-hover-bg);
+    background-color: rgba(70, 246, 230, 0.1) !important;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 3px;
   }
 }
 
@@ -2863,7 +3223,7 @@ const handleFmClearRecent = () => {
   .fm-panel-intro-active::before,
   .fm-panel-intro-active .fm-outline-draw,
   .fm-panel-intro-active .outline-seg,
-  .fm-panel-intro-active .frame-corner {
+  .fm-cover-carousel::after {
     animation: none !important;
   }
 
@@ -2881,6 +3241,8 @@ const handleFmClearRecent = () => {
     transform: none !important;
   }
 
+  .fm-panel-intro-active .fm-archive-rail,
+  .fm-panel-intro-active .fm-mode-floating,
   .fm-panel-intro-active .fm-header,
   .fm-panel-intro-active .fm-content,
   .fm-panel-intro-active .fm-loading,
@@ -2889,199 +3251,979 @@ const handleFmClearRecent = () => {
   }
 }
 
-@media (max-width: 900px) {
-  .personal-fm {
-    padding: 8px 0 10px;
-  }
-
-  .fm-stage {
-    padding: 0;
-  }
-
+@media (max-width: 1180px) {
   .fm-panel {
-    width: 100%;
-    max-width: 100%;
-    min-height: 0;
-    padding: 16px 16px;
+    padding: 28px 28px 22px 94px;
   }
 
-  .fm-cover-carousel {
+  .fm-archive-rail {
+    width: 64px;
+  }
+
+  .fm-main {
+    grid-template-columns: minmax(390px, 1.25fr) minmax(250px, 0.75fr);
+    gap: 24px;
+  }
+
+  .fm-cover-carousel::before {
+    width: 300px;
+    height: 300px;
+  }
+
+  .fm-cover-carousel::after {
+    margin-left: 147px;
+    transform-origin: -147px 2px;
+  }
+
+  .fm-cover-slot {
+    width: 108px;
+    height: 108px;
+  }
+
+  .fm-cover-slot.slot-center {
+    width: 220px;
+    height: 220px;
+  }
+
+  .action-btn {
+    padding-inline: 12px;
+  }
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  .fm-panel {
+    min-height: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .fm-archive-rail {
+    position: relative;
+    inset: auto;
+    order: 1;
     width: 100%;
+    min-height: 34px;
+    padding: 0 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--fm-panel-border);
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+  }
+
+  .archive-index {
+    font-size: 22px;
+  }
+
+  .archive-rule {
+    width: auto;
+    height: 1px;
+    min-height: 1px;
+    min-width: 36px;
+    background: linear-gradient(
+      90deg,
+      var(--fm-signal),
+      rgba(70, 246, 230, 0.06)
+    );
+  }
+
+  .archive-name,
+  .archive-status {
+    writing-mode: horizontal-tb;
+    transform: none;
   }
 
   .fm-header {
-    margin-bottom: 20px;
+    order: 2;
+    width: 100%;
+    margin: 22px 0 0;
 
     h1 {
-      font-size: 24px;
+      font-size: clamp(42px, 10vw, 58px);
     }
   }
 
   .fm-mode-floating {
-    top: 12px;
-    right: 12px;
+    position: relative;
+    inset: auto;
+    order: 3;
+    margin: 22px 0 8px;
+    align-items: flex-start;
   }
 
   .fm-mode-trigger {
-    min-height: 28px;
-    min-width: 150px;
-    max-width: 176px;
-    padding: 0 8px;
-  }
-
-  .mode-trigger-value {
-    font-size: 11px;
+    min-width: min(300px, 100%);
   }
 
   .fm-mode-dropdown {
-    width: min(300px, calc(100vw - 44px));
-    padding: 8px;
+    width: min(400px, calc(100vw - 82px));
   }
 
-  .fm-mode-grid,
-  .fm-submode-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 5px;
+  .fm-content {
+    order: 4;
   }
 
-  .fm-mode-btn,
-  .fm-submode-btn {
-    min-height: 30px;
-    padding: 4px 5px;
-  }
-
-  .fm-cover-track {
-    min-height: 224px;
+  .fm-main {
+    min-height: 0;
+    grid-template-columns: 1fr;
     gap: 12px;
   }
 
-  .fm-cover-slot {
-    width: 124px;
-    height: 124px;
-    padding: 5px;
+  .fm-cover-carousel {
+    padding-block: 22px;
   }
 
-  .fm-cover-slot.slot-center {
-    width: 212px;
-    height: 212px;
-    padding: 6px;
+  .fm-dossier {
+    min-height: 0;
+    padding: 24px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--fm-panel-border);
+  }
+
+  .fm-info .song-name {
+    max-width: none;
   }
 
   .fm-actions {
-    width: 100%;
-    justify-content: center;
-    gap: 8px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .action-btn {
-    min-width: 58px;
+    justify-content: center;
+  }
+
+  .fm-status-strip {
+    justify-content: space-between;
+  }
+
+  .fm-loading,
+  .fm-empty {
+    order: 4;
+  }
+}
+
+@media (max-width: 600px) {
+  .fm-panel {
+    padding: 12px 16px;
+  }
+
+  .fm-archive-rail {
+    min-height: 28px;
+    padding-bottom: 8px;
+    gap: 8px;
+  }
+
+  .archive-index {
+    font-size: 18px;
+  }
+
+  .archive-name {
+    font-size: 8px;
+  }
+
+  .archive-status {
+    display: none;
+  }
+
+  .fm-header {
+    margin-top: 12px;
+
+    h1 {
+      margin-top: 8px;
+      font-size: 34px;
+    }
+  }
+
+  .fm-headline {
+    font-size: 8px;
+  }
+
+  .fm-subtitle {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .fm-mode-floating {
+    margin: 12px 0 4px;
+  }
+
+  .fm-mode-trigger,
+  .fm-mode-dropdown {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .fm-mode-trigger {
+    min-height: 40px;
+  }
+
+  .fm-mode-dropdown {
+    padding: 12px;
+  }
+
+  .fm-submode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fm-cover-carousel {
+    margin-inline: -4px;
+    width: calc(100% + 8px);
+    padding-block: 10px;
+
+    &::before {
+      width: 210px;
+      height: 210px;
+    }
+
+    &::after {
+      margin-left: 103px;
+      transform-origin: -103px 2px;
+    }
+  }
+
+  .fm-cover-track {
+    min-height: 184px;
+    gap: 8px;
+  }
+
+  .fm-cover-slot {
+    width: 50px;
+    height: 50px;
+    padding: 3px;
+  }
+
+  .fm-cover-slot.slot-center {
+    width: 156px;
+    height: 156px;
+    padding: 5px;
+  }
+
+  .fm-play-overlay {
+    width: 46px;
+    height: 46px;
+  }
+
+  .fm-dossier {
+    padding-top: 16px;
+    gap: 16px;
+  }
+
+  .fm-info {
+    .fm-record-kicker {
+      margin-bottom: 10px;
+      font-size: 8px;
+    }
+
+    .song-name {
+      margin-bottom: 10px;
+      font-size: 26px;
+    }
+
+    .artist-name {
+      margin-bottom: 2px;
+      font-size: 12px;
+    }
+
+    .album-name {
+      font-size: 10px;
+    }
+  }
+
+  .fm-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .action-btn {
+    min-height: 44px;
+    padding-inline: 12px;
+    justify-content: flex-start;
+  }
+
+  .fm-status-strip {
+    min-height: 44px;
+    padding-top: 8px;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+
+    span {
+      width: auto;
+      min-width: 0;
+      flex: 1 1 0;
+      gap: 6px;
+    }
+
+    small {
+      font-size: 7px;
+    }
+
+    strong {
+      font-size: 10px;
+    }
+  }
+}
+
+@media (max-height: 720px) and (min-width: 901px) {
+  .fm-panel {
+    min-height: 560px;
+    padding-block: 22px 18px;
+  }
+
+  .fm-header {
+    margin-bottom: 8px;
+
+    h1 {
+      font-size: 44px;
+    }
+  }
+
+  .fm-main {
+    min-height: 328px;
+  }
+
+  .fm-cover-carousel {
+    padding-block: 16px;
+  }
+
+  .fm-cover-track {
+    min-height: 236px;
+  }
+
+  .fm-cover-carousel::before {
+    width: 288px;
+    height: 288px;
+  }
+
+  .fm-cover-carousel::after {
+    margin-left: 141px;
+    transform-origin: -141px 2px;
+  }
+
+  .fm-cover-slot {
+    width: 106px;
+    height: 106px;
+  }
+
+  .fm-cover-slot.slot-center {
+    width: 218px;
+    height: 218px;
+  }
+
+  .fm-dossier {
+    min-height: 280px;
+    padding-top: 16px;
+    gap: 18px;
   }
 }
 </style>
 
 <style lang="scss">
-html.dark .personal-fm,
-.dark .personal-fm {
+html:not(.dark) .personal-fm {
+  --ark-ink: #191919;
+  --ark-paper: #f4f4ee;
+  --ark-signal: #fffa00;
+  --fm-ink: var(--ark-ink);
+  --fm-paper: var(--ark-paper);
+  --fm-signal: var(--fm-ink);
+  --fm-rail: #e2e2db;
+  --fm-field: #d6d8d4;
+  --fm-yellow: var(--ark-signal);
   --fm-stage-bg: transparent;
-  --fm-panel-bg: rgba(52, 58, 66, 0.88);
-  --fm-panel-border: rgba(255, 255, 255, 0.22);
-  --fm-panel-texture: none;
-  --fm-panel-overlay: linear-gradient(
-    135deg,
-    transparent 0%,
-    transparent 43%,
-    rgba(255, 255, 255, 0.1) 43%,
-    rgba(255, 255, 255, 0.1) 44%,
-    transparent 44%,
-    transparent 100%
-  );
-  --fm-panel-overlay-opacity: 0.6;
-  --fm-text: #f1f3f5;
-  --fm-muted: rgba(241, 243, 245, 0.78);
-  --fm-subtle: rgba(241, 243, 245, 0.58);
-  --fm-corner: rgba(241, 243, 245, 0.92);
-  --fm-primary-btn-bg: rgba(241, 243, 245, 0.94);
-  --fm-primary-btn-text: #0f1114;
-  --fm-primary-btn-border: rgba(241, 243, 245, 0.58);
-  --fm-primary-btn-hover-bg: #ffffff;
-  --fm-ghost-btn-bg: rgba(255, 255, 255, 0.08);
-  --fm-ghost-btn-hover-bg: rgba(255, 255, 255, 0.14);
-  --fm-mode-bg: rgba(255, 255, 255, 0.08);
-  --fm-mode-hover-bg: rgba(255, 255, 255, 0.14);
-  --fm-mode-panel-bg: rgba(52, 58, 66, 0.9);
-  --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.08);
-  --fm-mode-active-bg: rgba(241, 243, 245, 0.94);
-  --fm-mode-active-text: #0f1114;
-  --fm-mode-active-border: rgba(241, 243, 245, 0.58);
-  --fm-play-overlay-bg: rgba(0, 0, 0, 0.72);
-  --fm-play-overlay-hover-bg: rgba(0, 0, 0, 0.82);
-  --fm-play-overlay-border: rgba(0, 0, 0, 0.24);
-  --fm-play-overlay-icon: #ffffff;
-  --fm-danger: #ff6b5f;
-  --fm-danger-bg: rgba(255, 107, 95, 0.18);
-  --fm-spinner-track: rgba(255, 255, 255, 0.2);
-  --fm-slot-bg: rgba(255, 255, 255, 0.08);
-  --fm-slot-hover-border: rgba(241, 243, 245, 0.72);
-  --fm-side-opacity: 0.5;
-  --fm-placeholder-bg: rgba(255, 255, 255, 0.05);
-  --fm-placeholder-text: rgba(241, 243, 245, 0.5);
+  --fm-panel-bg:
+    linear-gradient(90deg, transparent 0 71%, rgb(25 25 25 / 5%) 71% 71.1%, transparent 71.1%),
+    linear-gradient(135deg, transparent 0 77%, rgb(226 226 219 / 72%) 77% 100%),
+    var(--fm-paper);
+  --fm-panel-border: var(--fm-ink);
+  --fm-panel-overlay: none;
+  --fm-panel-overlay-opacity: 0.3;
+  --fm-text: var(--fm-ink);
+  --fm-muted: #595a56;
+  --fm-subtle: #73746e;
+  --fm-primary-btn-bg: var(--fm-yellow);
+  --fm-primary-btn-text: var(--fm-ink);
+  --fm-primary-btn-border: var(--fm-ink);
+  --fm-primary-btn-hover-bg: #ffff52;
+  --fm-ghost-btn-bg: var(--fm-paper);
+  --fm-ghost-btn-hover-bg: #e2e2db;
+  --fm-mode-bg: var(--fm-paper);
+  --fm-mode-hover-bg: var(--fm-rail);
+  --fm-mode-panel-bg: var(--fm-paper);
+  --fm-mode-panel-bg-soft: #e2e2db;
+  --fm-mode-active-bg: var(--fm-yellow);
+  --fm-mode-active-text: var(--fm-ink);
+  --fm-mode-active-border: var(--fm-ink);
+  --fm-play-overlay-bg: var(--fm-yellow);
+  --fm-play-overlay-hover-bg: #ffff52;
+  --fm-play-overlay-border: var(--fm-ink);
+  --fm-play-overlay-icon: var(--fm-ink);
+  --fm-danger: #a22f26;
+  --fm-danger-bg: #f1ddd8;
+  --fm-spinner-track: #c5c6bf;
+  --fm-slot-bg: var(--fm-paper);
+  --fm-slot-hover-border: var(--fm-ink);
+  --fm-side-opacity: 0.52;
+  --fm-placeholder-bg: #d8dad5;
+  --fm-placeholder-text: #53554f;
+  --fm-intro-line-color: var(--fm-ink);
+  color-scheme: light;
+
+  .fm-stage {
+    align-items: stretch;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  .fm-panel {
+    width: 100%;
+    max-width: 100%;
+    min-height: max(600px, 100%);
+    padding: 32px 38px 24px 112px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    box-shadow: 0 18px 42px rgb(25 25 25 / 12%);
+  }
+
+  .fm-panel::before {
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(90deg, transparent 0 24%, rgb(25 25 25 / 8%) 24% calc(24% + 1px), transparent calc(24% + 1px)),
+      linear-gradient(180deg, transparent 0 64%, rgb(25 25 25 / 8%) 64% calc(64% + 1px), transparent calc(64% + 1px));
+    background-size: auto;
+    opacity: 1;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .fm-panel::after {
+    content: "";
+    position: absolute;
+    right: 34px;
+    bottom: 22px;
+    width: 72px;
+    height: 12px;
+    z-index: 0;
+    pointer-events: none;
+    background: var(--fm-yellow);
+    clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  }
+
+  .fm-archive-rail {
+    inset: 0 auto 0 0;
+    width: 76px;
+    height: auto;
+    padding: 28px 0 22px;
+    border: 0;
+    border-right: 1px solid var(--fm-ink);
+    flex-direction: column;
+    gap: 16px;
+    color: var(--fm-ink);
+    background: var(--fm-rail);
+  }
+
+  .archive-index {
+    padding: 8px 7px 5px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background: var(--fm-ink);
+    color: var(--fm-paper);
+    box-shadow: inset 0 -7px 0 var(--fm-yellow);
+    font-size: 22px;
+  }
+
+  .archive-rule {
+    width: 1px;
+    height: auto;
+    min-height: 64px;
+    flex: 1 1 auto;
+    background: linear-gradient(180deg, var(--fm-ink), transparent);
+  }
+
+  .archive-name,
+  .archive-status {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    color: var(--fm-ink);
+    font-family: SourceHanSansCN-Bold, sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+
+  .archive-status {
+    margin-left: 0;
+    color: var(--fm-subtle);
+  }
+
+  .fm-header {
+    width: min(60%, 680px);
+    margin-bottom: 20px;
+
+    h1 {
+      margin-top: 8px;
+      gap: 0.12em;
+      font-family:
+        SourceHanSansCN-Heavy, SourceHanSansCN-Bold, "Microsoft YaHei",
+        sans-serif;
+      font-size: clamp(44px, 4.4vw, 68px);
+      font-weight: 900;
+      line-height: 0.92;
+      letter-spacing: -0.055em;
+
+      em {
+        position: relative;
+        padding-inline: 0.06em;
+        color: var(--fm-ink);
+        font-weight: 900;
+        box-shadow: inset 0 -0.2em 0 var(--fm-yellow);
+      }
+    }
+  }
+
+  .fm-headline {
+    color: var(--fm-ink) !important;
+    font-family: Bender-Bold, Consolas, monospace;
+    font-size: 10px;
+
+    &::before {
+      width: 34px;
+      height: 4px;
+      background: var(--fm-yellow);
+      box-shadow: inset 0 0 0 1px var(--fm-ink);
+    }
+  }
+
+  .fm-subtitle {
+    color: var(--fm-muted) !important;
+  }
+
+  .fm-mode-trigger {
+    min-height: 44px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+    background-color: var(--fm-yellow) !important;
+    color: var(--fm-ink) !important;
+  }
+
+  .mode-trigger-code,
+  .mode-trigger-value {
+    color: var(--fm-ink);
+  }
+
+  .fm-mode-dropdown {
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+    box-shadow: 8px 8px 0 rgb(25 25 25 / 22%);
+    backdrop-filter: none;
+  }
+
+  .fm-mode-btn,
+  .fm-submode-btn {
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--fm-ink);
+    }
+
+    &.active,
+    &.active:hover:not(:disabled) {
+      background-color: var(--fm-mode-active-bg) !important;
+      color: var(--fm-mode-active-text) !important;
+      border-color: var(--fm-mode-active-border);
+
+      .mode-code,
+      .mode-label {
+        color: var(--fm-mode-active-text);
+      }
+    }
+  }
+
+  .fm-main {
+    gap: clamp(24px, 3vw, 52px);
+  }
+
+  .fm-cover-carousel {
+    padding: 34px 18px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background:
+      linear-gradient(90deg, #c9ccca 0 22%, transparent 22% 24%, #e8e8e1 24% 68%, transparent 68% 70%, #bfc5c4 70% 100%),
+      var(--fm-field);
+
+    &::before {
+      width: min(330px, 58vw);
+      height: auto;
+      aspect-ratio: 1;
+      border: 1px solid var(--fm-ink);
+      border-radius: 0;
+      background:
+        linear-gradient(135deg, rgb(244 244 238 / 76%) 0 48%, transparent 48%),
+        rgb(25 25 25 / 7%);
+      box-shadow: inset 0 0 0 12px rgb(244 244 238 / 22%);
+      clip-path: polygon(0 10%, 90% 0, 100% 90%, 10% 100%);
+      opacity: 0.9;
+      animation: fm-endfield-breathe 4.8s ease-in-out infinite alternate;
+    }
+
+    &::after {
+      width: 68px;
+      height: 12px;
+      top: 12%;
+      right: 8%;
+      left: auto;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      background: var(--fm-yellow);
+      box-shadow: inset 0 0 0 1px var(--fm-ink);
+      clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+      transform-origin: center;
+      animation: none;
+    }
+  }
+
+  .fm-cover-slot {
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+
+    img {
+      border-radius: 0;
+    }
+  }
+
+  .fm-cover-slot.slot-center {
+    border-color: var(--fm-ink);
+    border-radius: 0;
+    background: var(--fm-paper) !important;
+    box-shadow:
+      0 0 0 1px var(--fm-paper),
+      0 16px 28px rgb(25 25 25 / 22%);
+  }
+
+  .slot-side-overlay {
+    border-radius: 0;
+    background: linear-gradient(
+      90deg,
+      rgb(25 25 25 / 48%),
+      rgb(25 25 25 / 10%)
+    );
+  }
+
+  .fm-play-overlay {
+    border-width: 1px;
+    border-radius: 2px;
+    backdrop-filter: none;
+  }
+
+  .fm-dossier {
+    padding: 24px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background: rgb(244 244 238 / 92%);
+  }
+
+  .fm-info {
+    .fm-record-kicker {
+      color: var(--fm-ink) !important;
+    }
+
+    .song-name {
+      font-family:
+        SourceHanSansCN-Heavy, SourceHanSansCN-Bold, "Microsoft YaHei",
+        sans-serif;
+      font-weight: 900;
+      letter-spacing: -0.045em;
+    }
+  }
+
+  .action-btn {
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--fm-ink);
+    }
+
+    &.trash:hover {
+      border-color: var(--fm-ink);
+      color: var(--fm-danger) !important;
+    }
+
+    &.like.active,
+    &.like:hover {
+      border-color: var(--fm-ink);
+    }
+
+    &.like.active {
+      background-color: var(--fm-yellow) !important;
+      color: var(--fm-ink) !important;
+
+      small {
+        color: rgb(25 25 25 / 62%);
+      }
+    }
+  }
+
+  .fm-status-strip {
+    min-height: 52px;
+    padding: 10px 14px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background:
+      linear-gradient(90deg, var(--fm-yellow) 0 8px, transparent 8px),
+      var(--fm-rail);
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .refresh-button {
+    border-width: 1px;
+    border-color: var(--fm-ink);
+    border-radius: 2px;
+    color: var(--fm-ink) !important;
+    background-color: var(--fm-yellow) !important;
+  }
 }
 
-.dark .personal-fm .action-btn.prev,
-.dark .personal-fm .action-btn.next,
-html.dark .personal-fm .action-btn.prev,
-html.dark .personal-fm .action-btn.next {
-  color: var(--fm-primary-btn-text) !important;
-  border-color: var(--fm-primary-btn-border) !important;
+@keyframes fm-endfield-breathe {
+  from {
+    transform: translate(-50%, -50%) scale(0.985);
+    opacity: 0.76;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.92;
+  }
 }
 
-.dark .personal-fm .fm-play-overlay,
-html.dark .personal-fm .fm-play-overlay {
-  color: var(--fm-play-overlay-icon) !important;
-  border-color: var(--fm-play-overlay-border) !important;
+@media (max-width: 1180px) {
+  html:not(.dark) .personal-fm {
+    .fm-panel {
+      padding: 28px 28px 22px 94px;
+    }
+
+    .fm-archive-rail {
+      width: 64px;
+    }
+  }
 }
 
-.dark .personal-fm .action-btn.prev svg,
-.dark .personal-fm .action-btn.next svg,
-html.dark .personal-fm .action-btn.prev svg,
-html.dark .personal-fm .action-btn.next svg {
-  color: var(--fm-primary-btn-text) !important;
+@media (max-width: 900px), (orientation: portrait) {
+  html:not(.dark) .personal-fm {
+    .fm-panel {
+      min-height: 0;
+      padding: 20px;
+    }
+
+    .fm-panel::before {
+      inset: 0;
+    }
+
+    .fm-panel::after {
+      right: 20px;
+      bottom: 18px;
+      width: 62px;
+      height: 10px;
+    }
+
+    .fm-archive-rail {
+      position: relative;
+      inset: auto;
+      order: 1;
+      width: calc(100% + 40px);
+      height: auto;
+      min-height: 48px;
+      margin: -20px -20px 0;
+      padding: 10px 20px;
+      border-right: 0;
+      border-bottom: 1px solid var(--fm-ink);
+      flex-direction: row;
+      gap: 12px;
+    }
+
+    .archive-rule {
+      width: auto;
+      height: 1px;
+      min-height: 1px;
+      min-width: 36px;
+      background: linear-gradient(90deg, var(--fm-ink), transparent);
+    }
+
+    .archive-name,
+    .archive-status {
+      writing-mode: horizontal-tb;
+      transform: none;
+    }
+
+    .archive-status {
+      margin-left: auto;
+    }
+
+    .fm-header {
+      width: 100%;
+      margin: 22px 0 0;
+
+      h1 {
+        font-size: clamp(38px, 9vw, 54px);
+      }
+    }
+
+    .fm-cover-carousel {
+      padding-block: 26px;
+    }
+
+    .fm-dossier {
+      padding: 22px;
+      border-top: 1px solid var(--fm-ink);
+    }
+  }
 }
 
-.dark .personal-fm .action-btn.prev svg path,
-.dark .personal-fm .action-btn.next svg path,
-html.dark .personal-fm .action-btn.prev svg path,
-html.dark .personal-fm .action-btn.next svg path {
-  fill: var(--fm-primary-btn-text) !important;
+@media (max-width: 600px) {
+  html:not(.dark) .personal-fm {
+    .fm-stage {
+      padding: 0;
+    }
+
+    .fm-panel {
+      width: 100%;
+      max-width: 100%;
+      padding: 12px 16px;
+      border-radius: 0;
+      box-shadow: 0 12px 28px rgb(25 25 25 / 10%);
+    }
+
+    .fm-panel::before {
+      inset: 0;
+    }
+
+    .fm-panel::after {
+      right: 14px;
+      bottom: 12px;
+      width: 52px;
+      height: 9px;
+    }
+
+    .fm-archive-rail {
+      width: calc(100% + 32px);
+      min-height: 44px;
+      margin: -12px -16px 0;
+      padding: 8px 16px;
+      gap: 8px;
+    }
+
+    .archive-index {
+      padding: 5px 8px 4px;
+      font-size: 16px;
+    }
+
+    .archive-rule {
+      min-width: 20px;
+    }
+
+    .archive-status {
+      display: none;
+    }
+
+    .archive-name {
+      font-size: 8px;
+    }
+
+    .fm-header {
+      margin-top: 8px;
+
+      h1 {
+        font-size: 34px;
+      }
+    }
+
+    .fm-cover-carousel {
+      padding-block: 18px;
+      border-radius: 0;
+
+      &::before {
+        width: min(230px, 60vw);
+      }
+
+      &::after {
+        width: 52px;
+        height: 10px;
+        top: 10%;
+        right: 6%;
+      }
+    }
+
+    .fm-dossier {
+      padding: 18px;
+      border-radius: 0;
+    }
+
+    .fm-status-strip {
+      padding-inline: 10px;
+    }
+  }
 }
 
-.dark .personal-fm .fm-play-overlay svg,
-html.dark .personal-fm .fm-play-overlay svg {
-  color: var(--fm-play-overlay-icon) !important;
+@media (prefers-reduced-motion: reduce) {
+  html:not(.dark) .personal-fm .fm-cover-carousel::before,
+  html:not(.dark) .personal-fm .fm-cover-carousel::after {
+    animation: none !important;
+  }
 }
 
-.dark .personal-fm .fm-play-overlay svg path,
-html.dark .personal-fm .fm-play-overlay svg path {
-  fill: var(--fm-play-overlay-icon) !important;
+.dark .personal-fm .fm-mode-trigger,
+.dark .personal-fm .fm-mode-btn,
+.dark .personal-fm .fm-submode-btn,
+.dark .personal-fm .fm-cover-slot,
+.dark .personal-fm .action-btn,
+.dark .personal-fm .artist-link,
+.dark .personal-fm .album-name,
+.dark .personal-fm .refresh-button {
+  background-color: var(--fm-ghost-btn-bg) !important;
+}
+
+.dark .personal-fm .fm-mode-trigger,
+.dark .personal-fm .fm-mode-btn,
+.dark .personal-fm .fm-submode-btn {
+  background-color: var(--fm-mode-bg) !important;
+}
+
+.dark .personal-fm .artist-link,
+.dark .personal-fm .album-name,
+.dark .personal-fm .refresh-button {
+  background-color: transparent !important;
 }
 
 .dark .personal-fm .fm-mode-btn.active,
-html.dark .personal-fm .fm-mode-btn.active,
-.dark .personal-fm .fm-submode-btn.active,
-html.dark .personal-fm .fm-submode-btn.active {
+.dark .personal-fm .fm-submode-btn.active {
   background-color: var(--fm-mode-active-bg) !important;
   color: var(--fm-mode-active-text) !important;
   border-color: var(--fm-mode-active-border) !important;
 }
 
 .dark .personal-fm .fm-mode-btn.active .mode-code,
-html.dark .personal-fm .fm-mode-btn.active .mode-code,
 .dark .personal-fm .fm-mode-btn.active .mode-label,
-html.dark .personal-fm .fm-mode-btn.active .mode-label,
 .dark .personal-fm .fm-submode-btn.active .mode-code,
-html.dark .personal-fm .fm-submode-btn.active .mode-code,
-.dark .personal-fm .fm-submode-btn.active .mode-label,
-html.dark .personal-fm .fm-submode-btn.active .mode-label {
+.dark .personal-fm .fm-submode-btn.active .mode-label {
   color: var(--fm-mode-active-text) !important;
+}
+
+.dark .personal-fm .action-btn.next {
+  background-color: var(--fm-primary-btn-bg) !important;
+  color: var(--fm-primary-btn-text) !important;
+}
+
+.dark .personal-fm .action-btn.next svg path {
+  fill: var(--fm-primary-btn-text) !important;
+  stroke: var(--fm-primary-btn-text) !important;
+}
+
+.dark .personal-fm .action-btn.like.active svg path,
+.dark .personal-fm .fm-play-overlay svg path {
+  fill: var(--fm-signal) !important;
+  stroke: var(--fm-signal) !important;
 }
 </style>
