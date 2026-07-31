@@ -225,7 +225,10 @@ watch(
                 </div>
             </div>
 
-            <div class="home-content">
+            <div
+                class="home-content"
+                :class="{ 'home-content-full-window': router.currentRoute.value.name === 'personalfm' }"
+            >
                 <router-view v-slot="{ Component }">
                     <keep-alive>
                         <component :is="Component"></component>
@@ -400,6 +403,17 @@ main {
     padding: 0 45px;
     height: calc(100% + 1px);
     overflow: auto;
+
+    &.home-content-full-window {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        overflow: hidden;
+    }
+
     &::-webkit-scrollbar {
         display: none;
     }

@@ -1,6 +1,6 @@
 <template>
   <section
-    class="personal-fm"
+    class="personal-fm fm-window-fill"
     :class="{ 'fm-cover-interrupting': coverInterrupting }"
     data-ark-theme="adaptive"
     data-ark-light-theme="endfield"
@@ -4171,6 +4171,62 @@ html:not(.dark) .personal-fm {
   html:not(.dark) .personal-fm .fm-cover-carousel::before,
   html:not(.dark) .personal-fm .fm-cover-carousel::after {
     animation: none !important;
+  }
+}
+
+html .personal-fm.fm-window-fill {
+  height: 100%;
+  padding: 0;
+}
+
+@media (min-width: 901px) and (orientation: landscape) {
+  html .personal-fm.fm-window-fill {
+    .fm-panel {
+      min-height: 100%;
+      padding: 117px 83px 24px 157px;
+    }
+
+    .fm-archive-rail {
+      width: 121px;
+      padding: 113px 0 22px 45px;
+    }
+
+    .fm-mode-floating {
+      top: 115px;
+      right: 81px;
+    }
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) and (orientation: landscape) {
+  html .personal-fm.fm-window-fill {
+    .fm-panel {
+      padding: 113px 73px 22px 139px;
+    }
+
+    .fm-archive-rail {
+      width: 109px;
+      padding-top: 113px;
+    }
+  }
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  html .personal-fm.fm-window-fill .fm-panel {
+    padding: 105px 20px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  html .personal-fm.fm-window-fill .fm-panel {
+    padding: 97px 16px 14px;
+  }
+}
+
+@media (max-height: 720px) and (min-width: 901px) {
+  html .personal-fm.fm-window-fill .fm-panel {
+    padding-top: 107px;
+    padding-bottom: 18px;
   }
 }
 
