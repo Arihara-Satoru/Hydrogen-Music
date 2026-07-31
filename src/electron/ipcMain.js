@@ -154,11 +154,15 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   normalized.other = {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     enableUpdate: normalized.other?.enableUpdate !== false,
-    startupAnimation: ["classic", "industrial", "ashen", "ashlink", "palerift"].includes(
-      normalized.other?.startupAnimation,
-    )
+    startupAnimation: [
+      "exa",
+      "corporate",
+      "popucom",
+      "endfield",
+      "ark",
+    ].includes(normalized.other?.startupAnimation)
       ? normalized.other.startupAnimation
-      : "signal",
+      : "ark",
     quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
     customFont: typeof normalized.other?.customFont === "string" ? normalized.other.customFont.trim() : "",
     customFontLabel: typeof normalized.other?.customFontLabel === "string" ? normalized.other.customFontLabel.trim() : "",
@@ -626,7 +630,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
         other: {
           globalShortcuts: true,
           enableUpdate: true,
-          startupAnimation: "signal",
+          startupAnimation: "ark",
           quitApp: "minimize",
           customFont: "",
           customFontLabel: "",

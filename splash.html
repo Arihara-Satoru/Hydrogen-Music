@@ -1,415 +1,134 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="complex">
   <head>
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hydrogen Music</title>
-    <style>
-      :root {
-        color-scheme: light;
-        background: #f7faff;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html,
-      body,
-      main,
-      canvas {
-        width: 100%;
-        height: 100%;
-      }
-
-      body {
-        margin: 0;
-        overflow: hidden;
-        background: #f7faff;
-        user-select: none;
-      }
-
-      main {
-        position: relative;
-      }
-
-      canvas {
-        display: block;
-      }
-
-      .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-      }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Hydrogen Music — 启动中</title>
+    <link rel="stylesheet" href="./splash.css" />
+    <script src="./splash.js" defer></script>
   </head>
   <body>
-    <main aria-label="Hydrogen Music 正在启动">
-      <canvas id="scene" aria-hidden="true"></canvas>
-      <p id="status" class="sr-only" aria-live="polite">正在初始化...</p>
-      <progress id="progress" class="sr-only" max="100" value="12">12%</progress>
+    <main class="splash-shell" aria-labelledby="startup-title">
+      <header class="brand-bar">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i>
+            <i></i>
+            <i></i>
+          </span>
+          <span class="brand-name">
+            <strong>Hydrogen Music</strong>
+            <small>LOCAL MUSIC PLAYER</small>
+          </span>
+        </div>
+        <p class="theme-name">
+          <span>启动界面</span>
+          <b aria-hidden="true">/</b>
+          <strong data-theme-label>工业</strong>
+        </p>
+      </header>
+
+      <aside class="phase-rail" aria-label="启动阶段">
+        <p class="phase-title">STARTUP</p>
+        <ol>
+          <li data-phase="0">
+            <span>01</span>
+            <strong>准备</strong>
+          </li>
+          <li data-phase="1">
+            <span>02</span>
+            <strong>数据</strong>
+          </li>
+          <li data-phase="2">
+            <span>03</span>
+            <strong>服务</strong>
+          </li>
+          <li data-phase="3">
+            <span>04</span>
+            <strong>界面</strong>
+          </li>
+          <li data-phase="4">
+            <span>05</span>
+            <strong>完成</strong>
+          </li>
+        </ol>
+      </aside>
+
+      <section class="splash-stage">
+        <div class="stage-field" aria-hidden="true">
+          <span class="field-grid"></span>
+          <span class="field-sector"></span>
+          <span class="field-beam"></span>
+          <span class="field-orbit orbit-outer"></span>
+          <span class="field-orbit orbit-inner"></span>
+          <span class="field-node node-one"></span>
+          <span class="field-node node-two"></span>
+          <span class="field-node node-three"></span>
+          <span class="editorial-media"></span>
+          <span class="editorial-rule"></span>
+          <span class="play-shape play-one"></span>
+          <span class="play-shape play-two"></span>
+          <span class="play-shape play-three"></span>
+
+          <div class="progress-instrument">
+            <span class="instrument-track"></span>
+            <span class="instrument-sweep"></span>
+            <svg
+              class="waveform"
+              viewBox="0 0 320 120"
+              preserveAspectRatio="none"
+            >
+              <path
+                class="wave-muted"
+                d="M0 60C18 60 22 60 35 60C47 60 49 44 61 44C74 44 76 77 89 77C103 77 107 22 121 22C136 22 139 92 154 92C170 92 173 35 189 35C204 35 209 70 224 70C239 70 243 51 257 51C273 51 279 60 320 60"
+              ></path>
+              <path
+                class="wave-signal"
+                d="M0 60C18 60 22 60 35 60C47 60 49 44 61 44C74 44 76 77 89 77C103 77 107 22 121 22C136 22 139 92 154 92C170 92 173 35 189 35C204 35 209 70 224 70C239 70 243 51 257 51C273 51 279 60 320 60"
+              ></path>
+            </svg>
+            <span class="instrument-core"></span>
+          </div>
+
+          <p class="progress-ghost">
+            <span data-progress-ghost>08</span>
+            <small>%</small>
+          </p>
+        </div>
+
+        <div class="hero-copy">
+          <p class="hero-kicker">PLAYER STARTUP / MUSIC LIBRARY</p>
+          <h1 id="startup-title">
+            音乐
+            <span>准备中</span>
+          </h1>
+          <p class="hero-note">正在启动播放器，请稍候。</p>
+        </div>
+
+        <section class="status-panel" aria-labelledby="status-title">
+          <div class="status-heading">
+            <p id="status-title">当前状态</p>
+            <output data-progress-output aria-label="启动进度">08%</output>
+          </div>
+          <p class="status-text" data-status aria-live="polite">
+            正在准备播放器...
+          </p>
+          <progress data-progress max="100" value="8">8%</progress>
+          <div class="progress-line" aria-hidden="true">
+            <span data-progress-bar></span>
+          </div>
+        </section>
+
+        <footer class="stage-footer">
+          <span>HYDROGEN MUSIC</span>
+          <span data-current-phase>准备</span>
+        </footer>
+      </section>
     </main>
-    <script>
-      const canvas = document.getElementById("scene");
-      const context = canvas.getContext("2d");
-      const statusElement = document.getElementById("status");
-      const progressElement = document.getElementById("progress");
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-      const MOTION_DURATION = 3500;
-      const HANDOFF_DURATION = 500;
-      const TAU = Math.PI * 2;
-      const startTime = performance.now();
-      const viewport = { width: 720, height: 480, dpr: 1 };
-      let targetProgress = 0.12;
-      let visibleProgress = 0.12;
-      let handoffStart = 0;
-      let finishPromise = null;
-      let animationFrame = null;
-
-      const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
-      const lerp = (from, to, amount) => from + (to - from) * amount;
-      const range = (value, from, to) => clamp((value - from) / (to - from));
-      const easeOut = (value) => 1 - Math.pow(1 - value, 3);
-      const easeInOut = (value) =>
-        value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
-
-      const resizeCanvas = () => {
-        viewport.width = canvas.clientWidth || 720;
-        viewport.height = canvas.clientHeight || 480;
-        viewport.dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.round(viewport.width * viewport.dpr);
-        canvas.height = Math.round(viewport.height * viewport.dpr);
-        context.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-      };
-
-      const roundedRect = (x, y, width, height, radius) => {
-        const safeRadius = Math.min(radius, width / 2, height / 2);
-        context.beginPath();
-        context.moveTo(x + safeRadius, y);
-        context.arcTo(x + width, y, x + width, y + height, safeRadius);
-        context.arcTo(x + width, y + height, x, y + height, safeRadius);
-        context.arcTo(x, y + height, x, y, safeRadius);
-        context.arcTo(x, y, x + width, y, safeRadius);
-        context.closePath();
-      };
-
-      const strokeLine = (x1, y1, x2, y2, opacity = 1, width = 1) => {
-        context.strokeStyle = `rgba(95, 145, 190, ${opacity})`;
-        context.lineWidth = width;
-        context.beginPath();
-        context.moveTo(x1, y1);
-        context.lineTo(x2, y2);
-        context.stroke();
-      };
-
-      const drawBackground = (handoff) => {
-        const { width, height } = viewport;
-        const base = context.createLinearGradient(0, 0, width, height);
-        base.addColorStop(0, `rgb(${Math.round(248 + handoff * 7)}, ${Math.round(251 + handoff * 4)}, 255)`);
-        base.addColorStop(0.48, `rgb(${Math.round(235 + handoff * 20)}, ${Math.round(243 + handoff * 12)}, 252)`);
-        base.addColorStop(1, `rgb(${Math.round(210 + handoff * 45)}, ${Math.round(225 + handoff * 30)}, ${Math.round(242 + handoff * 13)})`);
-        context.fillStyle = base;
-        context.fillRect(0, 0, width, height);
-
-        const glow = context.createRadialGradient(width * 0.5, height * 0.44, 0, width * 0.5, height * 0.44, width * 0.58);
-        glow.addColorStop(0, `rgba(255, 255, 255, ${0.96 - handoff * 0.2})`);
-        glow.addColorStop(0.55, "rgba(250, 253, 255, 0.56)");
-        glow.addColorStop(1, "rgba(244, 249, 254, 0)");
-        context.fillStyle = glow;
-        context.fillRect(0, 0, width, height);
-      };
-
-      const REFERENCE_WIDTH = 1597;
-      const REFERENCE_HEIGHT = 985;
-      const chromeRects = [
-        [45, 34, 161, 40],
-        [238, 37, 139, 30],
-        [618, 38, 79, 27],
-        [740, 39, 99, 26],
-        [880, 40, 94, 25],
-        [1011, 39, 31, 26],
-        [1444, 26, 26, 25],
-        [1491, 26, 25, 25],
-        [1538, 26, 26, 25],
-      ];
-      const featureRects = [
-        [47, 141, 562, 215],
-        [666, 136, 437, 222],
-      ];
-      const featureDetails = [
-        [46, 115, 164, 19],
-        [616, 118, 19, 18],
-        [1073, 148, 18, 17],
-        [1157, 103, 94, 21],
-        [46, 402, 274, 21],
-      ];
-      const listRows = [
-        [1157, 139, 58, 59, 1228, 147, 170, 20, 1228, 176, 95, 14],
-        [1157, 220, 58, 61, 1228, 231, 170, 20, 1228, 261, 82, 15],
-        [1157, 300, 58, 59, 1228, 307, 170, 20, 1228, 337, 95, 14],
-      ];
-      const cardColumns = [
-        [47, 266, 185, 115],
-        [354, 268, 178, 118],
-        [662, 268, 181, 118],
-        [971, 267, 188, 118],
-        [1279, 267, 185, 118],
-      ];
-
-      const mapRect = ([x, y, width, height]) => [
-        (x / REFERENCE_WIDTH) * viewport.width,
-        (y / REFERENCE_HEIGHT) * viewport.height,
-        (width / REFERENCE_WIDTH) * viewport.width,
-        (height / REFERENCE_HEIGHT) * viewport.height,
-      ];
-
-      const mapPoint = (x, y) => [
-        (x / REFERENCE_WIDTH) * viewport.width,
-        (y / REFERENCE_HEIGHT) * viewport.height,
-      ];
-
-      const drawGlassPanel = (rect, opacity, accent = false) => {
-        const [x, y, width, height] = rect;
-        const fill = context.createLinearGradient(x, y, x + width, y + height);
-        fill.addColorStop(0, `rgba(255, 255, 255, ${0.5 * opacity})`);
-        fill.addColorStop(0.55, `rgba(226, 239, 250, ${0.32 * opacity})`);
-        fill.addColorStop(1, `rgba(185, 211, 235, ${0.23 * opacity})`);
-        const radius = Math.max(
-          1,
-          Math.min(viewport.width / REFERENCE_WIDTH, viewport.height / REFERENCE_HEIGHT) * 1.5,
-        );
-        roundedRect(x, y, width, height, radius);
-        context.fillStyle = fill;
-        context.shadowColor = `rgba(82, 135, 184, ${0.13 * opacity})`;
-        context.shadowBlur = 18 * opacity;
-        context.fill();
-        context.shadowBlur = 0;
-        context.strokeStyle = accent
-          ? `rgba(95, 169, 232, ${0.55 * opacity})`
-          : `rgba(114, 158, 198, ${0.34 * opacity})`;
-        context.lineWidth = accent ? 1.15 : 0.75;
-        context.stroke();
-
-        const edge = context.createLinearGradient(x, y, x + width, y);
-        edge.addColorStop(0, "rgba(255,255,255,0)");
-        edge.addColorStop(0.55, `rgba(255,255,255,${0.78 * opacity})`);
-        edge.addColorStop(1, "rgba(255,255,255,0)");
-        context.strokeStyle = edge;
-        context.beginPath();
-        context.moveTo(x + width * 0.08, y + 0.6);
-        context.lineTo(x + width * 0.92, y + 0.6);
-        context.stroke();
-      };
-
-      const drawExpandingRect = (target, progress, opacity, accent = false, seedY = 0.5) => {
-        const [x, y, width, height] = mapRect(target);
-        const seedSize = Math.max(5, Math.min(viewport.width, viewport.height) * 0.012);
-        const seedX = x + width / 2 - seedSize / 2;
-        const startY = viewport.height * seedY - seedSize / 2;
-        drawGlassPanel(
-          [
-            lerp(seedX, x, progress),
-            lerp(startY, y, progress),
-            lerp(seedSize, width, progress),
-            lerp(seedSize, height, progress),
-          ],
-          opacity,
-          accent,
-        );
-      };
-
-      const drawReferenceLine = (x1, y1, x2, y2, reveal, opacity = 0.38, width = 0.8) => {
-        const [fromX, fromY] = mapPoint(x1, y1);
-        const [toX, toY] = mapPoint(x2, y2);
-        strokeLine(fromX, fromY, lerp(fromX, toX, reveal), lerp(fromY, toY, reveal), opacity * reveal, width);
-      };
-
-      const drawChrome = (timeline) => {
-        const reveal = easeInOut(range(timeline, 0.24, 0.58));
-        const opacity = easeOut(range(timeline, 0.18, 0.44));
-        chromeRects.forEach((rect, index) => {
-          drawExpandingRect(rect, reveal, opacity, false, index < 2 ? 0.18 : 0.08);
-        });
-      };
-
-      const drawFeatures = (timeline) => {
-        const reveal = easeInOut(range(timeline, 0.18, 0.62));
-        const opacity = easeOut(range(timeline, 0.13, 0.42));
-        featureRects.forEach((rect, index) => {
-          drawExpandingRect(rect, reveal, opacity, index === 1, 0.26);
-        });
-
-        const detailReveal = easeInOut(range(timeline, 0.38, 0.72));
-        featureDetails.forEach((rect, index) => {
-          drawExpandingRect(rect, detailReveal, detailReveal, false, index === 4 ? 0.43 : 0.14);
-        });
-        drawReferenceLine(465, 124, 609, 124, detailReveal);
-        drawReferenceLine(557, 373, 624, 373, detailReveal);
-        drawReferenceLine(624, 373, 624, 307, detailReveal);
-        drawReferenceLine(335, 417, 1549, 417, detailReveal, 0.42, 0.9);
-
-        listRows.forEach((row, index) => {
-          const rowReveal = easeInOut(range(timeline, 0.36 + index * 0.06, 0.68 + index * 0.06));
-          drawExpandingRect(row.slice(0, 4), rowReveal, rowReveal, false, 0.24);
-          drawExpandingRect(row.slice(4, 8), rowReveal, rowReveal, false, 0.24);
-          drawExpandingRect(row.slice(8, 12), rowReveal, rowReveal, false, 0.24);
-          if (index < 2) drawReferenceLine(1157, 206 + index * 84, 1544, 206 + index * 84, rowReveal);
-        });
-      };
-
-      const drawCards = (timeline) => {
-        cardColumns.forEach(([x, width, labelWidth, sublabelWidth], index) => {
-          const firstReveal = easeInOut(range(timeline, 0.45 + index * 0.035, 0.78 + index * 0.035));
-          drawExpandingRect([x, 477, width, 252], firstReveal, firstReveal, false, 0.52);
-          drawExpandingRect([x, 746, labelWidth, 21], firstReveal, firstReveal, false, 0.75);
-          drawExpandingRect([x, 779, sublabelWidth, 15], firstReveal, firstReveal, false, 0.79);
-
-          const secondReveal = easeInOut(range(timeline, 0.63 + index * 0.035, 0.94 + index * 0.02));
-          drawExpandingRect([x, 860, width, 252], secondReveal, secondReveal * 0.9, false, 0.88);
-          drawExpandingRect([x, 1129, labelWidth, 21], secondReveal, secondReveal, false, 0.95);
-          drawExpandingRect([x, 1162, sublabelWidth, 15], secondReveal, secondReveal, false, 0.95);
-        });
-      };
-
-      const drawPlayer = (timeline) => {
-        const reveal = easeInOut(range(timeline, 0.66, 0.96));
-        drawExpandingRect([382, 842, 825, 84], reveal, reveal, true, 0.86);
-        drawExpandingRect([398, 851, 67, 63], reveal, reveal, false, 0.86);
-        drawExpandingRect([484, 882, 334, 28], reveal, reveal, false, 0.86);
-
-        const [railX, railY] = mapPoint(484, 910);
-        const railWidth = (334 / REFERENCE_WIDTH) * viewport.width;
-        strokeLine(railX, railY, railX + railWidth, railY, 0.18 * reveal, 0.75);
-        const progressWidth = railWidth * visibleProgress;
-        const light = context.createLinearGradient(railX, railY, railX + progressWidth, railY);
-        light.addColorStop(0, "rgba(151, 218, 255, 0.24)");
-        light.addColorStop(0.76, `rgba(83, 174, 244, ${0.72 * reveal})`);
-        light.addColorStop(1, `rgba(240, 251, 255, ${0.98 * reveal})`);
-        context.strokeStyle = light;
-        context.lineWidth = 2.2;
-        context.shadowColor = "rgba(74, 172, 243, 0.58)";
-        context.shadowBlur = 12;
-        context.beginPath();
-        context.moveTo(railX, railY);
-        context.lineTo(railX + progressWidth, railY);
-        context.stroke();
-        context.shadowBlur = 0;
-      };
-
-      const drawAperture = (timeline, time) => {
-        const { width, height } = viewport;
-        const reveal = easeOut(range(timeline, 0, 0.26)) * (1 - easeInOut(range(timeline, 0.52, 0.84)));
-        const settle = easeInOut(range(timeline, 0.24, 0.68));
-        const centerX = width * lerp(0.5, 0.501, settle);
-        const centerY = height * lerp(0.5, 0.43, settle);
-        const radius = Math.min(width, height) * lerp(0.025, 0.1, easeOut(range(timeline, 0, 0.26)));
-        const rotation = (1 - settle) * time * 0.0024;
-        const pulse = Math.sin(time * 0.002) * 0.012 * reveal;
-
-        context.save();
-        context.translate(centerX, centerY);
-        context.scale(1 + pulse, 1 + pulse);
-        context.shadowColor = "rgba(69, 153, 229, 0.2)";
-        context.shadowBlur = 16 * reveal;
-        context.lineCap = "round";
-        [
-          [1, 0.52, 0.78, 0],
-          [0.84, 0.32, 0.44, 1.7],
-          [1.14, 0.2, 0.28, 3.7],
-        ].forEach(([scale, alpha, length, offset]) => {
-          context.strokeStyle = `rgba(84, 143, 197, ${alpha * reveal})`;
-          context.lineWidth = scale === 1 ? 1.1 : 0.7;
-          context.beginPath();
-          context.arc(0, 0, radius * scale, rotation + offset, rotation + offset + TAU * length);
-          context.stroke();
-        });
-        context.shadowBlur = 0;
-
-        const core = context.createRadialGradient(0, 0, 0, 0, 0, radius * 0.82);
-        core.addColorStop(0, `rgba(255, 255, 255, ${0.92 * reveal})`);
-        core.addColorStop(0.7, `rgba(219, 235, 249, ${0.34 * reveal})`);
-        core.addColorStop(1, "rgba(197, 221, 243, 0)");
-        context.fillStyle = core;
-        context.beginPath();
-        context.arc(0, 0, radius * 0.82, 0, TAU);
-        context.fill();
-
-        context.fillStyle = `rgba(255, 255, 255, ${reveal})`;
-        context.shadowColor = "rgba(70, 158, 235, 0.65)";
-        context.shadowBlur = 10;
-        context.beginPath();
-        context.arc(0, 0, lerp(1.5, 3.5, reveal), 0, TAU);
-        context.fill();
-        context.restore();
-      };
-
-      const drawFrame = (time) => {
-        const elapsed = time - startTime;
-        const timeline = reduceMotion.matches ? 1 : clamp(elapsed / MOTION_DURATION);
-        const handoff = handoffStart ? easeInOut(clamp((time - handoffStart) / HANDOFF_DURATION)) : 0;
-        visibleProgress = lerp(visibleProgress, targetProgress, 0.055);
-        drawBackground(handoff);
-
-        context.save();
-        const handoffScale = 1 + handoff * 0.11;
-        context.translate(viewport.width / 2, viewport.height / 2);
-        context.scale(handoffScale, handoffScale);
-        context.translate(-viewport.width / 2, -viewport.height / 2);
-        context.globalAlpha = 1 - handoff;
-        drawChrome(timeline);
-        drawFeatures(timeline);
-        drawCards(timeline);
-        drawPlayer(timeline);
-        drawAperture(timeline, time);
-        context.restore();
-
-        animationFrame = requestAnimationFrame(drawFrame);
-      };
-
-      window.setSplashStatus = (status, progress) => {
-        if (typeof status === "string" && status.trim()) statusElement.textContent = status;
-        const nextProgress = Number(progress);
-        if (!Number.isFinite(nextProgress)) return;
-        targetProgress = clamp(nextProgress / 100);
-        progressElement.value = Math.round(targetProgress * 100);
-        progressElement.textContent = `${progressElement.value}%`;
-      };
-
-      window.finishSplash = () => {
-        if (finishPromise) return finishPromise;
-        finishPromise = new Promise((resolve) => {
-          const wait = reduceMotion.matches
-            ? 0
-            : Math.max(0, MOTION_DURATION - (performance.now() - startTime));
-          setTimeout(() => {
-            handoffStart = performance.now();
-            setTimeout(resolve, reduceMotion.matches ? 120 : HANDOFF_DURATION);
-          }, wait);
-        });
-        return finishPromise;
-      };
-
-      window.__splashMotion = Object.freeze({
-        motionDuration: MOTION_DURATION,
-        handoffDuration: HANDOFF_DURATION,
-        layout: "full-player-skeleton",
-      });
-
-      resizeCanvas();
-      animationFrame = requestAnimationFrame(drawFrame);
-      window.addEventListener("resize", resizeCanvas);
-      window.addEventListener("beforeunload", () => cancelAnimationFrame(animationFrame));
-    </script>
   </body>
 </html>

@@ -116,14 +116,13 @@ const pauseOnOtherAudio = ref(false);
 const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
-const startupAnimation = ref("signal");
+const startupAnimation = ref("ark");
 const startupAnimationOptions = ref([
-  { label: "信号校准", value: "signal" },
-  { label: "经典律动", value: "classic" },
-  { label: "末日工业", value: "industrial" },
-  { label: "灰域协议", value: "ashen" },
-  { label: "灰烬链路", value: "ashlink" },
-  { label: "白域断层", value: "palerift" },
+  { label: "星空", value: "exa" },
+  { label: "黑白", value: "corporate" },
+  { label: "缤纷", value: "popucom" },
+  { label: "工程", value: "endfield" },
+  { label: "工业", value: "ark" },
 ]);
 const quitApp = ref("minimize");
 const quitAppOptions = ref([
@@ -268,11 +267,15 @@ onActivated(() => {
     globalShortcuts.value = settings.other.globalShortcuts;
     // 兼容旧配置：未写入过该字段时默认保持开启更新。
     appUpdateEnabled.value = settings?.other?.enableUpdate !== false;
-    startupAnimation.value = ["classic", "industrial", "ashen", "ashlink", "palerift"].includes(
-      settings?.other?.startupAnimation,
-    )
+    startupAnimation.value = [
+      "exa",
+      "corporate",
+      "popucom",
+      "endfield",
+      "ark",
+    ].includes(settings?.other?.startupAnimation)
       ? settings.other.startupAnimation
-      : "signal";
+      : "ark";
     quitApp.value = settings.other.quitApp;
     customFont.value = settings?.other?.customFont || "";
     customFontLabel.value = settings?.other?.customFontLabel || "";

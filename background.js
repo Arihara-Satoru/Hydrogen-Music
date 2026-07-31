@@ -34,6 +34,21 @@ let lyricWindow = null;
 let forceQuit = false;
 const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
+const DEFAULT_SPLASH_THEME = "ark";
+const SPLASH_THEMES = new Set([
+  "exa",
+  "corporate",
+  "popucom",
+  "endfield",
+  "ark",
+]);
+const SPLASH_BACKGROUND_COLORS = {
+  exa: "#080914",
+  corporate: "#050505",
+  popucom: "#3994ff",
+  endfield: "#f2f2f0",
+  ark: "#080a0b",
+};
 let splashWindow = null;
 // 由 createWindow() 内部赋值，供 app.whenReady() 并行启动播放器内容
 let loadMainContentRef = null;
@@ -63,19 +78,13 @@ const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
 const createSplashWindow = async () => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
-  let splashFile = "splash.html";
+  let splashTheme = DEFAULT_SPLASH_THEME;
   try {
     const Store = await getElectronStore();
     const settingsStore = new Store({ name: "settings" });
     const settings = await settingsStore.get("settings");
-    splashFile =
-      {
-        classic: "splash-classic.html",
-        industrial: "splash-industrial.html",
-        ashen: "splash-ashen.html",
-        ashlink: "splash-ashlink.html",
-        palerift: "splash-palerift.html",
-      }[settings?.other?.startupAnimation] || splashFile;
+    const savedTheme = settings?.other?.startupAnimation;
+    if (SPLASH_THEMES.has(savedTheme)) splashTheme = savedTheme;
   } catch (error) {
     console.warn("Splash preference load failed:", error);
   }
@@ -90,12 +99,7 @@ const createSplashWindow = async () => {
     show: false,
     center: true,
     skipTaskbar: true,
-    backgroundColor:
-      splashFile === "splash-palerift.html"
-        ? "#e9eae4"
-        : ["splash-industrial.html", "splash-ashen.html", "splash-ashlink.html"].includes(splashFile)
-          ? "#080806"
-          : "#f7faff",
+    backgroundColor: SPLASH_BACKGROUND_COLORS[splashTheme],
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -109,7 +113,9 @@ const createSplashWindow = async () => {
   });
 
   try {
-    await win.loadFile(path.join(__dirname, splashFile));
+    await win.loadFile(path.join(__dirname, "splash.html"), {
+      query: { family: splashTheme },
+    });
   } catch (error) {
     console.error("Splash load failed:", error);
   }

@@ -50,7 +50,7 @@
       other: {
         quitApp: "minimize",
         enableUpdate: false,
-        startupAnimation: "signal",
+        startupAnimation: "ark",
       },
     }),
     setSettings: noop,
