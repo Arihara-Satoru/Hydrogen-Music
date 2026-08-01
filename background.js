@@ -75,7 +75,15 @@ const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
     socket.once("error", () => settle(false));
   });
 
-const createSplashWindow = async () => {
+const createMainWindowState = () => {
+  const Winstate = require("electron-win-state").default;
+  return new Winstate({
+    defaultWidth: MAIN_WINDOW_MIN_WIDTH,
+    defaultHeight: MAIN_WINDOW_MIN_HEIGHT,
+  });
+};
+
+const createSplashWindow = async (mainWindowOptions) => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
   let splashTheme = DEFAULT_SPLASH_THEME;
@@ -90,14 +98,14 @@ const createSplashWindow = async () => {
   }
 
   const win = new BrowserWindow({
-    width: 720,
-    height: 480,
+    minWidth: MAIN_WINDOW_MIN_WIDTH,
+    minHeight: MAIN_WINDOW_MIN_HEIGHT,
+    ...mainWindowOptions,
     resizable: false,
     maximizable: false,
     minimizable: false,
     frame: false,
     show: false,
-    center: true,
     skipTaskbar: true,
     backgroundColor: SPLASH_BACKGROUND_COLORS[splashTheme],
     webPreferences: {
@@ -183,20 +191,13 @@ if (!gotTheLock) {
     process.on("uncaughtException", (err) => {
       console.error("Unhandled exception captured:", err);
     });
-    await createSplashWindow();
+    const mainWindowState = createMainWindowState();
+    await createSplashWindow(mainWindowState.winOptions);
     // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
     hasDevServer = !app.isPackaged && (await isDevServerReachable());
     setSplashStatus("正在准备播放器...", 24);
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
-    createWindow();
-    if (
-      splashWindow &&
-      !splashWindow.isDestroyed() &&
-      myWindow &&
-      !myWindow.isDestroyed()
-    ) {
-      splashWindow.setBounds(myWindow.getBounds());
-    }
+    createWindow(mainWindowState);
     setSplashStatus("正在检查本地数据...", 38);
     // 先完成数据迁移，再启动音乐服务；主界面内容会在服务就绪后加载。
     // 数据迁移：清理旧版可能遗留的不兼容数据
@@ -341,7 +342,7 @@ if (!gotTheLock) {
   });
 }
 
-const createWindow = () => {
+const createWindow = (winstate = createMainWindowState()) => {
   // 应用名称已在顶层设置（确保 userData 路径正确）
 
   // 用于存储当前Dock菜单的引用
@@ -399,12 +400,6 @@ const createWindow = () => {
 
   process.env.DIST = path.join(__dirname, "./");
   const indexHtml = path.join(process.env.DIST, "dist/index.html");
-  const Winstate = require("electron-win-state").default;
-  const winstate = new Winstate({
-    //自定义默认窗口大小
-    defaultWidth: MAIN_WINDOW_MIN_WIDTH,
-    defaultHeight: MAIN_WINDOW_MIN_HEIGHT,
-  });
   const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
     minWidth: MAIN_WINDOW_MIN_WIDTH,
