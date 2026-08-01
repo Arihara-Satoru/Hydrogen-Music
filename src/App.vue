@@ -160,6 +160,11 @@ const handleTitleBarDoubleClick = () => {
     }
     .home {
         height: calc(100% - 78px);
+
+        &:has(.home-content-full-window, .siren-page) {
+            display: flow-root;
+            height: 100%;
+        }
     }
 }
 .globalWidget {
