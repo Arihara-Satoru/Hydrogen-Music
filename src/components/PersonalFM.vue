@@ -84,14 +84,29 @@
                   <span class="mode-label">{{ mode.label }}</span>
                 </button>
               </div>
-              <div v-if="selectedFmMode === 'ai_pool'" class="fm-submode-grid">
+              <div
+                class="fm-submode-grid"
+                role="group"
+                aria-label="AI 推荐池"
+              >
+                <div class="fm-submode-heading">
+                  <span>AI 推荐池</span>
+                  <small>song_pool_id</small>
+                </div>
                 <button
                   v-for="scene in FM_SCENE_SUBMODE_OPTIONS"
                   :key="scene.value"
                   type="button"
                   class="fm-submode-btn"
-                  :class="{ active: selectedFmSubmode === scene.value }"
-                  :aria-pressed="selectedFmSubmode === scene.value"
+                  :class="{
+                    active:
+                      selectedFmMode === 'ai_pool' &&
+                      selectedFmSubmode === scene.value,
+                  }"
+                  :aria-pressed="
+                    selectedFmMode === 'ai_pool' &&
+                    selectedFmSubmode === scene.value
+                  "
                   :disabled="loading || modeSwitching"
                   @click="changeFmSubmode(scene.value)"
                 >
@@ -279,8 +294,10 @@
               type="button"
               class="action-btn like"
               @click="likeSong"
+              :disabled="likeLoading"
               :class="{ active: isCurrentSongLiked }"
               :aria-pressed="isCurrentSongLiked"
+              :aria-busy="likeLoading"
             >
               <svg
                 width="20"
@@ -293,7 +310,16 @@
                   d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
                 />
               </svg>
-              <span><small>SAVE</small>喜欢</span>
+              <span>
+                <small>{{ likeLoading ? "SAVING" : "SAVE" }}</small>
+                {{
+                  likeLoading
+                    ? "保存中"
+                    : isCurrentSongLiked
+                      ? "已喜欢"
+                      : "喜欢"
+                }}
+              </span>
             </button>
 
             <button type="button" class="action-btn next" @click="goNext">
@@ -371,7 +397,6 @@ import {
   getPersonalFMByMode,
   fmTrash,
   getLyric,
-  likeMusic,
 } from "../api/song";
 import { getRecommendSongs, normalizePlaylistSong } from "../api/playlist";
 import { usePlayerStore } from "../store/playerStore";
@@ -381,17 +406,12 @@ import { noticeOpen } from "../utils/dialog";
 import { mapSongsPlayableStatus } from "../utils/songStatus";
 import {
   applyOptimisticLikeState,
-  createLikeActionToken,
-  getFavoritePlaylistNoticeText,
-  getLikeActionErrorMessage,
-  isActiveLikeActionToken,
+  isSongLiked,
   play,
   playCurrentSongChorus,
   pauseMusic,
-  queueLikeRequest,
   setSongLevel,
   startMusic,
-  syncLikelistAfterLikeAction,
   updateFavoritePlaylistTrack,
 } from "../utils/player";
 import { schedulePlaylistCacheInvalidation } from "../utils/cacheInvalidation";
@@ -410,10 +430,7 @@ const { likelist } = storeToRefs(userStore);
 
 // 创建一个计算属性来实时判断当前歌曲是否被喜欢
 const isCurrentSongLiked = computed(() => {
-  if (!currentSong.value || !likelist.value) {
-    return false;
-  }
-  return likelist.value.includes(currentSong.value.id);
+  return isSongLiked(currentSong.value?.id, likelist.value);
 });
 const currentSongArtists = computed(() => getFmSongArtists(currentSong.value));
 const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value));
@@ -871,6 +888,7 @@ function bootstrapFromPoolIfNeeded(source) {
 }
 const currentIndex = ref(0);
 const loading = ref(false);
+const likeLoading = ref(false);
 const isPrefetching = ref(false);
 const isPanelIntroActive = ref(false);
 const isPanelOutlineReady = ref(false);
@@ -1104,10 +1122,17 @@ const changeFmMode = async (mode) => {
 };
 
 const changeFmSubmode = async (submode) => {
-  if (!submode || modeSwitching.value || loading.value) return;
-  if (selectedFmMode.value !== "ai_pool") return;
-  if (selectedFmSubmode.value === submode && !awaitingSceneSubmodePick.value)
+  const isSupportedPool = FM_SCENE_SUBMODE_OPTIONS.some(
+    (scene) => scene.value === submode,
+  );
+  if (!isSupportedPool || modeSwitching.value || loading.value) return;
+  if (
+    selectedFmMode.value === "ai_pool" &&
+    selectedFmSubmode.value === submode &&
+    !awaitingSceneSubmodePick.value
+  )
     return;
+  selectedFmMode.value = "ai_pool";
   selectedFmSubmode.value = submode;
   awaitingSceneSubmodePick.value = false;
   modePanelOpen.value = false;
@@ -1592,88 +1617,37 @@ const trashSong = async () => {
 };
 
 const likeSong = async () => {
-  if (!currentSong.value) return;
-  if (!Array.isArray(likelist.value)) return;
+  if (!currentSong.value || likeLoading.value) return;
 
-  const actionToken = createLikeActionToken();
-
+  const targetSong = currentSong.value;
+  const targetSongId = targetSong.id;
+  const shouldLike = !isSongLiked(targetSongId, likelist.value);
+  const currentLikelist = Array.isArray(likelist.value) ? likelist.value : [];
+  likeLoading.value = true;
   try {
-    // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
-    const isLiked = !isCurrentSongLiked.value;
-    console.log("PersonalFM开始喜欢操作:", {
-      songId: currentSong.value.id,
-      like: isLiked,
-    });
+    // 酷狗没有 /like；直接写入“我喜欢的音乐”，完整歌曲对象用于生成 name|hash|albumId|mixsongId。
+    const result = await updateFavoritePlaylistTrack(targetSong, shouldLike);
+    if (!result.success) throw new Error(result.message || "歌单 tracks 返回异常");
 
-    // 1) 优先使用官方 /like 接口
-    try {
-      const result = await queueLikeRequest(actionToken, () =>
-        likeMusic(currentSong.value.id, isLiked),
-      );
-      if (result?.skipped) return;
-      if (result && result.code === 200) {
-        if (!isActiveLikeActionToken(actionToken)) return;
-        const fallbackLikelist = applyOptimisticLikeState(
-          currentSong.value.id,
-          isLiked,
-          likelist.value,
-        );
-        userStore.updateLikelist(fallbackLikelist);
-        noticeOpen(await getFavoritePlaylistNoticeText(isLiked), 2);
-        await syncLikelistAfterLikeAction({
-          songId: currentSong.value.id,
-          like: isLiked,
-          actionToken,
-          fallbackLikelist,
-        });
-        if (!isActiveLikeActionToken(actionToken)) return;
-        schedulePlaylistCacheInvalidation();
-        return;
-      }
-      throw new Error(getLikeActionErrorMessage(result, "likeMusic 返回异常"));
-    } catch (apiErr) {
-      console.warn(
-        "PersonalFM likeMusic 失败，尝试使用歌单 tracks:",
-        apiErr.message,
-      );
-    }
-
-    // 2) 降级：使用“我喜欢的音乐”歌单 tracks
-    try {
-      const fallbackResult = await updateFavoritePlaylistTrack(
-        currentSong.value.id,
-        isLiked,
-      );
-      if (fallbackResult.success) {
-        if (!isActiveLikeActionToken(actionToken)) return;
-        const fallbackLikelist = applyOptimisticLikeState(
-          currentSong.value.id,
-          isLiked,
-          likelist.value,
-        );
-        userStore.updateLikelist(fallbackLikelist);
-        noticeOpen(
-          isLiked
-            ? `已添加到${fallbackResult.favoritePlaylist?.name || "我喜欢的音乐"}`
-            : "已取消喜欢",
-          2,
-        );
-        await syncLikelistAfterLikeAction({
-          songId: currentSong.value.id,
-          like: isLiked,
-          actionToken,
-          fallbackLikelist,
-        });
-        if (!isActiveLikeActionToken(actionToken)) return;
-        schedulePlaylistCacheInvalidation();
-        return;
-      }
-      throw new Error(fallbackResult.message || "歌单 tracks 返回异常");
-    } catch (playlistError) {
-      console.error("PersonalFM 歌单 tracks 也失败:", playlistError);
-    }
+    // ponytail: 酷狗没有 /likelist；本次会话先乐观更新，跨会话状态应由账号初始化加载喜欢歌单时恢复。
+    userStore.updateLikelist(
+      applyOptimisticLikeState(targetSongId, shouldLike, currentLikelist),
+    );
+    noticeOpen(
+      shouldLike
+        ? `已添加到${result.favoritePlaylist?.name || "我喜欢的音乐"}`
+        : "已取消喜欢",
+      2,
+    );
+    schedulePlaylistCacheInvalidation();
   } catch (error) {
-    console.error("Failed to like song:", error);
+    console.error("PersonalFM 喜欢操作失败:", error);
+    noticeOpen(
+      `${shouldLike ? "喜欢" : "取消喜欢"}失败：${error?.message || "未知错误"}`,
+      2,
+    );
+  } finally {
+    likeLoading.value = false;
   }
 };
 
@@ -2426,6 +2400,22 @@ const handleFmClearRecent = () => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.fm-submode-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--fm-muted);
+  font: 10px/1 SourceHanSansCN-Bold, sans-serif;
+
+  small {
+    color: var(--fm-subtle);
+    font: 8px/1 Bender-Bold, Consolas, monospace;
+    letter-spacing: 0.08em;
+  }
 }
 
 .fm-mode-btn,
