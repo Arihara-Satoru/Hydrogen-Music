@@ -50,6 +50,8 @@ async function start() {
     process.env.platform = process.env.platform || workerData.platform || "lite";
     process.env.PORT = String(workerData.port || 36530);
     process.env.HOST = workerData.host || "127.0.0.1";
+    if (workerData.deviceGuid) process.env.KUGOU_API_GUID = workerData.deviceGuid;
+    if (workerData.deviceDev) process.env.KUGOU_API_DEV = workerData.deviceDev;
 
     const kugouApi = require(entry);
     if (!kugouApi || typeof kugouApi.startService !== "function") {

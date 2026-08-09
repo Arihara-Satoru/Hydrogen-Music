@@ -3,6 +3,8 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { Worker } = require("worker_threads");
+const { createKugouDeviceIdentity } = require("./kugouDeviceIdentity");
+const { getElectronStore } = require("./store");
 
 const API_PORT = 36530;
 const API_READY_TIMEOUT_MS = 12000;
@@ -17,6 +19,29 @@ let kugouApiStartupPromise = null;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadKugouDeviceIdentity() {
+  let settingsStore = null;
+  let savedIdentity = {};
+
+  try {
+    const Store = await getElectronStore();
+    settingsStore = new Store({ name: "settings" });
+    savedIdentity = settingsStore.get("kugouDevice") || {};
+  } catch (error) {
+    console.warn("[KuGou API] 读取持久设备标识失败:", error?.message || error);
+  }
+
+  const identity = createKugouDeviceIdentity(savedIdentity);
+  if (settingsStore) {
+    try {
+      settingsStore.set("kugouDevice", { guid: identity.guid, dev: identity.dev });
+    } catch (error) {
+      console.warn("[KuGou API] 保存持久设备标识失败:", error?.message || error);
+    }
+  }
+  return identity;
 }
 
 function getBackendCandidates() {
@@ -170,13 +195,15 @@ async function waitForApiReachable(
   throw lastError || new Error("kugou-api-unreachable");
 }
 
-function startKugouApiWorker(backendModule) {
+function startKugouApiWorker(backendModule, deviceIdentity) {
   const worker = new Worker(path.join(__dirname, "kugouApiWorker.js"), {
     workerData: {
       entry: backendModule.entry,
       port: API_PORT,
       host: "127.0.0.1",
       platform: process.env.platform || "lite",
+      deviceGuid: deviceIdentity.guid,
+      deviceDev: deviceIdentity.dev,
       healthPath: API_HEALTH_PATH,
       healthToken: API_HEALTH_TOKEN,
     },
@@ -253,6 +280,7 @@ async function startKugouMusicApi() {
   }
 
   kugouApiStartupPromise = (async () => {
+    const device = await loadKugouDeviceIdentity();
     const readyUrl = `http://127.0.0.1:${API_PORT}/`;
 
     // 先探测端口是否有服务在监听
@@ -264,7 +292,7 @@ async function startKugouMusicApi() {
       if (isGenuineApi) {
         await delay(API_READY_SETTLE_DELAY_MS);
         console.log("[KuGou API] 复用已有的 KuGou API 进程");
-        return { ready: true, reused: true };
+        return { ready: true, reused: true, device };
       } else {
         // 端口上有不明服务，尝试杀死残留的旧版 API 进程
         console.warn("[KuGou API] 端口已有不明服务，尝试清理残留进程...");
@@ -309,7 +337,7 @@ async function startKugouMusicApi() {
     if (!backendModule) {
       const errorMessage = "kugou-api-entry-not-found";
       console.log("KuGou API unavailable:", errorMessage);
-      return { ready: false, error: errorMessage };
+      return { ready: false, error: errorMessage, device };
     }
 
     console.log("KuGou API module target:", backendModule.label);
@@ -317,17 +345,17 @@ async function startKugouMusicApi() {
     try {
       // ponytail: keep the backend in-process for firewall behavior; if backend CPU
       // work grows, upgrade this worker to utilityProcess.
-      const worker = startKugouApiWorker(backendModule);
+      const worker = startKugouApiWorker(backendModule, device);
       await waitForWorkerReady(worker);
       await waitForApiReachable(readyUrl);
       await delay(API_READY_SETTLE_DELAY_MS);
-      return { ready: true, started: true };
+      return { ready: true, started: true, device };
     } catch (error) {
       stopKugouMusicApi();
       const errorMessage =
         error && error.message ? error.message : "unknown error";
       console.log("KuGou API unavailable:", errorMessage);
-      return { ready: false, error: errorMessage };
+      return { ready: false, error: errorMessage, device };
     }
   })().finally(() => {
     kugouApiStartupPromise = null;

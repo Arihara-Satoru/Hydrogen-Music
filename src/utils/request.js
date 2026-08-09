@@ -4,6 +4,7 @@ import pinia from "../store/pinia";
 import { useLibraryStore } from '../store/libraryStore'
 import { useUserStore } from '../store/userStore'
 import { clearAccountScopedState } from './accountState'
+import { buildKugouDeviceCookieString } from './loginDevices'
 
 import { noticeOpen } from "./dialog";
 
@@ -19,37 +20,48 @@ const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfi
 
 let cachedAuthCookieString = null
 let kugouApiReadyPromise = null
+let kugouApiStatus = null
 
 function waitForKugouApiReady() {
   const api = globalThis.windowApi
   if (typeof api?.waitForKugouApiReady !== 'function') return Promise.resolve({ ready: true })
   if (!kugouApiReadyPromise) {
-    kugouApiReadyPromise = api.waitForKugouApiReady().catch((error) => {
-      kugouApiReadyPromise = null
-      throw error
-    })
+    kugouApiReadyPromise = api.waitForKugouApiReady()
+      .then((status) => {
+        kugouApiStatus = status
+        return status
+      })
+      .catch((error) => {
+        kugouApiReadyPromise = null
+        kugouApiStatus = null
+        throw error
+      })
   }
   return kugouApiReadyPromise
 }
 
-function buildAuthCookieString() {
-  if (cachedAuthCookieString !== null) {
-    return cachedAuthCookieString
+function buildAuthCookieString(device, includeAccountCookies) {
+  if (includeAccountCookies && cachedAuthCookieString === null) {
+    cachedAuthCookieString = AUTH_COOKIE_KEYS
+      .map((key) => {
+        const value = getCookie(key)
+        return value ? `${key}=${value}` : ''
+      })
+      .filter(Boolean)
+      .join(';')
   }
 
-  cachedAuthCookieString = AUTH_COOKIE_KEYS
-    .map((key) => {
-      const value = getCookie(key)
-      return value ? `${key}=${value}` : ''
-    })
+  return [includeAccountCookies ? cachedAuthCookieString : '', buildKugouDeviceCookieString(device)]
     .filter(Boolean)
     .join(';')
-
-  return cachedAuthCookieString
 }
 
 export function invalidateNcmApiCookieCache() {
   cachedAuthCookieString = null
+}
+
+export function getKugouApiDeviceIdentity() {
+  return kugouApiStatus?.device || null
 }
 
 let autoLoggingOut = false
@@ -85,10 +97,8 @@ request.interceptors.request.use(async function (config) {
     && !requestUrl.startsWith('/login/device')
   ) || requestUrl === '/captcha/sent'
 
-  if (!skipAuthCookie && isLogin()) {
-    const authCookieString = buildAuthCookieString()
-    if (authCookieString) config.headers.Authorization = authCookieString
-  }
+  const authCookieString = buildAuthCookieString(apiStatus?.device, !skipAuthCookie && isLogin())
+  if (authCookieString) config.headers.Authorization = authCookieString
 
   if (libraryStore.needTimestamp.indexOf(config.url) != -1) {
     config.params.timestamp = new Date().getTime()

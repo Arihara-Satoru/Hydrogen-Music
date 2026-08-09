@@ -9,7 +9,9 @@ import {
   getVipInfo,
   kickLoginDevice,
 } from "@/api/user";
-import { getCookie, isLogin } from "@/utils/authority";
+import { isLogin } from "@/utils/authority";
+import { normalizeLoginDevices } from "@/utils/loginDevices";
+import { getKugouApiDeviceIdentity } from "@/utils/request";
 import { useUserStore } from "@/store/userStore";
 import { usePlayerStore } from "@/store/playerStore";
 import Selector from "../components/Selector.vue";
@@ -287,79 +289,6 @@ const loadListenGradeInfo = async () => {
   }
 };
 
-const findDeviceItems = (result) => {
-  const roots = [result?.data?.data, result?.data, result];
-  const keys = ["devices", "device_list", "dev_list", "list", "info", "items", "records"];
-
-  for (const root of roots) {
-    if (Array.isArray(root)) return root;
-    if (!root || typeof root !== "object") continue;
-    for (const key of keys) {
-      if (Array.isArray(root[key])) return root[key];
-      if (Array.isArray(root[key]?.list)) return root[key].list;
-    }
-  }
-  return [];
-};
-
-const formatDeviceTime = (value) => {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
-  const date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-};
-
-const normalizeDevice = (raw, index) => {
-  const mid = raw?.mid ?? raw?.device_mid ?? raw?.guid ?? "";
-  const appid = raw?.appid ?? raw?.app_id ?? "";
-  const clientver = raw?.ver ?? raw?.clientver ?? raw?.client_ver ?? "";
-  const loginTime = raw?.t ?? raw?.login_time ?? raw?.loginTime ?? raw?.last_login_time ?? "";
-  const currentMid = getCookie("KUGOU_API_MID") || getCookie("mid") || "";
-  const isCurrent = raw?.is_current === true
-    || Number(raw?.is_current) === 1
-    || raw?.current === true
-    || Number(raw?.current) === 1
-    || (!!currentMid && String(mid) === String(currentMid));
-  const platformName = Number(appid) === 3116
-    ? "酷狗概念版"
-    : Number(appid) === 1005
-      ? "酷狗音乐"
-      : raw?.app_name || raw?.client_name || "酷狗客户端";
-  const name = raw?.device_name
-    || raw?.dev_name
-    || raw?.model
-    || raw?.phone_model
-    || raw?.device
-    || `${platformName}设备 ${index + 1}`;
-  const location = [raw?.country, raw?.province, raw?.city, raw?.location]
-    .filter(Boolean)
-    .filter((value, valueIndex, values) => values.indexOf(value) === valueIndex)
-    .join(" · ");
-
-  return {
-    raw,
-    key: `${mid || index}-${loginTime || "unknown"}-${appid || "app"}`,
-    name,
-    mid,
-    appid,
-    clientver,
-    loginTime,
-    loginTimeText: formatDeviceTime(loginTime),
-    platformName,
-    location,
-    isCurrent,
-    canKick: !!mid && !!loginTime && !!appid && !!clientver && !isCurrent,
-  };
-};
-
 const loadLoginDevices = async () => {
   const requestUserId = userStore.user?.userId;
   const requestSerial = ++deviceRequestSerial;
@@ -374,7 +303,7 @@ const loadLoginDevices = async () => {
   try {
     const result = await getLoginDevices();
     if (requestSerial !== deviceRequestSerial || userStore.user?.userId != requestUserId) return;
-    loginDevices.value = findDeviceItems(result).map(normalizeDevice);
+    loginDevices.value = normalizeLoginDevices(result, getKugouApiDeviceIdentity());
   } catch (error) {
     if (requestSerial !== deviceRequestSerial || userStore.user?.userId != requestUserId) return;
     console.error("加载登录设备失败:", error);
