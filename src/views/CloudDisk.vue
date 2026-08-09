@@ -33,6 +33,9 @@
   const CLOUD_CATEGORY_ARCHIVE = 5
   const CLOUD_CATEGORY_DOCUMENT = 6
 
+  // ponytail: KuGou's cloud API only exposes music; enable these tabs if the backend adds other file types.
+  const supportsNonMusicFiles = false
+
   const CLOUD_CATEGORY_LABELS = {
     [CLOUD_CATEGORY_ALL]: '全部',
     [CLOUD_CATEGORY_IMAGE]: '图片',
@@ -47,6 +50,9 @@
   const videoExts = new Set(['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'mpeg', 'mpg'])
   const archiveExts = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'iso'])
   const documentExts = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'rtf', 'csv', 'epub'])
+  const supportedExt = musicExts
+  const uploadAccept = [...supportedExt].map(ext => `.${ext}`).join(',')
+  const maxUploadFileSize = 100 * 1024 * 1024
 
   const isUploading = ref(false)
   const isDragOver = ref(false)
@@ -83,11 +89,11 @@
       if (!input) return
       const files = Array.from(input.files || [])
       if (!files.length) return
-      await uploadFilesSequentially(files)
+      const uploadedCount = await uploadFilesSequentially(files)
       // 清理 input 的值，释放文件引用并允许选择相同文件再次上传
       try { input.value = '' } catch (_) {}
       // 上传完成后刷新云盘信息
-      await refreshCloudData()
+      if (uploadedCount > 0) await refreshCloudData()
     }
     if (uploadCloudDiskFile.value) {
       uploadCloudDiskFile.value.addEventListener('change', changeHandler)
@@ -169,7 +175,7 @@
 
     try {
       const params = {
-        pagesize: 500,
+        pagesize: 100,
         page: 1,
         timestamp: new Date().getTime(),
       }
@@ -196,9 +202,8 @@
   }
 
   const uploadFile = () => {
-    uploadCloudDiskFile.value.click()
+    uploadCloudDiskFile.value?.click()
   }
-  const supportedExt = new Set(['mp3','aac','wma','wav','ogg','m4a','ape','flac','cue'])
   const extractExt = (name) => (name?.split('.').pop() || '').toLowerCase()
   const analyzeDragItems = (dt) => {
     const types = Array.from(dt?.types || [])
@@ -274,64 +279,44 @@
       noticeOpen('正在上传，请稍后再试', 2)
       return
     }
-    const list = Array.from(e.dataTransfer?.files || [])
-    const files = list.filter(f => supportedExt.has(extractExt(f.name)))
-    if (!files.length) {
-      noticeOpen('未检测到支持的音频文件', 2)
-      return
-    }
-    await uploadFilesSequentially(files)
+    const files = Array.from(e.dataTransfer?.files || [])
+    const uploadedCount = await uploadFilesSequentially(files)
     // 上传完成后刷新云盘信息
-    await refreshCloudData()
+    if (uploadedCount > 0) await refreshCloudData()
   }
   const dropOverlayTitle = computed(() => (dragDetermined.value && !dragHasSupported.value) ? 'UNSUPPORTED' : 'DROP TO UPLOAD')
   const dropOverlaySub = computed(() => (dragDetermined.value && !dragHasSupported.value) ? '不支持的文件类型' : '释放文件开始上传')
   async function uploadSingle(file) {
-    const formData = new FormData()
-    formData.append('songFile', file)
-    const res = await uploadCloudSong(formData)
-    if (res && res.code === 200) return res
-    if (res && res.code === 501) {
-      const unsupportedError = new Error(res?.message || '当前后端暂不支持云盘上传')
-      unsupportedError.code = 501
-      throw unsupportedError
-    }
-    // axios拦截器会在错误时返回对象而非抛出异常，这里统一当做失败处理
-    throw new Error(res?.msg || res?.message || '上传失败')
+    return uploadCloudSong(file)
   }
 
   async function uploadFilesSequentially(files) {
+    const inputFiles = Array.from(files || [])
+    const queue = inputFiles.filter(file => supportedExt.has(extractExt(file?.name)) && file.size > 0 && file.size <= maxUploadFileSize)
+    if (!queue.length) {
+      noticeOpen('请选择非空且不超过 100 MB 的支持音频文件', 2)
+      return 0
+    }
+    if (queue.length !== inputFiles.length) noticeOpen('已跳过不支持、空白或超过 100 MB 的文件', 2)
+
     isUploading.value = true
+    let uploadedCount = 0
     try {
-      const maxRetries = 3
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        let attempt = 0
-        while (attempt < maxRetries) {
-          try {
-            await uploadSingle(file)
-            noticeOpen(`${file.name} 上传成功`, 2)
-            break
-          } catch (err) {
-            if (err?.code === 501) {
-              noticeOpen(err?.message || '当前后端暂不支持云盘上传', 2)
-              return
-            }
-            attempt += 1
-            if (attempt >= maxRetries) {
-              noticeOpen(`上传失败：${file.name}`, 3)
-            } else {
-              noticeOpen(`${file.name} 失败 ${attempt} 次，重试中...`, 3)
-              // 线性退避，避免请求风暴
-              await new Promise(r => setTimeout(r, 800 * attempt))
-            }
-          }
+      for (const file of queue) {
+        try {
+          await uploadSingle(file)
+          uploadedCount += 1
+          noticeOpen(`${file.name} 上传成功`, 2)
+        } catch (error) {
+          console.error(`上传云盘歌曲失败: ${file.name}`, error)
+          noticeOpen(`上传失败：${file.name}`, 3)
         }
       }
-      noticeOpen('上传完毕', 2)
+      if (queue.length > 1) noticeOpen(`上传完成：成功 ${uploadedCount} 个，失败 ${queue.length - uploadedCount} 个`, uploadedCount ? 2 : 3)
     } finally {
       isUploading.value = false
     }
+    return uploadedCount
   }
   const addTime =(time) => {
     return formatTime(time, "YYYY-MM-DD HH:mm:ss")
@@ -354,7 +339,7 @@
             </div>
             <div class="type-name">全部</div>
           </div>
-          <div class="type" @click="changeCategory(2)">
+          <div v-if="supportsNonMusicFiles" class="type" @click="changeCategory(2)">
             <div class="type-icon">
               <svg t="1668958852865" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="27462" width="200" height="200"><path d="M271.738 465.729c56.472 0 102.438-46.461 102.438-103.514 0-57.083-45.966-103.515-102.438-103.515S169.3 305.132 169.3 362.215C169.3 419.268 215.266 465.729 271.738 465.729zM271.738 288.5c40.058 0 72.637 33.074 72.637 73.715 0 40.654-32.579 73.714-72.637 73.714-40.059 0-72.638-33.06-72.638-73.714C199.1 321.574 231.679 288.5 271.738 288.5z" p-id="27463"></path><path d="M65 154.4 65 869.6l894 0L959 154.4 65 154.4zM929.2 839.8 123.582 839.8l288.76-244.322L560.57 724.965 929.2 430.355 929.2 839.8zM929.2 392.218 561.414 686.144 412.662 556.176 94.8 825.118 94.8 184.2l834.4 0L929.2 392.218z" p-id="27464"></path></svg>
               <svg class="type-select" :class="{'type-selected': typeSelect == 2}" preserveAspectRatio="none meet" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="250" height="200" viewBox="0 0 250 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="250" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 125 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="line" style="fill:#CCCCCC" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 0)  rotate(0 0.0005 22)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 0)  rotate(0 0.0005 22)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(0 3)  rotate(0 22 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(0 3)  rotate(0 22 0.0005)" d="M0,0L44,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(-52 197)  rotate(0 53.25 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(-52 197)  rotate(0 53.25 0.0005)" d="M0,0L106.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/></g></g></svg>
@@ -368,21 +353,21 @@
             </div>
             <div class="type-name">音乐</div>
           </div>
-          <div class="type" @click="changeCategory(4)">
+          <div v-if="supportsNonMusicFiles" class="type" @click="changeCategory(4)">
             <div class="type-icon">
               <svg t="1668959020587" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2459" width="200" height="200"><path d="M512 65C265.146 65 65 265.146 65 512c0 246.839 200.146 447 447 447 246.869 0 447-200.161 447-447C959 265.146 758.869 65 512 65zM512 929.199C281.952 929.199 94.8 742.048 94.8 512S281.952 94.8 512 94.8 929.2 281.952 929.2 512 742.048 929.199 512 929.199z" p-id="2460"></path><path d="M426.15 720.6 717.05 511.985 426.15 303.399 426.15 720.6zM455.951 361.443l209.967 150.542L455.951 662.557 455.951 361.443z" p-id="2461"></path></svg>
               <svg class="type-select" :class="{'type-selected': typeSelect == 4}" preserveAspectRatio="none meet" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="250" height="200" viewBox="0 0 250 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="250" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 125 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="line" style="fill:#CCCCCC" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 0)  rotate(0 0.0005 22)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 0)  rotate(0 0.0005 22)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(0 3)  rotate(0 22 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(0 3)  rotate(0 22 0.0005)" d="M0,0L44,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(-52 197)  rotate(0 53.25 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(-52 197)  rotate(0 53.25 0.0005)" d="M0,0L106.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/></g></g></svg>
             </div>
             <div class="type-name">视频</div>
           </div>
-          <div class="type" @click="changeCategory(5)">
+          <div v-if="supportsNonMusicFiles" class="type" @click="changeCategory(5)">
             <div class="type-icon">
               <svg t="1668959105131" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="34145" width="200" height="200"><path d="M561.548387 578.064516h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0-66.064516h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0 132.129032h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0 66.064516h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0 132.129033h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0-396.387097h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0 330.322581h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m99.096774-363.354839h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m-99.096774-33.032258h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m99.096774 99.096774h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m198.193549-462.451613h-201.496775c-3.303226 0-9.909677-3.303226-13.212903 0H429.419355c-3.303226 0-6.606452 0-6.606452 3.303226h-6.606451l-264.258065 264.258064v6.606452c-3.303226 0-3.303226 3.303226-3.303226 6.606452v693.677419c0 9.909677 6.606452 16.516129 16.516129 16.516129h693.67742c9.909677 0 16.516129-6.606452 16.516129-16.516129V33.032258c0-9.909677-6.606452-16.516129-16.516129-16.516129z m-317.109678 33.032258H644.129032l33.032258 66.064516-26.425806 42.941936-19.819355-62.761291c-3.303226-9.909677-9.909677-13.212903-16.516129-13.212903h-33.032258c-6.606452 0-13.212903 3.303226-16.516129 13.212903l-19.819355 66.064517-26.425806-46.245162 23.12258-66.064516z m89.187097 254.348387c-13.212903 13.212903-62.76129 13.212903-75.974194 0-9.909677-9.909677-13.212903-26.425806-6.606451-39.638709l42.941935-148.645162h6.606452L640.825806 264.258065c3.303226 13.212903 0 29.729032-9.909677 39.638709zM412.903226 72.670968v208.103226H204.8L412.903226 72.670968z m429.419355 901.780645H181.677419v-660.645161h247.741936c9.909677 0 16.516129-6.606452 16.516129-16.516129V49.548387h56.154839L478.967742 109.006452c0 6.606452 0 9.909677 3.303226 16.516129l46.245161 79.277419-13.212903 49.548387c-9.909677 23.122581-3.303226 52.851613 16.516129 72.670968 13.212903 13.212903 36.335484 19.819355 62.76129 19.819355s49.548387-6.606452 62.76129-19.819355c19.819355-19.819355 26.425806-49.548387 16.51613-72.670968l-13.212904-49.548387L710.193548 122.219355c3.303226-6.606452 3.303226-9.909677 0-16.516129l-29.729032-56.154839H842.322581v924.903226z m-181.67742-429.419355h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0 198.193548h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.51613h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.51613s-6.606452-16.516129-16.516129-16.516129z m0-132.129032h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0 198.193549h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z m0-132.129033h-33.032258c-9.909677 0-16.516129 6.606452-16.516129 16.516129s6.606452 16.516129 16.516129 16.516129h33.032258c9.909677 0 16.516129-6.606452 16.516129-16.516129s-6.606452-16.516129-16.516129-16.516129z" fill="" p-id="34146"></path></svg>
               <svg class="type-select" :class="{'type-selected': typeSelect == 5}" preserveAspectRatio="none meet" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="250" height="200" viewBox="0 0 250 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="250" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 125 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="line" style="fill:#CCCCCC" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 0)  rotate(0 0.0005 22)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 0)  rotate(0 0.0005 22)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(0 3)  rotate(0 22 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(0 3)  rotate(0 22 0.0005)" d="M0,0L44,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(-52 197)  rotate(0 53.25 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(-52 197)  rotate(0 53.25 0.0005)" d="M0,0L106.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/></g></g></svg>
             </div>
             <div class="type-name">压缩包</div>
           </div>
-          <div class="type" @click="changeCategory(6)">
+          <div v-if="supportsNonMusicFiles" class="type" @click="changeCategory(6)">
             <div class="type-icon">
               <svg t="1668958919657" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1837" width="200" height="200"><path d="M251.25 452.4l521.5 0 0 29.8-521.5 0 0-29.8Z" p-id="1838"></path><path d="M251.25 616.301l521.5 0 0 29.8-521.5 0 0-29.8Z" p-id="1839"></path><path d="M251.25 780.2l253.3 0 0 29.801-253.3 0 0-29.801Z" p-id="1840"></path><path d="M884.457 301.407l0-0.189-0.189 0L649.214 65.204 649.214 65l-29.8 0L610 65 139.5 65l0 894 744.957 0L884.457 340.592l0-39.068 0.043-0.059L884.457 301.407zM649.214 107.445l195.155 195.94-195.155-0.015L649.214 107.445zM854.656 929.2 169.3 929.2 169.3 94.8l450.114 0 0 208.571L619.414 318.3l0 14.9 235.242-0.015L854.656 929.2z" p-id="1841"></path></svg>
               <svg class="type-select" :class="{'type-selected': typeSelect == 6}" preserveAspectRatio="none meet" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="250" height="200" viewBox="0 0 250 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="250" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 125 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="line" style="fill:#CCCCCC" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 -13)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 156)  rotate(0 0.0005 21.999388921274445)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(247 0)  rotate(0 0.0005 22)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(247 0)  rotate(0 0.0005 22)" d="M0,0L0,44 "/><path id="line" style="fill:#CCCCCC" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(3 156)  rotate(0 0.0005 28.49938892127444)" d="M0,0L0,57 "/><path id="line" style="fill:#CCCCCC" transform="translate(0 3)  rotate(0 22 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(0 3)  rotate(0 22 0.0005)" d="M0,0L44,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 197)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(-52 197)  rotate(0 53.25 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(-52 197)  rotate(0 53.25 0.0005)" d="M0,0L106.5,0 "/><path id="line" style="fill:#CCCCCC" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" opacity="1" d=""/><path id="line" style="stroke:#000000; stroke-width:6; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(205 3)  rotate(0 22.250611083111608 0.0005)" d="M0,0L44.5,0 "/></g></g></svg>
@@ -398,7 +383,7 @@
                 <div class="item-lable">当前用户</div>
                 <div class="item-info">{{userStore.user.nickname}}</div>
               </div>
-              <div class="info-item">
+              <div class="info-item" v-if="normalizeCapacityValue(maxSize) > 0">
                 <div class="item-lable">云盘容量</div>
                 <div class="disk-capacity">
                   <div class="capacity">
@@ -441,7 +426,7 @@
               <svg t="1669024202738" class="icon2" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="3015" width="200" height="200"><path d="M533.333333 104.533333V917.333333c0 10.666667-8.533333 19.2-19.2 19.2H512c-10.666667 0-19.2-8.533333-19.2-19.2V104.533333c-2.133333-10.666667 6.4-19.2 17.066667-19.2h2.133333c12.8 0 21.333333 8.533333 21.333333 19.2z" p-id="3016"></path><path d="M526.933333 121.6L253.866667 394.666667c-8.533333 8.533333-21.333333 8.533333-27.733334 0l-2.133333-2.133334c-8.533333-8.533333-8.533333-21.333333 0-27.733333L497.066667 91.733333c8.533333-8.533333 21.333333-8.533333 27.733333 0l2.133333 2.133334c8.533333 6.4 8.533333 19.2 0 27.733333z" p-id="3017"></path><path d="M497.066667 121.6l273.066666 273.066667c8.533333 8.533333 21.333333 8.533333 27.733334 0l2.133333-2.133334c8.533333-8.533333 8.533333-21.333333 0-27.733333L526.933333 91.733333c-8.533333-8.533333-21.333333-8.533333-27.733333 0l-2.133333 2.133334c-8.533333 6.4-8.533333 19.2 0 27.733333z" p-id="3018"></path></svg>
             </div>
             <div class="upload-title">上传</div>
-            <input ref="uploadCloudDiskFile" style="display: none;" type="file" accept=".mp3,.aac,.wma,.wav,.ogg,.m4a,.ape,.flac,.cue" multiple />
+            <input ref="uploadCloudDiskFile" style="display: none;" type="file" :accept="uploadAccept" multiple />
           </div>
         </Transition>
         <Transition name="upload-fade">

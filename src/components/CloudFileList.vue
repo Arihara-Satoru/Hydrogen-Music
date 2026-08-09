@@ -29,6 +29,7 @@
   const localStore = useLocalStore()
 
   const selectedSongIds = ref([])
+  const isDeleting = ref(false)
   const visibleItems = computed(() => Array.isArray(props.items) ? props.items : [])
   const hasSelection = computed(() => selectedSongIds.value.length != 0)
   const emptyTitle = computed(() => `${props.categoryName || '当前分类'}暂无文件`)
@@ -43,8 +44,8 @@
   }, { immediate: true })
 
   function getSongId(item) {
-    // 酷狗云盘歌曲有时只有 hash，没有网易云时代的 simpleSong.id，这里统一兜底。
-    const songId = item?.simpleSong?.id || item?.album_audio_id || item?.hash || item?.id
+    // kv_id 是云盘文件的稳定标识，也是删除接口要求的 fileid。
+    const songId = item?.kv_id || item?.simpleSong?.id || item?.album_audio_id || item?.hash || item?.id
     return songId === undefined || songId === null || songId === '' ? '' : String(songId)
   }
 
@@ -119,33 +120,49 @@
     clearSelect()
   }
 
-  function deleteFile(flag) {
-    if (!flag || selectedSongIds.value.length == 0) return
+  async function deleteFile(flag, selectedItems = visibleItems.value.filter(item => selectedSongIds.value.includes(getSongId(item)))) {
+    if (!flag || isDeleting.value || selectedItems.length == 0) return
 
-    const params = {
-      id: selectedSongIds.value.join(','),
+    if (selectedItems.some(item => !item?.kv_id)) {
+      noticeOpen('部分文件缺少云盘 ID，请刷新后重试', 2)
+      return
     }
 
-    deleteCloudSong(params).then(result => {
-      if (result?.code == 200) {
-        clearSelect()
-        emit('refresh')
-      } else if (result?.code == 501) {
-        noticeOpen(result?.message || '当前后端暂不支持删除云盘歌曲', 2)
-      } else {
-        noticeOpen('删除失败', 2)
-      }
-    }).catch(() => {
-      noticeOpen('删除失败', 2)
-    })
+    try {
+      isDeleting.value = true
+      await deleteCloudSong({
+        fileid: selectedItems.map(item => item.kv_id).join(','),
+        album_audio_id: selectedItems.map(item => item?.album_audio_id || 0).join(','),
+      })
+      const deletedSongIds = new Set(selectedItems.map(item => getSongId(item)))
+      selectedSongIds.value = selectedSongIds.value.filter(id => !deletedSongIds.has(id))
+      emit('refresh')
+      noticeOpen(selectedItems.length > 1 ? `已删除 ${selectedItems.length} 首歌曲` : '删除成功', 2)
+    } catch (error) {
+      console.error('删除云盘歌曲失败:', error)
+      noticeOpen(error?.message || '删除失败', 2)
+    } finally {
+      isDeleting.value = false
+    }
   }
 
   function deleteFileConfirm() {
-    if (!hasSelection.value) return
-    dialogOpen('确认删除', '您确定要从云盘中删除歌曲吗？', deleteFile)
+    if (!hasSelection.value || isDeleting.value) return
+    dialogOpen('确认删除', `您确定要从云盘中删除选中的 ${selectedSongIds.value.length} 首歌曲吗？`, deleteFile)
+  }
+
+  function deleteSingleFileConfirm(item) {
+    if (isDeleting.value) return
+    if (!item?.kv_id) {
+      noticeOpen('该文件缺少云盘 ID，请刷新后重试', 2)
+      return
+    }
+
+    dialogOpen('确认删除', `您确定要从云盘中删除“${getItemTitle(item)}”吗？`, flag => deleteFile(flag, [item]))
   }
 
   function addTime(time) {
+    if (!time) return '时间未知'
     return formatTime(time, 'YYYY-MM-DD HH:mm:ss')
   }
 
@@ -193,13 +210,29 @@
               </div>
             </div>
           </div>
-          <div
-            v-if="canSelectItem(item)"
-            class="item-check"
-            :class="{ 'item-check-selected': isSelected(item) }"
-            @click="fileEdit(item)"
-          >
-            <svg t="1671452723182" class="icon" viewBox="0 0 1498 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200"><path d="M618.396098 1024L0 403.605854l140.862439-141.861464 477.533659 479.531708L1357.674146 0 1498.536585 140.862439l-880.140487 883.137561z" p-id="1966" fill="#ffffff"></path></svg>
+          <div v-if="canSelectItem(item)" class="item-actions">
+            <button
+              type="button"
+              class="item-delete-button"
+              :disabled="isDeleting || !item?.kv_id"
+              :aria-label="`删除 ${getItemTitle(item)}`"
+              :title="item?.kv_id ? `删除 ${getItemTitle(item)}` : '缺少云盘 ID，刷新后重试'"
+              @dblclick.stop
+              @click.stop="deleteSingleFileConfirm(item)"
+            >
+              <svg aria-hidden="true" viewBox="0 0 1024 1024">
+                <path d="M224.56 320v576h553.55V320h-65.13v512h-423.3V320h-65.12zm162.81.66h65.12v448h-65.12v-448zm162.81 0h65.12v448h-65.12v-448zM387.37 192H192v64h618.67v-64H647.86v-64H387.37v64z"></path>
+              </svg>
+              <span>删除</span>
+            </button>
+            <div
+              class="item-check"
+              :class="{ 'item-check-selected': isSelected(item) }"
+              title="选择歌曲"
+              @click="fileEdit(item)"
+            >
+              <svg t="1671452723182" class="icon" viewBox="0 0 1498 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200"><path d="M618.396098 1024L0 403.605854l140.862439-141.861464 477.533659 479.531708L1357.674146 0 1498.536585 140.862439l-880.140487 883.137561z" p-id="1966" fill="#ffffff"></path></svg>
+            </div>
           </div>
         </div>
       </template>
@@ -255,7 +288,8 @@
                 border-bottom: none;
             }
             .item-info{
-                width: 95%;
+                min-width: 0;
+                flex: 1;
                 display: flex;
                 flex-direction: row;
                 align-items: center;
@@ -309,6 +343,50 @@
                             margin-right: 10Px;
                         }
                     }
+                }
+            }
+            .item-actions{
+                margin-left: 12Px;
+                display: flex;
+                align-items: center;
+                gap: 12Px;
+                flex-shrink: 0;
+            }
+            .item-delete-button{
+                min-width: 62Px;
+                height: 34Px;
+                padding: 0 9Px;
+                border: 1Px solid var(--text);
+                border-radius: 0;
+                color: var(--text);
+                background: transparent;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5Px;
+                font: 12Px SourceHanSansCN-Bold;
+                line-height: 1;
+                transition: opacity 0.2s, background-color 0.2s;
+                svg{
+                    width: 14Px;
+                    height: 14Px;
+                    fill: currentColor;
+                    flex-shrink: 0;
+                }
+                &:hover:not(:disabled){
+                    opacity: 0.55;
+                }
+                &:active:not(:disabled){
+                    opacity: 1;
+                    background-color: var(--layer);
+                }
+                &:focus-visible{
+                    outline: 2Px solid var(--text);
+                    outline-offset: 2Px;
+                }
+                &:disabled{
+                    cursor: not-allowed;
+                    opacity: 0.3;
                 }
             }
             .item-check{
@@ -383,6 +461,13 @@
     }
     .file-edit-selected{
         right: -10Px;
+    }
+    @media (prefers-reduced-motion: reduce){
+        .file-list,
+        .file-edit,
+        .item-delete-button{
+            transition: none;
+        }
     }
   }
 </style>
