@@ -8,6 +8,7 @@ export const useUserStore = defineStore('userStore', {
             likelist: null,
             favoritePlaylistId: null,
             favoritePlaylistName: null,
+            gradeInfo: null,
             appOptionShow: false,
             biliUser: null,
             homePage: true,
@@ -26,6 +27,7 @@ export const useUserStore = defineStore('userStore', {
             this.likelist = null
             this.favoritePlaylistId = null
             this.favoritePlaylistName = null
+            this.gradeInfo = null
             this.appOptionShow = false
         },
         updateLikelist(likelist) {
@@ -40,6 +42,9 @@ export const useUserStore = defineStore('userStore', {
         updateFavoritePlaylistMeta(playlist = null) {
             this.favoritePlaylistId = playlist?.id ?? null
             this.favoritePlaylistName = playlist?.name ?? null
+        },
+        updateGradeInfo(gradeInfo = null) {
+            this.gradeInfo = gradeInfo
         }
     },
     persist: {

@@ -6,14 +6,15 @@ import ProgramIntro from '../components/ProgramIntro.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
 import { resolveImageUrl } from '../utils/imageUtils';
 const playerStore = usePlayerStore();
+const SoundEffectPanel = defineAsyncComponent(() => import('../components/SoundEffectPanel.vue'));
 
-// 右侧内容切换状态 (0: 歌词, 1: 评论, 2: 歌词候选)
+// 右侧内容切换状态 (0: 歌词, 1: 评论, 2: 歌词候选, 3: 社区音效)
 const rightPanelMode = ref(0);
 const lyricKey = ref(0);
 
@@ -190,6 +191,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
                 <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
                 <Comments class="comments-container" v-else-if="rightPanelMode === 1" :key="commentPanelKey" @total-change="handleCommentTotalChange"></Comments>
                 <LyricSelector class="lyric-selector-container" v-else-if="rightPanelMode === 2" :key="`lyric-selector-${commentPanelKey}`"></LyricSelector>
+                <SoundEffectPanel class="sound-effect-container" v-else-if="rightPanelMode === 3" key="sound-effects"></SoundEffectPanel>
             </Transition>
         </div>
 
@@ -318,7 +320,8 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         z-index: 1;
         .lyric-container,
         .comments-container,
-        .lyric-selector-container {
+        .lyric-selector-container,
+        .sound-effect-container {
             width: 100%;
             height: 100%;
         }
@@ -390,5 +393,17 @@ watch([currentTrack, isDj], ([song, djMode]) => {
 .fade3-enter-from,
 .fade3-leave-to {
     opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel-switch-enter-active,
+    .panel-switch-leave-active {
+        transition-duration: 0.01ms;
+    }
+
+    .panel-switch-enter-from,
+    .panel-switch-leave-to {
+        transform: none;
+    }
 }
 </style>

@@ -80,7 +80,10 @@ request.interceptors.request.use(async function (config) {
   config.headers = config.headers || {}
 
   const requestUrl = config.url || ''
-  const skipAuthCookie = requestUrl.startsWith('/login/') || requestUrl === '/captcha/sent'
+  const skipAuthCookie = (
+    requestUrl.startsWith('/login/')
+    && !requestUrl.startsWith('/login/device')
+  ) || requestUrl === '/captcha/sent'
 
   if (!skipAuthCookie && isLogin()) {
     const authCookieString = buildAuthCookieString()
@@ -145,6 +148,13 @@ request.interceptors.response.use(function (response) {
       || url === '/youth/month/vip/record'
       || url === '/youth/day/vip'
       || url === '/youth/day/vip/upgrade'
+      || url === '/user/grade/info'
+      || url === '/user/purchased/songs'
+      || url === '/user/purchased/albums'
+      || url === '/login/device'
+      || url === '/login/device/kick'
+      || url === '/get/model'
+      || url === '/get/mode/info'
     if (!suppressGlobalNotice) {
       if (msg) noticeOpen(`请求错误：${msg}`, 2)
       else if (status) noticeOpen(`请求错误 (${status})`, 2)

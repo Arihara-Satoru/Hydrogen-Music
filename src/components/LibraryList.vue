@@ -5,9 +5,11 @@
   import { usePlayerStore } from '../store/playerStore';
   import { useOtherStore } from '../store/otherStore';
   import { resolveImageUrl } from '../utils/imageUtils'
+  import { addSong, addToList, setShuffledList } from '../utils/player'
+  import { noticeOpen } from '../utils/dialog'
   import { storeToRefs } from 'pinia'
   const libraryStore = useLibraryStore()
-  const { libraryList, libraryInfo, listType1, listType2, lastLibraryRoute, restoreLibraryScrollOnActivate } = storeToRefs(libraryStore)
+  const { libraryList, libraryInfo, listType1, listType2, lastLibraryRoute, restoreLibraryScrollOnActivate, purchaseLoadError } = storeToRefs(libraryStore)
   const playerStore = usePlayerStore()
   const otherStore = useOtherStore()
   const normalizeRouteName = routeName => {
@@ -23,8 +25,12 @@
   const scrollTop = ref()
   const currentSelected = ref(null)
   const router = useRouter()
+  const isPurchasedList = computed(() => listType1.value == 0 && listType2.value == 2)
+  const isLibraryLoading = computed(() => libraryList.value === null)
   const hasEmptyLibraryList = computed(() => Array.isArray(libraryList.value) && libraryList.value.length == 0)
   const emptyLibraryText = computed(() => {
+    if (isPurchasedList.value && purchaseLoadError.value) return '已购内容加载失败，请切换页面后重试'
+    if (isPurchasedList.value) return '暂无已购单曲或专辑'
     if (listType1.value == 1 && listType2.value == 0) return '当前版本暂不支持读取收藏专辑'
     if (listType1.value == 1 && listType2.value == 1) return '暂无收藏歌手'
     if (listType1.value == 1 && listType2.value == 2) return '暂无收藏 MV'
@@ -33,7 +39,30 @@
     if (listType1.value == 0 && listType2.value == 1) return '暂无收藏歌单'
     return '暂无内容'
   })
+
+  const playPurchasedSong = async item => {
+    const songs = (Array.isArray(libraryList.value) ? libraryList.value : [])
+      .filter(entry => entry?.purchaseKind == 'song')
+    const index = songs.findIndex(song => String(song?.id) === String(item?.id))
+    if (index < 0) return
+
+    try {
+      await addToList('purchased', songs, { id: 'purchased', name: '我购买的' })
+      await addSong(item.id, index, true, undefined, { userInitiated: true })
+      if (playerStore.playMode == 3) await setShuffledList()
+    } catch (error) {
+      console.error('播放已购单曲失败:', error)
+      noticeOpen('播放已购单曲失败', 2)
+    }
+  }
+
   const showDetail = async (selectedId, item) => {
+    if (isPurchasedList.value) {
+      if (item?.purchaseKind == 'album') router.push('/mymusic/album/' + item.id)
+      else await playPurchasedSong(item)
+      currentSelected.value = selectedId
+      return
+    }
     if(listType1.value == 0) router.push('/mymusic/playlist/' + item.id)
     if(listType1.value == 1 && listType2.value == 0) router.push('/mymusic/album/' + item.id)
     if(listType1.value == 1 && listType2.value == 1) router.push('/mymusic/artist/' + item.id)
@@ -46,6 +75,18 @@
       if (djId) router.push('/mymusic/dj/' + djId)
     }
     currentSelected.value = selectedId
+  }
+
+  const isSelectedItem = item => {
+    if (isPurchasedList.value && item?.purchaseKind == 'song') {
+      return String(playerStore.songId ?? '') === String(item?.id ?? '')
+    }
+    if (isPurchasedList.value && item?.purchaseKind == 'album') {
+      return router.currentRoute.value.name == 'album'
+        && String(router.currentRoute.value.params?.id ?? '') === String(item?.id ?? '')
+    }
+    return (item.id == router.currentRoute.value.fullPath.split('/')[3] && listType2.value != 2)
+      || (otherStore.currentVideoId == item.vid && listType2.value == 2)
   }
 
   onActivated(() => {
@@ -121,13 +162,31 @@
       <div class="create-icon">+</div>
       <span class="create-name">创建歌单</span>
     </div>
-    <div class="list-item" :class="{'list-item-selected': (item.id == router.currentRoute.value.fullPath.split('/')[3] && listType2 != 2) || (otherStore.currentVideoId == item.vid && listType2 == 2)}" v-for="(item, index) in libraryList" @click="showDetail(index, item)" @contextmenu.prevent="openMenu($event,item)">
+    <div
+      class="list-item"
+      :class="{'list-item-selected': isSelectedItem(item)}"
+      v-for="(item, index) in libraryList"
+      :key="`${item.purchaseKind || 'library'}-${item.id || index}`"
+      role="button"
+      tabindex="0"
+      @click="showDetail(index, item)"
+      @keydown.enter.prevent="showDetail(index, item)"
+      @keydown.space.prevent="showDetail(index, item)"
+      @contextmenu.prevent="openMenu($event,item)"
+    >
         <div class="item-img">
             <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl)" alt="">
         </div>
         <div class="item-other">
             <span class="item-name">{{(item.name ?? item.title)}}</span>
-            <div class="item-info">
+            <div class="item-info" :class="{ 'purchased-item-info': isPurchasedList }">
+              <template v-if="isPurchasedList">
+                <span class="purchase-kind">{{ item.purchaseKind == 'album' ? '专辑' : '单曲' }}</span>
+                <div class="item-artist" v-if="item.artists?.length">
+                  <span class="artist" v-for="(artist, artistIndex) in item.artists" :key="`${artist.id || artist.name}-${artistIndex}`">{{ artist.name }}{{ artistIndex == item.artists.length - 1 ? '' : '/' }}</span>
+                </div>
+                <span class="item-size" v-if="item.purchaseKind == 'album' && item.trackCount">{{ item.trackCount }}首</span>
+              </template>
               <div class="item-artist" v-show="(listType1 == 1 && listType2 == 0)">
                 <span class="artist"  v-for="(artists, index) in item.artists">{{artists.name}}{{index == item.artists.length -1 ? '' : '/'}}</span>
               </div>
@@ -138,11 +197,13 @@
                 <span class="artist">{{ item.dj?.nickname }}</span>
               </div>
               <span class="item-size" v-if="listType1 == 1 && listType2 == 3">{{ item.programCount || 0 }}期</span>
-              <span class="item-size" v-if="!(listType1 == 1 && listType2 == 1) && !(listType1 == 1 && listType2 == 2) && !(listType1 == 1 && listType2 == 3)">{{(item.trackCount ?? item.size)}}首</span>
+              <span class="item-size" v-if="!isPurchasedList && !(listType1 == 1 && listType2 == 1) && !(listType1 == 1 && listType2 == 2) && !(listType1 == 1 && listType2 == 3)">{{(item.trackCount ?? item.size)}}首</span>
             </div>
         </div>
     </div>
+    <div v-if="isLibraryLoading" class="library-status" aria-live="polite">正在加载…</div>
     <div v-if="hasEmptyLibraryList" class="library-empty">{{ emptyLibraryText }}</div>
+    <div v-if="isPurchasedList && purchaseLoadError && libraryList?.length" class="library-status library-warning">部分已购内容加载失败</div>
   </div>
 </template>
 
@@ -185,6 +246,10 @@
         flex-direction: row;
         align-items: center;
         position: relative;
+        &:focus-visible{
+          outline: 2Px solid var(--text);
+          outline-offset: -2Px;
+        }
         &::after{
           content: '';
           width: 100%;
@@ -247,6 +312,16 @@
               -webkit-line-clamp: 1;
               word-break: break-all;
             }
+            .purchase-kind{
+              margin-right: 6Px;
+              padding: 1Px 4Px;
+              border: 1Px solid var(--border);
+              color: var(--muted-text);
+              white-space: nowrap;
+            }
+            &.purchased-item-info{
+              color: var(--muted-text);
+            }
             .item-size{
               white-space: nowrap;
             }
@@ -266,6 +341,15 @@
       font: 13Px SourceHanSansCN-Bold;
       color: rgb(105, 105, 105);
       text-align: left;
+    }
+    .library-status{
+      padding: 16Px 8Px;
+      font: 13Px SourceHanSansCN-Bold;
+      color: var(--muted-text);
+      text-align: left;
+    }
+    .library-warning{
+      color: rgb(137, 91, 42);
     }
   }
 </style>

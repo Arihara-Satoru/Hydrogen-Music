@@ -105,6 +105,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             playlistCount: null,
             playlistUserCreated: null,
             playlistUserSub: null,
+            purchaseLoadError: false,
             libraryInfo: null,
             lastLibraryRoute: null,
             lastLibraryScrollTop: 0,
@@ -171,6 +172,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.playlistCount = null
             this.playlistUserCreated = null
             this.playlistUserSub = null
+            this.purchaseLoadError = false
             this.libraryInfo = null
             this.lastLibraryRoute = null
             this.lastLibraryScrollTop = 0

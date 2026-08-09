@@ -1,7 +1,8 @@
 <script setup>
   import { onActivated, ref, watch } from 'vue'
   import router from '../router/router'
-  import { getUserPlaylist } from '../api/user'
+  import { getPurchasedAlbums, getPurchasedSongs, getUserPlaylist } from '../api/user'
+  import { normalizePlaylistSong } from '../api/playlist'
   import { extractPlaylistItems } from '../utils/accountSession'
   import { getUserSubAlbum } from '../api/album'
   import { getUserSubArtists } from '../api/artist'
@@ -17,7 +18,7 @@
   const { user } = storeToRefs(userStore)
   const libraryStore = useLibraryStore()
   const { changeLibraryList, updateUserPlaylistCount, updateUserPlaylist } = libraryStore
-  const { libraryList, libraryListAlbum, libraryListAritist, listType1, listType2 } = storeToRefs(libraryStore)
+  const { libraryList, libraryListAlbum, libraryListAritist, listType1, listType2, purchaseLoadError } = storeToRefs(libraryStore)
   const localStore = useLocalStore()
 
   const typeTracker = ref(0)
@@ -46,6 +47,114 @@
     libraryList.value = null
     libraryListAlbum.value = null
     libraryListAritist.value = null
+    purchaseLoadError.value = false
+  }
+
+  function extractPurchasedItems(result, preferredKeys) {
+    const roots = [result?.data?.data, result?.data, result]
+    for (const root of roots) {
+      if (Array.isArray(root)) return root
+      if (!root || typeof root != 'object') continue
+
+      for (const key of preferredKeys) {
+        if (Array.isArray(root[key])) return root[key]
+        if (Array.isArray(root[key]?.list)) return root[key].list
+      }
+
+      const directArray = Object.values(root).find(value => Array.isArray(value))
+      if (directArray) return directArray
+    }
+    return []
+  }
+
+  function normalizePurchasedSong(item) {
+    const audio = item?.audio_info || item?.audio || item?.song || item?.base || {}
+    const song = normalizePlaylistSong({
+      ...item,
+      ...audio,
+      audio_info: item?.audio_info || audio?.audio_info || audio,
+    })
+    if (song.id === undefined || song.id === null || song.id === '') return null
+
+    return {
+      ...song,
+      source: 'purchased',
+      type: 'purchased',
+      purchaseKind: 'song',
+      playable: true,
+      reason: '',
+    }
+  }
+
+  function normalizePurchasedAlbum(item) {
+    const album = item?.album_info || item?.album || item?.goods || item || {}
+    const id = album?.album_id ?? album?.albumid ?? album?.id ?? item?.album_id ?? item?.albumid ?? item?.id
+    if (id === undefined || id === null || id === '') return null
+
+    const rawArtists = album?.artists || album?.singerinfo || item?.artists || item?.singerinfo
+    const artists = (Array.isArray(rawArtists) && rawArtists.length
+      ? rawArtists
+      : String(album?.singername || item?.singername || '').split(/[、,/]/))
+      .map(artist => typeof artist == 'object'
+        ? { id: artist?.id ?? artist?.singerid ?? null, name: artist?.name || artist?.singername || '' }
+        : { id: null, name: String(artist).trim() })
+      .filter(artist => artist.name)
+    const cover = album?.sizable_cover
+      || album?.cover
+      || album?.cover_url
+      || album?.pic
+      || album?.img
+      || item?.cover
+      || item?.pic
+      || ''
+
+    return {
+      ...item,
+      ...album,
+      id,
+      name: album?.album_name || album?.albumname || album?.name || item?.album_name || item?.name || `专辑 ${id}`,
+      coverImgUrl: cover,
+      picUrl: cover,
+      coverUrl: cover,
+      artists,
+      trackCount: Number(album?.song_count ?? album?.audio_count ?? album?.count ?? item?.song_count ?? item?.count) || 0,
+      purchaseKind: 'album',
+    }
+  }
+
+  async function loadPurchasedContent(requestToken, requestUserId) {
+    listType2.value = 2
+    libraryList.value = null
+    purchaseLoadError.value = false
+
+    const [songsResult, albumsResult] = await Promise.allSettled([
+      getPurchasedSongs(),
+      getPurchasedAlbums(),
+    ])
+    if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+
+    if (songsResult.status === 'rejected' && albumsResult.status === 'rejected') {
+      throw songsResult.reason || albumsResult.reason || new Error('purchased-content-unavailable')
+    }
+
+    purchaseLoadError.value = songsResult.status === 'rejected' || albumsResult.status === 'rejected'
+    if (songsResult.status === 'rejected') console.error('加载已购单曲失败:', songsResult.reason)
+    if (albumsResult.status === 'rejected') console.error('加载已购专辑失败:', albumsResult.reason)
+
+    const songs = songsResult.status === 'fulfilled'
+      ? extractPurchasedItems(songsResult.value, ['songs', 'song_list', 'audio_list', 'goods', 'list', 'info', 'items'])
+          .map(normalizePurchasedSong)
+          .filter(Boolean)
+      : []
+    const albums = albumsResult.status === 'fulfilled'
+      ? extractPurchasedItems(albumsResult.value, ['albums', 'album_list', 'goods', 'list', 'info', 'items'])
+          .map(normalizePurchasedAlbum)
+          .filter(Boolean)
+      : []
+
+    libraryList.value = [...songs, ...albums]
+    lastLoadedUserId.value = requestUserId
+    return true
   }
 
   async function loadUserPlaylist(requestToken, requestUserId) {
@@ -142,7 +251,18 @@
       return false
     }
 
-    if (option.value == 0) {
+    if (option.value == 0 && typeOne.value == 2) {
+      try {
+        await loadPurchasedContent(requestToken, requestUserId)
+      } catch (error) {
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        console.error('加载已购内容失败:', error)
+        libraryList.value = []
+        listType2.value = 2
+        purchaseLoadError.value = true
+        return false
+      }
+    } else if (option.value == 0) {
       const loaded = await loadUserPlaylist(requestToken, requestUserId)
       if (!loaded || !isLibraryRequestActive(requestToken, requestUserId)) return false
       listType2.value = typeOne.value == 0 ? 0 : 1
@@ -261,6 +381,10 @@
       void refreshCurrentSection()
       return
     }
+    if (option.value == 0 && typeOne.value == 2) {
+      void refreshCurrentSection()
+      return
+    }
     if (option.value == 0 && currentUserId && lastLoadedUserId.value !== currentUserId) {
       void refreshCurrentSection()
     }
@@ -288,6 +412,16 @@
             <div class="type-option">
                 <span v-show="option == 0" class="option" :class="{'option-selected': typeOne == 0}" @click="changeType(0)">我创建的</span>
                 <span v-show="option == 0" class="option" :class="{'option-selected': typeOne == 1}" @click="changeType(1)">我收藏的</span>
+                <span
+                  v-show="option == 0"
+                  class="option"
+                  :class="{'option-selected': typeOne == 2}"
+                  role="button"
+                  tabindex="0"
+                  @click="changeType(2)"
+                  @keydown.enter.prevent="changeType(2)"
+                  @keydown.space.prevent="changeType(2)"
+                >我购买的</span>
                 <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 0}" @click="changeType(0)">专辑</span>
                 <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 1}" @click="changeType(1)">歌手</span>
                 <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 2}" @click="changeType(2)">MV</span>

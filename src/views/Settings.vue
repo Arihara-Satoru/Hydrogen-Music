@@ -4,8 +4,12 @@ import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { author, version } from "../../package.json";
 import { noticeOpen, dialogOpen } from "@/utils/dialog";
 import { initSettings } from "@/utils/initApp";
-import { getVipInfo } from "@/api/user";
-import { isLogin } from "@/utils/authority";
+import {
+  getLoginDevices,
+  getVipInfo,
+  kickLoginDevice,
+} from "@/api/user";
+import { getCookie, isLogin } from "@/utils/authority";
 import { useUserStore } from "@/store/userStore";
 import { usePlayerStore } from "@/store/playerStore";
 import Selector from "../components/Selector.vue";
@@ -17,6 +21,7 @@ import { resolveImageUrl } from "@/utils/imageUtils";
 import { confirmAccountLogout } from "@/utils/accountSession";
 import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
 import { applyCustomFontStyle } from "@/utils/setFont";
+import { refreshListenGradeInfo } from "@/utils/listenTimeReporter";
 import {
   buildFontOptions,
   loadSystemFontOptions,
@@ -28,6 +33,31 @@ const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
 const currentUser = computed(() => userStore.user || {});
+const listenGradeLoading = ref(false);
+const listenGradeText = computed(() => {
+  const grade = Number(userStore.gradeInfo?.p_grade);
+  if (Number.isFinite(grade)) return `LV.${grade}`;
+  return listenGradeLoading.value ? "加载中…" : "暂不可用";
+});
+const formatListenDuration = (seconds) => {
+  const totalSeconds = Number(seconds);
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "暂不可用";
+
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days} 天 ${hours} 小时`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+  return `${minutes} 分钟`;
+};
+const listenDurationText = computed(() =>
+  userStore.gradeInfo
+    ? formatListenDuration(userStore.gradeInfo.d_sec)
+    : listenGradeLoading.value
+      ? "加载中…"
+      : "暂不可用",
+);
 const profileAvatarUrl = computed(
   () =>
     currentUser.value.avatarUrl ||
@@ -56,6 +86,8 @@ const profileDetailList = computed(() => [
     value:
       currentUser.value.description || currentUser.value.signature || "未填写",
   },
+  { label: "听歌等级", value: listenGradeText.value },
+  { label: "累计听歌", value: listenDurationText.value },
   { label: "所在地", value: currentUser.value.location || "未填写" },
   {
     label: "生日",
@@ -80,6 +112,11 @@ const profileDetailList = computed(() => [
 ]);
 
 const vipInfo = ref(null);
+const loginDevices = ref([]);
+const devicesLoading = ref(false);
+const devicesError = ref("");
+const kickingDeviceKey = ref("");
+let deviceRequestSerial = 0;
 const musicLevel = ref("flac");
 const musicLevelOptions = ref([
   {
@@ -236,6 +273,158 @@ const loadVipInfo = async () => {
   }
 };
 
+const loadListenGradeInfo = async () => {
+  const requestUserId = userStore.user?.userId;
+  if (!requestUserId || !isLogin()) return;
+
+  listenGradeLoading.value = true;
+  try {
+    await refreshListenGradeInfo();
+  } finally {
+    if (userStore.user?.userId == requestUserId) {
+      listenGradeLoading.value = false;
+    }
+  }
+};
+
+const findDeviceItems = (result) => {
+  const roots = [result?.data?.data, result?.data, result];
+  const keys = ["devices", "device_list", "dev_list", "list", "info", "items", "records"];
+
+  for (const root of roots) {
+    if (Array.isArray(root)) return root;
+    if (!root || typeof root !== "object") continue;
+    for (const key of keys) {
+      if (Array.isArray(root[key])) return root[key];
+      if (Array.isArray(root[key]?.list)) return root[key].list;
+    }
+  }
+  return [];
+};
+
+const formatDeviceTime = (value) => {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
+  const date = new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+};
+
+const normalizeDevice = (raw, index) => {
+  const mid = raw?.mid ?? raw?.device_mid ?? raw?.guid ?? "";
+  const appid = raw?.appid ?? raw?.app_id ?? "";
+  const clientver = raw?.ver ?? raw?.clientver ?? raw?.client_ver ?? "";
+  const loginTime = raw?.t ?? raw?.login_time ?? raw?.loginTime ?? raw?.last_login_time ?? "";
+  const currentMid = getCookie("KUGOU_API_MID") || getCookie("mid") || "";
+  const isCurrent = raw?.is_current === true
+    || Number(raw?.is_current) === 1
+    || raw?.current === true
+    || Number(raw?.current) === 1
+    || (!!currentMid && String(mid) === String(currentMid));
+  const platformName = Number(appid) === 3116
+    ? "酷狗概念版"
+    : Number(appid) === 1005
+      ? "酷狗音乐"
+      : raw?.app_name || raw?.client_name || "酷狗客户端";
+  const name = raw?.device_name
+    || raw?.dev_name
+    || raw?.model
+    || raw?.phone_model
+    || raw?.device
+    || `${platformName}设备 ${index + 1}`;
+  const location = [raw?.country, raw?.province, raw?.city, raw?.location]
+    .filter(Boolean)
+    .filter((value, valueIndex, values) => values.indexOf(value) === valueIndex)
+    .join(" · ");
+
+  return {
+    raw,
+    key: `${mid || index}-${loginTime || "unknown"}-${appid || "app"}`,
+    name,
+    mid,
+    appid,
+    clientver,
+    loginTime,
+    loginTimeText: formatDeviceTime(loginTime),
+    platformName,
+    location,
+    isCurrent,
+    canKick: !!mid && !!loginTime && !!appid && !!clientver && !isCurrent,
+  };
+};
+
+const loadLoginDevices = async () => {
+  const requestUserId = userStore.user?.userId;
+  const requestSerial = ++deviceRequestSerial;
+  if (!requestUserId || !isLogin()) {
+    loginDevices.value = [];
+    devicesError.value = "";
+    return;
+  }
+
+  devicesLoading.value = true;
+  devicesError.value = "";
+  try {
+    const result = await getLoginDevices();
+    if (requestSerial !== deviceRequestSerial || userStore.user?.userId != requestUserId) return;
+    loginDevices.value = findDeviceItems(result).map(normalizeDevice);
+  } catch (error) {
+    if (requestSerial !== deviceRequestSerial || userStore.user?.userId != requestUserId) return;
+    console.error("加载登录设备失败:", error);
+    loginDevices.value = [];
+    devicesError.value = "设备列表加载失败，请稍后重试";
+  } finally {
+    if (requestSerial === deviceRequestSerial) devicesLoading.value = false;
+  }
+};
+
+const isKickDeviceSuccess = (result) => {
+  if (Number(result?.status) === 1 || Number(result?.error_code) === 0) return true;
+  return /操作成功|退出成功/.test(String(result?.data || result?.message || result?.msg || ""));
+};
+
+const kickDevice = async (device) => {
+  if (!device?.canKick || kickingDeviceKey.value) return;
+
+  kickingDeviceKey.value = device.key;
+  try {
+    const result = await kickLoginDevice({
+      t_mid: device.mid,
+      t: device.loginTime,
+      t_appid: device.appid,
+      t_clientver: device.clientver,
+    });
+    if (!isKickDeviceSuccess(result)) {
+      throw new Error(result?.msg || result?.message || result?.data || "device-kick-failed");
+    }
+    noticeOpen("设备已下线", 2);
+    await loadLoginDevices();
+  } catch (error) {
+    console.error("设备下线失败:", error);
+    noticeOpen("设备下线失败，请稍后重试", 2);
+  } finally {
+    kickingDeviceKey.value = "";
+  }
+};
+
+const confirmKickDevice = (device) => {
+  if (!device?.canKick) return;
+  dialogOpen(
+    "下线设备",
+    `确定让“${device.name}”退出登录吗？该设备需要重新登录后才能继续使用。`,
+    (confirmed) => {
+      if (confirmed) void kickDevice(device);
+    },
+  );
+};
+
 onActivated(() => {
   void refreshLocalMusicVideoPool();
   windowApi.getSettings().then((settings) => {
@@ -289,6 +478,8 @@ onActivated(() => {
   }
 
   void loadVipInfo();
+  void loadListenGradeInfo();
+  void loadLoginDevices();
   void loadSystemFonts();
 
   // 设置更新事件监听器
@@ -331,9 +522,14 @@ watch(
     if (nextUserId === previousUserId) return;
     if (!nextUserId) {
       vipInfo.value = null;
+      loginDevices.value = [];
+      devicesError.value = "";
+      deviceRequestSerial += 1;
       return;
     }
     void loadVipInfo();
+    void loadListenGradeInfo();
+    void loadLoginDevices();
   },
 );
 
@@ -958,6 +1154,64 @@ const clearFmRecent = () => {
           </div>
         </div>
       </div>
+      <section
+        class="settings-device-management"
+        v-if="isLogin()"
+        aria-labelledby="device-management-title"
+      >
+        <div class="device-management-header">
+          <div>
+            <h2 id="device-management-title">设备管理</h2>
+            <p>查看当前账号的登录设备，并让不再使用的设备退出登录。</p>
+          </div>
+          <button
+            class="device-refresh"
+            type="button"
+            :disabled="devicesLoading"
+            @click="loadLoginDevices"
+          >
+            {{ devicesLoading ? "刷新中…" : "刷新" }}
+          </button>
+        </div>
+        <div class="device-status" v-if="devicesLoading && loginDevices.length === 0" aria-live="polite">
+          正在读取登录设备…
+        </div>
+        <div class="device-status device-error" v-else-if="devicesError" role="status">
+          {{ devicesError }}
+        </div>
+        <div class="device-status" v-else-if="loginDevices.length === 0">
+          暂无可显示的登录设备
+        </div>
+        <div class="device-list" v-else>
+          <article class="device-card" v-for="device in loginDevices" :key="device.key">
+            <div class="device-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <rect x="5" y="2.5" width="14" height="19" rx="2.2" />
+                <line x1="9" y1="5.5" x2="15" y2="5.5" />
+                <circle cx="12" cy="18.5" r="0.8" />
+              </svg>
+            </div>
+            <div class="device-copy">
+              <div class="device-title-line">
+                <h3>{{ device.name }}</h3>
+                <span class="current-device" v-if="device.isCurrent">当前设备</span>
+              </div>
+              <p>{{ device.platformName }}<span v-if="device.clientver"> · V{{ device.clientver }}</span></p>
+              <p v-if="device.location">{{ device.location }}</p>
+              <p v-if="device.loginTimeText">登录于 {{ device.loginTimeText }}</p>
+            </div>
+            <button
+              class="device-kick"
+              type="button"
+              :disabled="!device.canKick || !!kickingDeviceKey"
+              :title="device.isCurrent ? '当前设备不能从这里下线' : !device.canKick ? '设备信息不完整，无法下线' : '让此设备退出登录'"
+              @click="confirmKickDevice(device)"
+            >
+              {{ kickingDeviceKey === device.key ? "下线中…" : device.isCurrent ? "本机" : "下线" }}
+            </button>
+          </article>
+        </div>
+      </section>
       <div class="settings">
         <div class="settings-item">
           <h2 class="item-title">音乐</h2>
@@ -1780,6 +2034,136 @@ const clearFmRecent = () => {
         }
         &:active {
           transform: scale(0.95);
+        }
+      }
+    }
+    .settings-device-management {
+      margin-top: 28px;
+      padding: 22px 24px;
+      width: 100%;
+      background: var(--layer);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      .device-management-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        h2 {
+          margin: 0;
+          font: 20px SourceHanSansCN-Bold;
+          color: var(--text);
+        }
+        p {
+          margin: 6px 0 0;
+          font: 13px SourceHanSansCN-Bold;
+          line-height: 1.55;
+          color: var(--muted-text);
+        }
+      }
+      button {
+        min-height: 44px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text);
+        font: 13px SourceHanSansCN-Bold;
+        cursor: pointer;
+        transition: 0.2s;
+        &:hover:not(:disabled) {
+          background: var(--layer);
+          border-color: var(--text);
+        }
+        &:focus-visible {
+          outline: 2px solid var(--text);
+          outline-offset: 2px;
+        }
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.45;
+        }
+      }
+      .device-refresh {
+        min-width: 76px;
+        padding: 0 16px;
+        flex: 0 0 auto;
+      }
+      .device-status {
+        margin-top: 18px;
+        padding: 18px;
+        border: 1px dashed var(--border);
+        font: 13px SourceHanSansCN-Bold;
+        color: var(--muted-text);
+        text-align: center;
+      }
+      .device-error {
+        color: #a03232;
+      }
+      .device-list {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 12px;
+      }
+      .device-card {
+        padding: 14px;
+        min-width: 0;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--layer) 72%, transparent);
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        .device-icon {
+          width: 44px;
+          height: 44px;
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: var(--text);
+            stroke-width: 1.4;
+            stroke-linecap: round;
+          }
+        }
+        .device-copy {
+          min-width: 0;
+        }
+        .device-title-line {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          h3 {
+            margin: 0;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font: 15px SourceHanSansCN-Bold;
+            color: var(--text);
+          }
+        }
+        .current-device {
+          padding: 2px 6px;
+          flex: 0 0 auto;
+          border: 1px solid var(--border);
+          font: 10px SourceHanSansCN-Bold;
+          color: var(--muted-text);
+        }
+        p {
+          margin: 3px 0 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font: 11px SourceHanSansCN-Bold;
+          color: var(--muted-text);
+        }
+        .device-kick {
+          min-width: 64px;
+          padding: 0 12px;
         }
       }
     }

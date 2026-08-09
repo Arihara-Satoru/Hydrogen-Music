@@ -8,6 +8,7 @@ import WindowControl from './components/WindowControl.vue';
 import MusicWidget from './components/MusicWidget.vue';
 import { destroyDesktopLyric, initDesktopLyric } from './utils/desktopLyric';
 import { destroyLyricRuntime, initLyricRuntime } from './composables/usePlayerRuntime';
+import { destroyListenTimeReporter, initListenTimeReporter } from './utils/listenTimeReporter';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -48,6 +49,7 @@ watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, curre
 onMounted(() => {
     initLyricRuntime();
     initDesktopLyric();
+    initListenTimeReporter();
 
     // 塞壬唱片开启时，空闲预加载所有专辑歌曲时长
     if (userStore.sirenPage) {
@@ -64,6 +66,7 @@ onUnmounted(() => {
     clearDynamicTheme();
     destroyDesktopLyric();
     destroyLyricRuntime();
+    destroyListenTimeReporter();
 });
 
 windowApi.checkUpdate((event, version) => {

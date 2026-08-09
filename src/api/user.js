@@ -73,6 +73,82 @@ function withTimestamp(params = {}) {
     }
 }
 
+function ensureAccountFeatureResponse(result) {
+    const failed = Number(result?.status) === 0
+        || (result?.error_code !== undefined && Number(result.error_code) !== 0)
+    if (failed) throw new Error(result?.msg || result?.message || result?.data || 'account-feature-request-failed')
+    return result
+}
+
+/**
+ * 获取用户已购买的单曲。
+ * @param {object} params
+ * @returns
+ */
+export function getPurchasedSongs(params = {}) {
+    return request({
+        url: '/user/purchased/songs',
+        method: 'get',
+        params: withTimestamp({ page: 1, pagesize: 500, ...params }),
+    }).then(ensureAccountFeatureResponse)
+}
+
+/**
+ * 获取用户已购买的专辑。
+ * @param {object} params
+ * @returns
+ */
+export function getPurchasedAlbums(params = {}) {
+    return request({
+        url: '/user/purchased/albums',
+        method: 'get',
+        params: withTimestamp({ page: 1, pagesize: 500, ...params }),
+    }).then(ensureAccountFeatureResponse)
+}
+
+/**
+ * 查询听歌等级；传入 d_sec 与 diff_sec 时同步新增听歌时长。
+ * @param {object} params
+ * @returns
+ */
+export function getUserGradeInfo(params = {}) {
+    return request({
+        url: '/user/grade/info',
+        method: 'get',
+        params: withTimestamp(params),
+    }).then(ensureAccountFeatureResponse)
+}
+
+/**
+ * 获取当前账号的登录设备。
+ * @returns
+ */
+export function getLoginDevices() {
+    return request({
+        url: '/login/device',
+        method: 'get',
+        params: withTimestamp(),
+    }).then(ensureAccountFeatureResponse)
+}
+
+/**
+ * 让指定设备退出登录。
+ * @param {object} device
+ * @returns
+ */
+export function kickLoginDevice(device = {}) {
+    return request({
+        url: '/login/device/kick',
+        method: 'get',
+        params: withTimestamp({
+            t_mid: device.t_mid ?? device.mid,
+            t: device.t,
+            t_appid: device.t_appid ?? device.appid,
+            t_clientver: device.t_clientver ?? device.ver ?? device.clientver,
+        }),
+    }).then(ensureAccountFeatureResponse)
+}
+
 /**
  * 获取服务器时间，避免使用本地时区直接计算领取日期。
  * @returns
