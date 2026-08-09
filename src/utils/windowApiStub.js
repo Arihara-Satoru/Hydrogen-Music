@@ -73,6 +73,7 @@
     openFile: noopResolve(""),
     toFileUrl: (path) => path || "",
     getLocalMusicImage: noopResolve(""),
+    getCloudMusicMetadata: noopResolve(null),
     getCoverPalette: noopResolve(null),
     getLocalMusicLyric: noopResolve(""),
 

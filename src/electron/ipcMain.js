@@ -11,6 +11,7 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const { parseFile } = require("./musicMetadata");
+const { loadCloudMusicMetadata } = require("./cloudMetadata");
 const { spawn } = require("child_process");
 const { loadLocalLyricPayload } = require("./localLyrics");
 const { listSystemFonts } = require("./systemFonts");
@@ -474,6 +475,9 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     }
     return null;
   });
+  ipcMain.handle("cloud-music:metadata", (_event, options) =>
+    loadCloudMusicMetadata(options),
+  );
   ipcMain.handle("cover-palette", async (_event, imageUrl) => {
     if (!sharp || typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return null;
 

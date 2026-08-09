@@ -99,6 +99,20 @@ const levelFieldMap = {
   flac: "sq",
   high: "hr",
 };
+const cloudAudioExtensions = new Set([
+  "mp3",
+  "flac",
+  "m4a",
+  "aac",
+  "ogg",
+  "opus",
+  "wav",
+  "wma",
+  "ape",
+  "aiff",
+  "aif",
+  "dsf",
+]);
 
 const otherAudioPauseController = createOtherAudioPauseController({
   isPlaying: () => playing.value,
@@ -669,11 +683,7 @@ async function hydrateGaplessStartedSongAssets(
   }
 
   setSongLevel(entry?.level, entry?.trackInfo);
-  getLyric(targetSong).then((songLiric) => {
-    if (songId.value !== targetSongId) return;
-    lyric.value = songLiric;
-    restorePlayerLyricAfterSongChange();
-  });
+  void loadRemoteSongAssets(targetSong, targetSongId, entry);
 }
 
 function getGaplessStartTarget(entry) {
@@ -2215,6 +2225,153 @@ export async function getLocalLyric(filePath) {
   return false;
 }
 
+function hasLyricText(payload) {
+  return (
+    typeof payload?.lrc?.lyric === "string" &&
+    payload.lrc.lyric.trim() !== ""
+  );
+}
+
+function getSongCover(targetSong) {
+  return (
+    targetSong?.coverUrl ||
+    targetSong?.al?.picUrl ||
+    targetSong?.album?.picUrl ||
+    targetSong?.blurPicUrl ||
+    targetSong?.img1v1Url ||
+    ""
+  );
+}
+
+function applyCloudMusicMetadata(targetSong, metadata, targetSongId) {
+  if (!targetSong || !metadata) return;
+
+  let artworkChanged = false;
+  if (!getSongCover(targetSong) && metadata.coverUrl) {
+    targetSong.coverUrl = metadata.coverUrl;
+    targetSong.al ||= {};
+    targetSong.album ||= {};
+    targetSong.al.picUrl = metadata.coverUrl;
+    targetSong.album.picUrl = metadata.coverUrl;
+    artworkChanged = true;
+  }
+
+  const artists = Array.isArray(metadata.artists)
+    ? metadata.artists
+        .map((name) => String(name || "").trim())
+        .filter(Boolean)
+    : [];
+  if (
+    artists.length &&
+    (!Array.isArray(targetSong.ar) || targetSong.ar.length === 0)
+  ) {
+    const normalizedArtists = artists.map((name) => ({ id: null, name }));
+    if (Array.isArray(targetSong.ar)) targetSong.ar.push(...normalizedArtists);
+    else targetSong.ar = normalizedArtists;
+    if (
+      !Array.isArray(targetSong.artists) ||
+      targetSong.artists.length === 0
+    ) {
+      targetSong.artists = targetSong.ar;
+    }
+  }
+
+  if (metadata.album) {
+    targetSong.al ||= {};
+    targetSong.album ||= {};
+    if (!targetSong.al.name) targetSong.al.name = metadata.album;
+    if (!targetSong.album.name) targetSong.album.name = metadata.album;
+  }
+
+  if (artworkChanged && songId.value === targetSongId) {
+    try {
+      window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
+    } catch (_) {}
+  }
+}
+
+async function loadCloudMusicMetadata(targetSong, streamInfo) {
+  const streamUrl =
+    typeof streamInfo === "string" ? streamInfo : streamInfo?.url;
+  if (
+    targetSong?.source !== "cloud" ||
+    !streamUrl ||
+    !windowApi?.getCloudMusicMetadata
+  ) {
+    return null;
+  }
+
+  let fileName = String(
+    targetSong?.cloudFileName ||
+      targetSong?.cloudUrlParams?.name ||
+      targetSong?.name ||
+      "cloud",
+  );
+  const fileExtension = fileName.includes(".")
+    ? fileName.split(".").pop().toLowerCase()
+    : "";
+  const responseExtension = String(streamInfo?.type || streamInfo?.level || "")
+    .replace(/^\./, "")
+    .toLowerCase();
+  const extension = cloudAudioExtensions.has(targetSong?.cloudExtension)
+    ? targetSong.cloudExtension
+    : cloudAudioExtensions.has(fileExtension)
+      ? fileExtension
+      : cloudAudioExtensions.has(responseExtension)
+        ? responseExtension
+        : "";
+  if (extension && !fileName.toLowerCase().endsWith(`.${extension}`)) {
+    fileName += `.${extension}`;
+  }
+
+  return windowApi.getCloudMusicMetadata({
+    url: streamUrl,
+    cacheKey:
+      targetSong?.hash ||
+      targetSong?.cloudUrlParams?.hash ||
+      targetSong?.id ||
+      streamUrl,
+    fileName,
+    extension,
+  });
+}
+
+async function loadRemoteSongAssets(targetSong, targetSongId, streamInfo) {
+  let embeddedMetadata = null;
+  if (targetSong?.source === "cloud") {
+    try {
+      embeddedMetadata = await loadCloudMusicMetadata(targetSong, streamInfo);
+      applyCloudMusicMetadata(targetSong, embeddedMetadata, targetSongId);
+    } catch (error) {
+      console.warn("读取云盘歌曲内嵌信息失败，回退到在线歌词:", error);
+    }
+  }
+
+  let songLyric = hasLyricText(embeddedMetadata?.lyric)
+    ? embeddedMetadata.lyric
+    : null;
+  if (!songLyric) {
+    const lyricTarget = embeddedMetadata
+      ? {
+          ...targetSong,
+          name: embeddedMetadata.title || targetSong.name,
+          ar: embeddedMetadata.artists?.length
+            ? embeddedMetadata.artists.map((name) => ({ id: null, name }))
+            : targetSong.ar,
+        }
+      : targetSong;
+    try {
+      songLyric = await getLyric(lyricTarget);
+    } catch (error) {
+      console.warn("加载在线歌词失败:", error);
+    }
+  }
+
+  if (songId.value !== targetSongId) return;
+  lyric.value = songLyric || { lrc: { lyric: "" } };
+  restorePlayerLyricAfterSongChange();
+}
+
 function restorePlayerLyricAfterSongChange() {
   if (widgetState.value || lyricShow.value) return;
 
@@ -2341,11 +2498,7 @@ export async function getSongUrl(
       playbackOptions,
     );
     setSongLevel(directPreloadedEntry.level, directPreloadedEntry.trackInfo);
-    getLyric(targetSong).then((songLiric) => {
-      if (songId.value !== targetSongId) return;
-      lyric.value = songLiric;
-      restorePlayerLyricAfterSongChange();
-    });
+    void loadRemoteSongAssets(targetSong, targetSongId, directPreloadedEntry);
     return;
   }
 
@@ -2491,10 +2644,10 @@ export async function getSongUrl(
       if (preloadedEntry?.player) setTimeout(startChorusPlayback, 0);
       else currentMusic.value?.once?.("load", startChorusPlayback);
     }
-    getLyric(targetSong).then((songLiric) => {
-      if (songId.value !== targetSongId) return;
-      lyric.value = songLiric;
-      restorePlayerLyricAfterSongChange();
+    void loadRemoteSongAssets(targetSong, targetSongId, {
+      url,
+      level: preloadedEntry?.level || level,
+      type: preloadedEntry?.trackInfo?.type || trackInfo?.type,
     });
     return;
   }
@@ -2530,6 +2683,11 @@ export async function getSongUrl(
             preloadedEntry?.level || trackInfo.level,
             preloadedEntry?.trackInfo || trackInfo,
           );
+          void loadRemoteSongAssets(
+            targetSong,
+            targetSongId,
+            preloadedEntry?.trackInfo || trackInfo,
+          );
           if (autoplay && chorusMode.value) {
             // 只在自动播放链路里自动套用副歌模式，避免恢复暂停歌曲时被强制拉起播放。
             const startChorusPlayback = () => {
@@ -2544,11 +2702,6 @@ export async function getSongUrl(
           }
         },
       );
-      getLyric(targetSong).then((songLiric) => {
-        if (songId.value !== targetSongId) return;
-        lyric.value = songLiric;
-        restorePlayerLyricAfterSongChange();
-      });
     } else {
       noticeOpen("当前歌曲无法播放", 2);
       clearInterval(musicProgress);

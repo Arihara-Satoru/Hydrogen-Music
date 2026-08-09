@@ -23,9 +23,37 @@ export const initDownloadManager = () => {
     let currentIndex = -1
 
     const getItemArtists = item => {
-        if (Array.isArray(item?.ar)) return item.ar.map(artist => artist?.name).filter(Boolean)
-        if (Array.isArray(item?.artists)) return item.artists.map(artist => artist?.name || artist).filter(Boolean)
-        return []
+        const artists = Array.isArray(item?.ar) && item.ar.length ? item.ar : item?.artists
+        if (Array.isArray(artists)) {
+            return artists
+                .map(artist => typeof artist === 'string' ? artist : artist?.name || artist?.author_name || '')
+                .filter(Boolean)
+        }
+        return String(item?.artist || item?.artistName || item?.author_name || '')
+            .split(/[、,/&]/)
+            .map(name => name.trim())
+            .filter(Boolean)
+    }
+
+    const getItemCoverUrl = item => {
+        const coverUrl = item?.coverUrl
+            || item?.al?.picUrl
+            || item?.album?.picUrl
+            || item?.picUrl
+            || item?.blurPicUrl
+            || item?.album_sizable_cover
+            || item?.sizable_cover
+            || item?.cover
+            || item?.trans_param?.union_cover
+            || null
+        if (typeof coverUrl !== 'string') return coverUrl
+        const resolvedCoverUrl = coverUrl.replace('{size}', '480')
+        return resolvedCoverUrl.startsWith('//') ? `https:${resolvedCoverUrl}` : resolvedCoverUrl
+    }
+
+    const getItemAlbum = item => {
+        if (typeof item?.album === 'string') return item.album
+        return item?.al?.name || item?.album?.name || item?.album?.title || item?.album_name || null
     }
 
     const downloadSirenTrack = async item => {
@@ -58,9 +86,9 @@ export const initDownloadManager = () => {
                 lyricPayload = null
             }
 
-            const coverUrl = item.coverUrl || item?.al?.picUrl || null
+            const coverUrl = getItemCoverUrl(item)
             const artists = getItemArtists(item)
-            const album = item?.al?.name || item?.album?.name || item?.album?.title || item?.album || null
+            const album = getItemAlbum(item)
 
             windowApi.download({
                 url: streamUrl,
@@ -103,7 +131,7 @@ export const initDownloadManager = () => {
                     // 获取歌词（不阻塞音频下载；即使失败也继续）
                     let lyricPayload = null
                     try {
-                        const lyr = await getLyric(id)
+                        const lyr = await getLyric(currentItem)
                         lyricPayload = {
                             id,
                             lrc: lyr && lyr.lrc && lyr.lrc.lyric ? lyr.lrc.lyric : null,
@@ -113,15 +141,14 @@ export const initDownloadManager = () => {
                     } catch (_) {
                         // ignore lyric fetch errors
                     }
-                    // 提取封面地址（优先专用 coverUrl，其次专辑图 al.picUrl）
-                    const item = downloadList.value[currentIndex] || {}
-                    const coverUrl = item.coverUrl || (item.al && item.al.picUrl) || null
-                    const artists = Array.isArray(item.ar) ? item.ar.map(a => a && a.name ? a.name : '') : []
-                    const album = (item.al && item.al.name) || (item.album && item.album.name) || null
+                    const item = currentItem
+                    const coverUrl = getItemCoverUrl(item)
+                    const artists = getItemArtists(item)
+                    const album = getItemAlbum(item)
 
                     let fileObj = {
                         url: trackInfo.url,
-                        name: downloadList.value[currentIndex].name,
+                        name: item.name,
                         type: trackInfo.type,
                         id,
                         lyrics: lyricPayload,
@@ -130,6 +157,11 @@ export const initDownloadManager = () => {
                         album
                     }
                     windowApi.download(fileObj)
+                }).catch(error => {
+                    console.error('获取下载地址失败:', error)
+                    noticeOpen("该歌曲无法下载！", 2)
+                    downloadList.value.splice(currentIndex, 1)
+                    downNext()
                 })
             } else {
                 noticeOpen("该歌曲无法下载！", 2)

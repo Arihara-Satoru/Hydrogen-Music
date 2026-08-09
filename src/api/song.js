@@ -127,6 +127,47 @@ function extractStreamMeta(body = {}) {
     }
 }
 
+const STREAM_QUALITY_BY_LEVEL = {
+    2: '128',
+    4: '320',
+    5: 'flac',
+    6: 'high',
+}
+
+const STREAM_QUALITY_ALIASES = {
+    hq: '320',
+    sq: 'flac',
+    lossless: 'flac',
+    hires: 'high',
+    'hi-res': 'high',
+}
+
+function normalizeStreamQuality(item, fallback = '') {
+    const quality = String(item?.quality || '').toLowerCase()
+    return STREAM_QUALITY_ALIASES[quality] || quality || STREAM_QUALITY_BY_LEVEL[Number(item?.level)] || fallback
+}
+
+function selectStreamByQuality(body, preferredQuality) {
+    const roots = Array.isArray(body) ? body : [body]
+    const candidates = roots.flatMap(item => [item, ...(Array.isArray(item?.relate_goods) ? item.relate_goods : [])])
+    const playable = candidates.map(item => {
+        const info = item?.info || item || {}
+        const url = extractPlayableUrl(info) || extractPlayableUrl(item)
+        if (!url) return null
+
+        const level = normalizeStreamQuality(item, preferredQuality)
+        return {
+            url,
+            level,
+            type: info?.extname || info?.extName || info?.ext || item?.extname || item?.extName || item?.ext
+                || (level === 'flac' || level === 'high' ? 'flac' : 'mp3'),
+            ...extractStreamMeta(info),
+        }
+    }).filter(Boolean)
+
+    return playable.find(item => item.level === preferredQuality) || playable[0] || null
+}
+
 function isHashLike(value) {
     return typeof value === 'string' && /^[A-Fa-f0-9]{32}$/.test(value.trim())
 }
@@ -169,9 +210,8 @@ export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
 export async function getMusicUrlNew(input, quality = 'flac', requestParams = {}) {
     const raw = await get('/song/url/new', buildSongUrlParams(input, quality, requestParams))
     const body = raw?.body || raw?.data || raw || {}
-    const url = extractPlayableUrl(body)
-    const type = body?.extName || body?.ext || 'mp3'
-    return { data: [{ url: url || null, level: quality, type, ...extractStreamMeta(body) }] }
+    const stream = selectStreamByQuality(body, quality)
+    return { data: [stream || { url: null, level: quality, type: quality === 'flac' || quality === 'high' ? 'flac' : 'mp3' }] }
 }
 
 function resolveSongHash(input) {

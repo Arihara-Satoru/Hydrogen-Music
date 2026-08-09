@@ -74,7 +74,10 @@ export default defineConfig({
   server: {
     // 启用 gzip 压缩
     open: false,
-    cors: true
+    cors: true,
+    watch: {
+      ignored: ['**/release/**']
+    }
   },
   // 预览服务器配置
   preview: {

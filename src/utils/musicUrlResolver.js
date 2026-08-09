@@ -204,7 +204,8 @@ export async function resolveTrackByQualityPreference(song, preferredLevel) {
     // 新接口自身会返回所有可用音质，只需要在普通接口全部失败后请求一次。
     try {
         const songInfoNew = await getMusicUrlNew(song, fallbackLevels[0])
-        if (songInfoNew?.data?.[0]?.url) return songInfoNew.data[0]
+        const fallbackTrack = songInfoNew?.data?.[0]
+        if (fallbackTrack?.url) return fallbackTrack
     } catch (fallbackError) {
         console.warn('/song/url/new 降级请求也失败:', fallbackError)
     }

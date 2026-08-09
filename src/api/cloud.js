@@ -86,6 +86,11 @@ function normalizeCloudPagination(params = {}) {
 function normalizeCloudSong(item = {}) {
   const baseSong = normalizePlaylistSong(item?.simpleSong || item?.simple_song || item?.song || item?.music || item);
   const fileName = item?.fileName || item?.FileName || item?.file_name || item?.filename || item?.name || baseSong?.name || "未知文件";
+  const cloudExtension = String(
+    item?.ext
+      || item?.extendname
+      || (String(fileName).includes(".") ? String(fileName).split(".").pop() : "")
+  ).replace(/^\./, "").toLowerCase();
   const songName = item?.songName || item?.song_name || item?.songname || item?.audio_name || item?.name || baseSong?.name || fileName || "未知歌曲";
   const fileSize = firstFiniteNumber(
     item?.fileSize,
@@ -133,6 +138,8 @@ function normalizeCloudSong(item = {}) {
       audio_id: cloudAudioId || baseSong?.audio_id || "",
       album_audio_id: cloudAlbumAudioId || baseSong?.album_audio_id || "",
       name: baseSong?.name || songName,
+      cloudFileName: fileName,
+      cloudExtension,
       cloudUrlParams: {
         hash: cloudHash || undefined,
         album_id: item?.album_id || baseSong?.al?.id || baseSong?.album?.id || undefined,
