@@ -238,6 +238,11 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watchEffect } from 'vu
 import { getSongDisplayName } from '../utils/songName';
 import { useStableImageSource } from '../composables/useStableImageSource';
 import { applyCustomFontStyle } from '../utils/setFont';
+import {
+    resolveDesktopSongChangeState,
+    shouldIgnoreDesktopLyricMessage,
+    shouldIgnoreDesktopLyricProgress,
+} from '../utils/desktopLyricSync.mjs';
 
 // 响应式数据
 const currentSong = ref(null);
@@ -308,6 +313,9 @@ let playbackClockUpdatedAtMs = 0;
 let seekSettlingUntilMs = 0;
 let seekSettlingTargetSec = 0;
 let lastSeekSerial = 0;
+let activeSongSerial = null;
+let activeSongId = '';
+let lastLyricSyncSequence = 0;
 let baselineWindowWidth = 0;
 let baselineWindowHeightOneLine = 0; // 以“单行歌词高度”为基准的窗口外部高度
 let lastAppliedHeight = 0;
@@ -790,18 +798,21 @@ const isBackwardProgressPayload = (normalizedProgress, now = performance.now()) 
 };
 
 const shouldIgnoreLyricProgressPayload = (data, options = {}) => {
-    if (options.isSeekSync) return false;
-
     const normalizedProgress = Number(data?.progress);
-    if (!Number.isFinite(normalizedProgress)) return true;
-
-    const incomingIndex = Number(data?.currentIndex);
-    const normalizedIncomingIndex = Number.isInteger(incomingIndex) ? incomingIndex : -1;
     const now = performance.now();
-    const isSettlingStale = isSeekSettlingProgressStale(normalizedProgress, now);
-    if (isSettlingStale) return true;
-
-    return normalizedIncomingIndex < currentLyricIndex.value && isBackwardProgressPayload(normalizedProgress, now);
+    return shouldIgnoreDesktopLyricProgress(data, {
+        isSeekSync: options.isSeekSync,
+        songSerial: activeSongSerial,
+        songId: activeSongId,
+        lastSyncSequence: lastLyricSyncSequence,
+        isSettlingStale: Number.isFinite(normalizedProgress)
+            ? isSeekSettlingProgressStale(normalizedProgress, now)
+            : false,
+        currentLyricIndex: currentLyricIndex.value,
+        isBackwardProgress: Number.isFinite(normalizedProgress)
+            ? isBackwardProgressPayload(normalizedProgress, now)
+            : false,
+    });
 };
 
 const syncPlaybackClock = (nextProgress, options = {}) => {
@@ -930,21 +941,52 @@ const getArtistNames = song => {
 const handleLyricUpdate = (event, data) => {
     try {
         if (data.type === 'song-change') {
+            const nextSyncState = resolveDesktopSongChangeState(data, {
+                songSerial: activeSongSerial,
+                songId: activeSongId,
+                lastSyncSequence: lastLyricSyncSequence,
+                progress: progress.value,
+                currentLyricIndex: currentLyricIndex.value,
+            });
+            if (nextSyncState.ignored) return;
+            activeSongSerial = nextSyncState.songSerial;
+            activeSongId = nextSyncState.songId;
+            const incomingSyncSequence = Number(data.syncSequence);
+            if (Number.isInteger(incomingSyncSequence)) {
+                lastLyricSyncSequence = incomingSyncSequence;
+            }
+            if (nextSyncState.songChanged) {
+                seekSettlingUntilMs = 0;
+                seekSettlingTargetSec = nextSyncState.progress;
+                lastSeekSerial = -1;
+            }
             currentSong.value = data.song;
             lyricsArray.value = data.lyrics || [];
-            currentLyricIndex.value = -1;
+            currentLyricIndex.value = nextSyncState.currentLyricIndex;
+            progress.value = nextSyncState.progress;
+            if (typeof data.playing === 'boolean') {
+                playing.value = data.playing;
+            }
             songDuration.value = normalizeDurationSeconds(data.duration || data.song?.duration);
             applyCoverBackdrop(data.coverBackdrop);
-            syncPlaybackClock(progress.value, { snap: true });
-            renderLineScan();
+            syncPlaybackClock(nextSyncState.progress, { snap: nextSyncState.songChanged });
+            const visualProgress = getVisualPlaybackProgress();
+            advanceLyricIndexForVisualProgress(visualProgress);
+            renderLineScan(visualProgress);
+            if (playing.value) startLineScanRaf();
+            else stopLineScanRaf();
         } else if (data.type === 'lyric-progress') {
             const previousLyricIndex = currentLyricIndex.value;
             const incomingSeekSerial = Number(data.seekSerial);
             const hasNewSeekSerial = Number.isInteger(incomingSeekSerial) && incomingSeekSerial !== lastSeekSerial;
             const isSeekSync = data.syncReason === 'seek' || hasNewSeekSerial;
+            if (shouldIgnoreLyricProgressPayload(data, { isSeekSync })) return;
             if (hasNewSeekSerial) lastSeekSerial = incomingSeekSerial;
             if (isSeekSync) markSeekSettling(data.progress);
-            if (shouldIgnoreLyricProgressPayload(data, { isSeekSync })) return;
+            const incomingSyncSequence = Number(data.syncSequence);
+            if (Number.isInteger(incomingSyncSequence)) {
+                lastLyricSyncSequence = incomingSyncSequence;
+            }
             currentLyricIndex.value = data.currentIndex;
             progress.value = data.progress;
             songDuration.value = normalizeDurationSeconds(data.duration || songDuration.value);
@@ -954,6 +996,15 @@ const handleLyricUpdate = (event, data) => {
             renderLineScan(visualProgress);
             startLineScanRaf();
         } else if (data.type === 'play-state') {
+            if (shouldIgnoreDesktopLyricMessage(data, {
+                songSerial: activeSongSerial,
+                songId: activeSongId,
+                lastSyncSequence: lastLyricSyncSequence,
+            })) return;
+            const incomingSyncSequence = Number(data.syncSequence);
+            if (Number.isInteger(incomingSyncSequence)) {
+                lastLyricSyncSequence = incomingSyncSequence;
+            }
             const nextPlaying = data.playing;
             if (!nextPlaying) {
                 syncPlaybackClock(getVisualPlaybackProgress(), { snap: true });

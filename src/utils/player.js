@@ -27,6 +27,7 @@ import { normalizeQueueSong, normalizeQueueSongs } from './player/queueSong'
 import { getPrefetchedSongAssets, getSongAssetKey, prefetchSongAssets } from './player/assetPrefetch'
 import { getLyricWithCloudFallback, isCloudDiskSong, markCloudDiskSong } from './player/lyricFallback'
 import { createDecodedAudioPlayer } from './player/webAudioGapless'
+import { resolveActivatedPlaybackPosition } from './player/activationProgress.mjs'
 import { createHifiOutputPlayer } from './player/hifiOutputPlayer'
 import { runIdleTask } from './player/idleTask'
 import { createEmptyLyric, hasUsableLyricPayload } from './player/lyricPayload'
@@ -871,21 +872,30 @@ function hydrateSongAssets(song, targetSongId, options = {}) {
     return loadRemoteLyricForSong(song, targetSongId, options.emptyFallback === true)
 }
 
-function resetSongSwitchState() {
+function resetSongSwitchPosition() {
     loadLast = false
     progress.value = 0
     time.value = 0
-    try { localBase64Img.value = null } catch (_) {}
     try {
         window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
-            detail: { duration: 0, toTime: 0 }
+            detail: { duration: 0, toTime: 0, reason: 'song-switch' }
         }))
     } catch (_) {}
+}
+
+function resetSongSwitchState() {
+    resetSongSwitchPosition()
+    try { localBase64Img.value = null } catch (_) {}
 
     if (lyricShow.value) {
         lyricShow.value = false
         playerChangeSong.value = true
     }
+}
+
+export function prepareResolvedPlaybackSongSwitch() {
+    stopProgressSampling()
+    resetSongSwitchPosition()
 }
 
 watch(
@@ -1506,21 +1516,21 @@ function syncActivatedHowlAfterLoad(nextHowl, normalizedSeek, autoplay) {
     const loadedDuration = getStablePlaybackDuration(nextHowl, getCurrentSong())
     time.value = loadedDuration
     updateCurrentSongDurationFromHowl()
-    let targetSeek = null
+    const shouldRestoreStoredProgress = normalizedSeek === null && loadLast && !autoplay
+    const activatedPosition = resolveActivatedPlaybackPosition({
+        resumeSeek: normalizedSeek,
+        restoreStoredProgress: shouldRestoreStoredProgress,
+        storedProgress: progress.value,
+        playbackProgress: nextHowl.seek?.(),
+        duration: loadedDuration,
+    })
+    if (normalizedSeek !== null || shouldRestoreStoredProgress) loadLast = false
 
-    if (normalizedSeek !== null) {
-        targetSeek = clampPlaybackProgress(normalizedSeek, loadedDuration)
-        loadLast = false
-    } else if (loadLast && !autoplay) {
-        targetSeek = clampPlaybackProgress(progress.value || 0, loadedDuration)
-        loadLast = false
-    }
-
-    if (targetSeek !== null && !Number.isNaN(targetSeek)) {
+    if (activatedPosition.shouldSeekPlayback) {
         nextHowl.volume(0)
-        nextHowl.seek(targetSeek)
-        progress.value = clampPlaybackProgress(targetSeek, loadedDuration)
+        nextHowl.seek(activatedPosition.progress)
     }
+    progress.value = activatedPosition.progress
     playerChangeSong.value = false
     try {
         window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
