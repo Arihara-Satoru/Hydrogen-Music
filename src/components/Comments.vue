@@ -29,7 +29,7 @@ const musicCommentId = computed(() => {
     if (isDj.value) return null
     const cur = currentTrack.value
     if (cur?.source === 'siren') return null
-    const curId = cur && (cur.mixsongid || cur.mixsong_id || cur.album_audio_id || cur.id || cur.songId || cur.musicId)
+    const curId = cur && (cur.mixsongid || cur.mixsong_id || cur.album_audio_id || cur.MixSongID || cur.id || cur.songId || cur.musicId)
     return curId || songId.value || null
 })
 

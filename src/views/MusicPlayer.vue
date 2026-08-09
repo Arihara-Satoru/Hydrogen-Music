@@ -73,7 +73,7 @@ const commentTarget = computed(() => {
         };
     }
 
-    const musicId = (track && (track.mixsongid || track.mixsong_id || track.album_audio_id || track.id || track.songId || track.musicId)) || playerStore.songId;
+    const musicId = (track && (track.mixsongid || track.mixsong_id || track.album_audio_id || track.MixSongID || track.id || track.songId || track.musicId)) || playerStore.songId;
     if (!musicId) return null;
     return {
         key: `song:${musicId}`,
@@ -144,7 +144,7 @@ const commentPanelKey = computed(() => {
         const pid = track && (track.programId || track.programID || track.programid);
         return `comments-dj-${pid || 'none'}-${idx}`;
     }
-    const sid = (track && (track.mixsongid || track.mixsong_id || track.album_audio_id || track.id || track.songId || track.musicId)) || playerStore.songId || 'none';
+    const sid = (track && (track.mixsongid || track.mixsong_id || track.album_audio_id || track.MixSongID || track.id || track.songId || track.musicId)) || playerStore.songId || 'none';
     return `comments-song-${sid}-${idx}`;
 });
 

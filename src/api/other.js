@@ -82,11 +82,11 @@ function normalizeSearchSong(item = {}) {
 
     return {
         ...item,
-        id: String(item.mixsongid || item.mixsong_id || item.album_audio_id || item.audio_id || item.Audioid || item.song_id || fallbackId),
+        id: String(item.mixsongid || item.mixsong_id || item.album_audio_id || item.MixSongID || item.audio_id || item.Audioid || item.song_id || fallbackId),
         hash: String(hash || ''),
         fileid: String(item.fileid || item.fileId || item.Audioid || base.audio_id || fallbackId),
-        mixsongid: item.mixsongid || item.mixsong_id || item.album_audio_id || base.album_audio_id || '',
-        album_audio_id: item.album_audio_id || item.mixsongid || item.mixsong_id || base.album_audio_id || '',
+        mixsongid: item.mixsongid || item.mixsong_id || item.album_audio_id || item.MixSongID || base.album_audio_id || '',
+        album_audio_id: item.album_audio_id || item.mixsongid || item.mixsong_id || item.MixSongID || base.album_audio_id || '',
         name: songName,
         alia: item.ori_song_name ? [item.ori_song_name] : [],
         ar: artists,
