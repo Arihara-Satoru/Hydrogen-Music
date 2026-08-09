@@ -1,7 +1,7 @@
 <script setup>
   import { onActivated, ref, watch } from 'vue'
   import router from '../router/router'
-  import { getPurchasedAlbums, getPurchasedSongs, getUserPlaylist } from '../api/user'
+  import { extractPurchasedItems, getPurchasedAlbums, getPurchasedSongs, getUserPlaylist } from '../api/user'
   import { normalizePlaylistSong } from '../api/playlist'
   import { extractPlaylistItems } from '../utils/accountSession'
   import { getUserSubAlbum } from '../api/album'
@@ -48,23 +48,6 @@
     libraryListAlbum.value = null
     libraryListAritist.value = null
     purchaseLoadError.value = false
-  }
-
-  function extractPurchasedItems(result, preferredKeys) {
-    const roots = [result?.data?.data, result?.data, result]
-    for (const root of roots) {
-      if (Array.isArray(root)) return root
-      if (!root || typeof root != 'object') continue
-
-      for (const key of preferredKeys) {
-        if (Array.isArray(root[key])) return root[key]
-        if (Array.isArray(root[key]?.list)) return root[key].list
-      }
-
-      const directArray = Object.values(root).find(value => Array.isArray(value))
-      if (directArray) return directArray
-    }
-    return []
   }
 
   function normalizePurchasedSong(item) {

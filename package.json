@@ -15,6 +15,7 @@
     "check:cloud-metadata": "node scripts/check-cloud-metadata.cjs",
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
+    "check:purchased-api": "node --experimental-vm-modules scripts/check-purchased-api.mjs",
     "preview": "vite preview",
     "start": "node scripts/set-console-encoding.cjs && electron .",
     "start:watch": "node scripts/set-console-encoding.cjs && nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",

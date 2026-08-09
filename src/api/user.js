@@ -80,30 +80,96 @@ function ensureAccountFeatureResponse(result) {
     return result
 }
 
+const PURCHASE_PAGE_SIZE = 50
+const MAX_PURCHASE_PAGES = 100
+
+export function extractPurchasedItems(result, preferredKeys) {
+    const roots = [result?.data?.data, result?.data, result]
+    for (const root of roots) {
+        if (Array.isArray(root)) return root
+        if (!root || typeof root != 'object') continue
+
+        for (const key of preferredKeys) {
+            if (Array.isArray(root[key])) return root[key]
+            if (Array.isArray(root[key]?.list)) return root[key].list
+        }
+
+        const directArray = Object.values(root).find(value => Array.isArray(value))
+        if (directArray) return directArray
+    }
+    return []
+}
+
+function getPurchasedTotal(result) {
+    const roots = [result?.data?.data, result?.data, result]
+    for (const root of roots) {
+        if (!root || typeof root != 'object') continue
+        for (const key of ['total', 'total_count', 'total_num']) {
+            if (root[key] === null || root[key] === undefined || root[key] === '') continue
+            const total = Number(root[key])
+            if (Number.isFinite(total) && total >= 0) return total
+        }
+    }
+    return null
+}
+
+async function fetchAllPurchasedPages(url, params, preferredKeys) {
+    const requestedPage = Number(params?.page)
+    const requestedPageSize = Number(params?.pagesize)
+    const firstPage = Number.isFinite(requestedPage) && requestedPage > 0 ? Math.max(1, Math.floor(requestedPage)) : 1
+    const pageSize = Number.isFinite(requestedPageSize) && requestedPageSize > 0
+        ? Math.min(Math.max(1, Math.floor(requestedPageSize)), PURCHASE_PAGE_SIZE)
+        : PURCHASE_PAGE_SIZE
+    let firstResult = null
+    let mergedItems = null
+
+    // ponytail: 5,000 purchases is ample today; switch the UI to incremental paging if accounts outgrow it.
+    for (let index = 0; index < MAX_PURCHASE_PAGES; index += 1) {
+        const result = ensureAccountFeatureResponse(await request({
+            url,
+            method: 'get',
+            params: withTimestamp({ ...params, page: firstPage + index, pagesize: pageSize }),
+        }))
+        const pageItems = extractPurchasedItems(result, preferredKeys)
+
+        if (!firstResult) {
+            firstResult = result
+            mergedItems = pageItems
+        } else {
+            mergedItems.push(...pageItems)
+        }
+
+        const total = getPurchasedTotal(result)
+        if (pageItems.length < pageSize || (total > 0 && mergedItems.length >= total)) return firstResult
+    }
+
+    throw new Error('purchased-content-pagination-limit-exceeded')
+}
+
 /**
- * 获取用户已购买的单曲。
+ * 获取用户全部已购买单曲；接口每页最多返回 50 条，这里自动合并分页。
  * @param {object} params
  * @returns
  */
 export function getPurchasedSongs(params = {}) {
-    return request({
-        url: '/user/purchased/songs',
-        method: 'get',
-        params: withTimestamp({ page: 1, pagesize: 500, ...params }),
-    }).then(ensureAccountFeatureResponse)
+    return fetchAllPurchasedPages(
+        '/user/purchased/songs',
+        params,
+        ['songs', 'song_list', 'audio_list', 'goods', 'list', 'info', 'items'],
+    )
 }
 
 /**
- * 获取用户已购买的专辑。
+ * 获取用户全部已购买专辑；接口每页最多返回 50 条，这里自动合并分页。
  * @param {object} params
  * @returns
  */
 export function getPurchasedAlbums(params = {}) {
-    return request({
-        url: '/user/purchased/albums',
-        method: 'get',
-        params: withTimestamp({ page: 1, pagesize: 500, ...params }),
-    }).then(ensureAccountFeatureResponse)
+    return fetchAllPurchasedPages(
+        '/user/purchased/albums',
+        params,
+        ['albums', 'album_list', 'goods', 'list', 'info', 'items'],
+    )
 }
 
 /**
