@@ -6,6 +6,7 @@ import { loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrent
 import VueSlider from 'vue-slider-component';
 import { dialogOpen, noticeOpen } from '../utils/dialog';
 import { clearStoredBiliSession, hasStoredBiliSession, migrateLegacyBiliSession, readStoredBiliCookie, storeBiliCookies } from '../utils/biliSession';
+import { resolveBiliLoginCookies } from '../utils/biliLoginCookies.mjs';
 import { invalidateStoredMusicVideoVerifyCache, verifyStoredMusicVideo } from '../utils/musicVideoLookup';
 import { buildMusicVideoTimingSegment, clampVideoTimingRange, hasTimingOverlap } from '../utils/musicVideoTiming';
 import { useUserStore } from '../store/userStore';
@@ -96,39 +97,6 @@ const applyBiliPlayUrlData = (data, { includeVideo = true, updateDuration = fals
     if (updateDuration) {
         currentVideoInfo.value.duration = (data.dash && data.dash.duration) || currentVideoInfo.value.duration;
     }
-};
-
-const storeBiliCookiesFromLoginUrl = urlStr => {
-    if (!urlStr) return null;
-    const getParam = key => {
-        try {
-            const u = new URL(urlStr);
-            return u.searchParams.get(key);
-        } catch (_) {
-            try {
-                const m = String(urlStr).match(new RegExp(`${key}=([^&;#]+)`));
-                return m ? decodeURIComponent(m[1]) : null;
-            } catch (_) {
-                return null;
-            }
-        }
-    };
-
-    const sessdata = getParam('SESSDATA');
-    if (!sessdata) return null;
-    const biliJct = getParam('bili_jct');
-    const dedeUserId = getParam('DedeUserID');
-
-    let cookieStr = `SESSDATA=${sessdata};`;
-    if (biliJct) cookieStr += ` bili_jct=${biliJct};`;
-    if (dedeUserId) cookieStr += ` DedeUserID=${dedeUserId};`;
-
-    return storeBiliCookies({
-        sessdata,
-        biliJct,
-        dedeUserId,
-        cookieString: cookieStr,
-    });
 };
 
 const loginOrLogout = () => {
@@ -234,19 +202,14 @@ const checkInterval = () => {
 const loginHandle = async data => {
     closeLogin();
     try {
-        // 检查是否有登录URL
-        if (!data.url) {
-            noticeOpen('登录失败：未获取到登录信息', 2);
+        const loginCookies = resolveBiliLoginCookies(data);
+        if (!loginCookies) {
+            noticeOpen(data?.url ? '登录失败：无法获取SESSDATA' : '登录失败：未获取到登录信息', 2);
             loginOrLogout();
             return;
         }
 
-        const cookieStr = storeBiliCookiesFromLoginUrl(data.url);
-        if (!cookieStr) {
-            noticeOpen('登录失败：无法获取SESSDATA', 2);
-            loginOrLogout();
-            return;
-        }
+        const cookieStr = storeBiliCookies(loginCookies);
         headers.cookie = cookieStr;
 
         // 使用正确的用户信息API

@@ -8,6 +8,7 @@ const { loadLocalLyricPayload } = require('./localLyrics')
 const { registerSettingsIpc } = require('./ipc/settingsIpc')
 const { registerHifiOutputIpc } = require('./hifiOutput')
 const { listSystemFonts } = require('./systemFonts')
+const { decorateBiliQrPollResponse } = require('./biliLoginCookies')
 const {
     getBufferLength,
     getImageMime,
@@ -1132,7 +1133,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 return buildTrustedResourceErrorPayload({ response }, requestUrl)
             }
 
-            return response.data
+            return decorateBiliQrPollResponse(parsedUrl, response.data, response.headers)
         } catch (error) {
             return buildTrustedResourceErrorPayload(error, requestUrl)
         }

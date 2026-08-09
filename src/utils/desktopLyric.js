@@ -11,6 +11,9 @@ let stopLyricProgressTicker = null;
 let songChangeTimer = null;
 let progressTimer = null;
 let seekSerial = 0;
+let songSerial = 0;
+let syncSequence = 0;
+let songSyncKey = '';
 let progressDragActive = false;
 let bridgeInitialized = false;
 
@@ -120,15 +123,39 @@ function pushPayload(payload, { force = false } = {}) {
 
     lastPayloadByType.set(payload.type, serialized);
 
-    window.electronAPI.updateLyricData(payload);
+    const synchronizedPayload = payload.type === 'settings-change'
+        ? payload
+        : { ...payload, syncSequence: ++syncSequence };
+    window.electronAPI.updateLyricData(synchronizedPayload);
+}
+
+function getSongSyncIdentity() {
+    const normalizedSongId = songId.value == null ? '' : String(songId.value);
+    const normalizedCurrentIndex = Number.isInteger(currentIndex.value) ? currentIndex.value : -1;
+    const nextKey = `${normalizedSongId}:${normalizedCurrentIndex}`;
+    if (nextKey !== songSyncKey) {
+        songSyncKey = nextKey;
+        songSerial += 1;
+    }
+
+    return {
+        songId: normalizedSongId,
+        songSerial,
+    };
 }
 
 function buildSongChangePayload() {
     const currentSong = getIndexedSong(songList.value, currentIndex.value);
     const duration = getCurrentDurationSeconds(currentSong);
+    const syncIdentity = getSongSyncIdentity();
+    const currentProgress = Number(progress.value || 0);
 
     return {
         type: 'song-change',
+        ...syncIdentity,
+        progress: currentProgress,
+        currentLyricIndex: Number.isInteger(currentLyricIndex.value) ? currentLyricIndex.value : -1,
+        playing: !!playing.value,
         song: currentSong
             ? {
                   name: String(getSongDisplayName(currentSong, '未知歌曲', showSongTranslation.value)),
@@ -155,6 +182,7 @@ function buildSongChangePayload() {
 function buildPlayStatePayload() {
     return {
         type: 'play-state',
+        ...getSongSyncIdentity(),
         playing: !!playing.value,
     };
 }
@@ -165,6 +193,7 @@ function buildLyricProgressPayload(options = {}) {
 
     const payload = {
         type: 'lyric-progress',
+        ...getSongSyncIdentity(),
         currentIndex: Number.isInteger(currentLyricIndex.value) ? currentLyricIndex.value : -1,
         progress: currentProgress,
         currentTime: currentProgress,
