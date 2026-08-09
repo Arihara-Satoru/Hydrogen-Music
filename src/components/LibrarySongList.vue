@@ -62,8 +62,12 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    dislikeEnabled: {
+        type: Boolean,
+        default: false,
+    },
 })
-const emit = defineEmits(['list-scroll'])
+const emit = defineEmits(['list-scroll', 'dislike'])
 const hoverRowKey = ref(null)
 const rowKeyBySong = new WeakMap()
 let rowKeySeed = 0
@@ -224,11 +228,22 @@ const openMenu = (e, item) => {
                         <span v-if="item.song.vipOnly" class="item-vip-tag">VIP</span>
                     </span>
                 </div>
-                <div class="item-other">
+                <div class="item-other" :class="{ 'item-other-with-dislike': props.dislikeEnabled }">
                     <div class="item-author" v-if="item.song.ar">
                         <span class="item-singer" @click="checkArtist(singer.id)" v-for="(singer, index) in item.song.ar">{{ singer.name }}{{ index == item.song.ar.length - 1 ? '' : '/' }}</span>
                     </div>
-                        <span class="item-time">{{ songTime(item.song.dt || item.song.duration) || '--:--' }}</span>
+                    <span class="item-time">{{ songTime(item.song.dt || item.song.duration) || '--:--' }}</span>
+                    <button
+                        v-if="props.dislikeEnabled"
+                        class="item-dislike"
+                        type="button"
+                        :aria-label="`不喜欢 ${getSongDisplayName(item.song, '', showSongTranslation)}`"
+                        title="不喜欢"
+                        @click.stop="emit('dislike', item.song)"
+                        @dblclick.stop
+                    >
+                        不喜欢
+                    </button>
                 </div>
             </div>
         </RecycleScroller>
@@ -369,6 +384,7 @@ const openMenu = (e, item) => {
                 width: 45%;
                 display: flex;
                 flex-direction: row;
+                align-items: center;
                 justify-content: space-between;
                 span {
                     font: 14px SourceHanSansCN-Bold;
@@ -393,6 +409,44 @@ const openMenu = (e, item) => {
                 }
                 .item-time {
                     width: 30%;
+                }
+                &.item-other-with-dislike {
+                    gap: 8px;
+                    .item-author {
+                        flex: 1 1 auto;
+                        min-width: 0;
+                        width: auto;
+                    }
+                    .item-time {
+                        flex: 0 0 48px;
+                        width: 48px;
+                    }
+                }
+                .item-dislike {
+                    flex: 0 0 58px;
+                    height: 42px;
+                    padding: 0 8px;
+                    border: none;
+                    outline: none;
+                    background-color: transparent !important;
+                    color: var(--muted-text, #5b6066) !important;
+                    font: 12px SourceHanSansCN-Bold;
+                    cursor: pointer;
+                    touch-action: manipulation;
+                    transition:
+                        color 0.15s ease,
+                        background-color 0.15s ease;
+                    &:hover {
+                        color: var(--text, #111213) !important;
+                        background-color: rgba(127, 127, 127, 0.12) !important;
+                    }
+                    &:active {
+                        background-color: rgba(127, 127, 127, 0.2) !important;
+                    }
+                    &:focus-visible {
+                        outline: 2px solid var(--text, #111213);
+                        outline-offset: -3px;
+                    }
                 }
             }
         }

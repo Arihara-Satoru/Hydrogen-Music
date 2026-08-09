@@ -2,6 +2,7 @@
 import { computed, nextTick, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getHistoryRecommendSongDates } from '../api/playlist';
+import { fmTrash } from '../api/song';
 import { useLibraryStore } from '../store/libraryStore';
 import { playAll } from '../utils/player';
 import { noticeOpen } from '../utils/dialog';
@@ -240,6 +241,19 @@ const loadRecommendSongs = async date => {
     }
 };
 
+const dislikeRecommendSong = song => {
+    const songs = libraryStore.librarySongs;
+    if (!Array.isArray(songs)) return;
+
+    const songIndex = songs.indexOf(song);
+    if (songIndex < 0) return;
+
+    songs.splice(songIndex, 1);
+    void fmTrash(song).catch(error => {
+        console.warn('[Daily Recommend] dislike feedback failed:', error);
+    });
+};
+
 const applyDateFromRouteQuery = () => {
     const queryDate = formatDateToken(typeof route.query.date == 'string' ? route.query.date : '');
     if (queryDate && hasDateOption(queryDate)) {
@@ -379,7 +393,11 @@ onDeactivated(() => {
             <span class="rec-status" v-if="loadingSongs">正在加载推荐歌曲...</span>
             <span class="rec-status" v-else-if="!dateOptions.length">暂无可用日推日期</span>
         </div>
-        <LibrarySongList :songlist="libraryStore.librarySongs"></LibrarySongList>
+        <LibrarySongList
+            :songlist="libraryStore.librarySongs"
+            dislike-enabled
+            @dislike="dislikeRecommendSong"
+        ></LibrarySongList>
     </div>
 </template>
 
