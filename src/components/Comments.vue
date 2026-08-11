@@ -7,6 +7,7 @@ import { useUserStore } from '../store/userStore'
 import { storeToRefs } from 'pinia'
 import { noticeOpen } from '../utils/dialog'
 import { getCommentScrollPosition, setCommentScrollPosition, getLastCommentTargetKey, setLastCommentTargetKey } from '../utils/commentScrollMemory'
+import { buildCommentReplyTree } from '../utils/commentReplies'
 import CommentText from './CommentText.vue'
 
 const emit = defineEmits(['total-change'])
@@ -199,6 +200,8 @@ const createFloorState = replyCount => ({
     loading: false,
     error: '',
     items: [],
+    tree: [],
+    expandedReplyIds: [],
     hasMore: replyCount > 0,
     nextTime: -1,
     nextPage: 1,
@@ -266,6 +269,37 @@ const mergeFloorItems = (existing = [], incoming = []) => {
         seen.add(item.commentId)
     }
     return merged
+}
+
+const rebuildFloorReplyTree = (state, rootComment) => {
+    state.tree = buildCommentReplyTree(state.items, rootComment)
+}
+
+const getVisibleFloorReplies = rootComment => {
+    const state = getFloorState(rootComment)
+    if (!state) return []
+    if (!Array.isArray(state.tree)) rebuildFloorReplyTree(state, rootComment)
+
+    const expandedIds = new Set((state.expandedReplyIds || []).map(id => `${id}`))
+    const visible = []
+    const appendNode = (node, depth) => {
+        const id = `${node.comment.commentId}`
+        const expanded = expandedIds.has(id)
+        visible.push({ ...node, depth, expanded })
+        if (expanded) node.children.forEach(child => appendNode(child, depth + 1))
+    }
+    state.tree.forEach(node => appendNode(node, 0))
+    return visible
+}
+
+const toggleNestedReplies = (rootComment, reply) => {
+    const state = getFloorState(rootComment)
+    if (!state || !reply?.commentId) return
+    const id = `${reply.commentId}`
+    const expandedIds = state.expandedReplyIds || []
+    state.expandedReplyIds = expandedIds.includes(id)
+        ? expandedIds.filter(expandedId => expandedId !== id)
+        : [...expandedIds, id]
 }
 
 const requestCommentList = async params => {
@@ -337,6 +371,7 @@ const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
             } else {
                 state.items = mergeFloorItems(state.items, incomingItems)
             }
+            rebuildFloorReplyTree(state, comment)
 
             const totalCount = Number(data.totalCount)
             if (Number.isFinite(totalCount) && totalCount >= 0) {
@@ -920,33 +955,47 @@ onUnmounted(() => {
                         </div>
 
                         <div class="floor-replies" v-if="getCommentReplyCount(comment) > 0">
-                            <button class="floor-toggle" type="button" @click="toggleFloorReplies(comment)">
-                                <span v-if="!getFloorState(comment)?.expanded">展开{{ getCommentReplyCount(comment) }}条回复</span>
+                            <button
+                                class="floor-toggle"
+                                type="button"
+                                :aria-expanded="!!getFloorState(comment)?.expanded"
+                                :aria-busy="!!getFloorState(comment)?.loading"
+                                :disabled="!!getFloorState(comment)?.loading"
+                                @click="toggleFloorReplies(comment)"
+                            >
+                                <span v-if="getFloorState(comment)?.loading">加载回复中...</span>
+                                <span v-else-if="!getFloorState(comment)?.expanded">展开{{ getCommentReplyCount(comment) }}条回复</span>
                                 <span v-else>收起回复</span>
                             </button>
 
                             <div class="floor-panel" v-if="getFloorState(comment)?.expanded">
                                 <div class="floor-list" v-if="(getFloorState(comment)?.items || []).length > 0">
-                                    <div class="floor-item" v-for="reply in getFloorState(comment).items" :key="`floor-${comment.commentId}-${reply.commentId}`">
-                                        <div class="floor-avatar">
-                                            <img :src="getUserAvatar(reply.user, 24)" :alt="getUserName(reply.user)" />
+                                    <div
+                                        class="floor-item"
+                                        :class="{ 'floor-item-nested': node.depth > 0, 'floor-item-reference': node.comment.referenceOnly }"
+                                        :style="{ '--reply-depth': Math.min(node.depth, 4) }"
+                                        v-for="node in getVisibleFloorReplies(comment)"
+                                        :key="`floor-${comment.commentId}-${node.comment.commentId}`"
+                                    >
+                                        <div class="floor-avatar" v-if="!node.comment.referenceOnly">
+                                            <img :src="getUserAvatar(node.comment.user, 24)" :alt="getUserName(node.comment.user)" />
                                         </div>
                                         <div class="floor-main">
                                             <div class="floor-item-meta">
-                                                <span class="floor-username">{{ getUserName(reply.user) }}</span>
-                                                <span class="floor-time">{{ formatTime(reply.time) }}</span>
+                                                <span class="floor-username">{{ getUserName(node.comment.user) }}</span>
+                                                <span class="floor-time">{{ node.comment.referenceOnly ? '被回复的评论' : formatTime(node.comment.time) }}</span>
                                             </div>
                                             <CommentText
                                                 class="floor-text"
-                                                :text="reply.content || ''"
+                                                :text="node.comment.content || ''"
                                                 :enable-emoji="true"
                                                 :copyable="true"
                                                 :show-copy-button="false"
                                                 @copy-success="handleCopySuccess"
                                                 @copy-error="handleCopyError"
                                             />
-                                            <div class="floor-controls">
-                                                <button type="button" class="floor-control-item floor-like" :class="{ active: reply.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(reply)">
+                                            <div class="floor-controls" v-if="!node.comment.referenceOnly">
+                                                <button type="button" class="floor-control-item floor-like" :class="{ active: node.comment.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(node.comment)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -954,10 +1003,10 @@ onUnmounted(() => {
                                                             />
                                                         </svg>
                                                     </div>
-                                                    <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
+                                                    <span class="floor-control-text">{{ (Number(node.comment.likedCount) || 0) > 0 ? node.comment.likedCount : 'LIKE' }}</span>
                                                 </button>
 
-                                                <button type="button" class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(reply, comment.commentId)">
+                                                <button type="button" class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(node.comment, comment.commentId)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -968,6 +1017,15 @@ onUnmounted(() => {
                                                     <span class="floor-control-text">REPLY</span>
                                                 </button>
                                             </div>
+                                            <button
+                                                class="floor-thread-toggle"
+                                                type="button"
+                                                v-if="node.descendantCount > 0"
+                                                :aria-expanded="node.expanded"
+                                                @click="toggleNestedReplies(comment, node.comment)"
+                                            >
+                                                {{ node.expanded ? '收起跟帖' : `展开${node.descendantCount}条跟帖` }}
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -1100,33 +1158,47 @@ onUnmounted(() => {
                         </div>
 
                         <div class="floor-replies" v-if="getCommentReplyCount(comment) > 0">
-                            <button class="floor-toggle" type="button" @click="toggleFloorReplies(comment)">
-                                <span v-if="!getFloorState(comment)?.expanded">展开{{ getCommentReplyCount(comment) }}条回复</span>
+                            <button
+                                class="floor-toggle"
+                                type="button"
+                                :aria-expanded="!!getFloorState(comment)?.expanded"
+                                :aria-busy="!!getFloorState(comment)?.loading"
+                                :disabled="!!getFloorState(comment)?.loading"
+                                @click="toggleFloorReplies(comment)"
+                            >
+                                <span v-if="getFloorState(comment)?.loading">加载回复中...</span>
+                                <span v-else-if="!getFloorState(comment)?.expanded">展开{{ getCommentReplyCount(comment) }}条回复</span>
                                 <span v-else>收起回复</span>
                             </button>
 
                             <div class="floor-panel" v-if="getFloorState(comment)?.expanded">
                                 <div class="floor-list" v-if="(getFloorState(comment)?.items || []).length > 0">
-                                    <div class="floor-item" v-for="reply in getFloorState(comment).items" :key="`floor-${comment.commentId}-${reply.commentId}`">
-                                        <div class="floor-avatar">
-                                            <img :src="getUserAvatar(reply.user, 24)" :alt="getUserName(reply.user)" />
+                                    <div
+                                        class="floor-item"
+                                        :class="{ 'floor-item-nested': node.depth > 0, 'floor-item-reference': node.comment.referenceOnly }"
+                                        :style="{ '--reply-depth': Math.min(node.depth, 4) }"
+                                        v-for="node in getVisibleFloorReplies(comment)"
+                                        :key="`floor-${comment.commentId}-${node.comment.commentId}`"
+                                    >
+                                        <div class="floor-avatar" v-if="!node.comment.referenceOnly">
+                                            <img :src="getUserAvatar(node.comment.user, 24)" :alt="getUserName(node.comment.user)" />
                                         </div>
                                         <div class="floor-main">
                                             <div class="floor-item-meta">
-                                                <span class="floor-username">{{ getUserName(reply.user) }}</span>
-                                                <span class="floor-time">{{ formatTime(reply.time) }}</span>
+                                                <span class="floor-username">{{ getUserName(node.comment.user) }}</span>
+                                                <span class="floor-time">{{ node.comment.referenceOnly ? '被回复的评论' : formatTime(node.comment.time) }}</span>
                                             </div>
                                             <CommentText
                                                 class="floor-text"
-                                                :text="reply.content || ''"
+                                                :text="node.comment.content || ''"
                                                 :enable-emoji="true"
                                                 :copyable="true"
                                                 :show-copy-button="false"
                                                 @copy-success="handleCopySuccess"
                                                 @copy-error="handleCopyError"
                                             />
-                                            <div class="floor-controls">
-                                                <button type="button" class="floor-control-item floor-like" :class="{ active: reply.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(reply)">
+                                            <div class="floor-controls" v-if="!node.comment.referenceOnly">
+                                                <button type="button" class="floor-control-item floor-like" :class="{ active: node.comment.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(node.comment)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -1134,10 +1206,10 @@ onUnmounted(() => {
                                                             />
                                                         </svg>
                                                     </div>
-                                                    <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
+                                                    <span class="floor-control-text">{{ (Number(node.comment.likedCount) || 0) > 0 ? node.comment.likedCount : 'LIKE' }}</span>
                                                 </button>
 
-                                                <button type="button" class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(reply, comment.commentId)">
+                                                <button type="button" class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(node.comment, comment.commentId)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -1148,6 +1220,15 @@ onUnmounted(() => {
                                                     <span class="floor-control-text">REPLY</span>
                                                 </button>
                                             </div>
+                                            <button
+                                                class="floor-thread-toggle"
+                                                type="button"
+                                                v-if="node.descendantCount > 0"
+                                                :aria-expanded="node.expanded"
+                                                @click="toggleNestedReplies(comment, node.comment)"
+                                            >
+                                                {{ node.expanded ? '收起跟帖' : `展开${node.descendantCount}条跟帖` }}
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -2031,6 +2112,7 @@ onUnmounted(() => {
     padding-left: 0;
 
     .floor-toggle {
+        min-height: 32px;
         border: none;
         margin-top: 0;
         padding: 4px 8px;
@@ -2061,6 +2143,11 @@ onUnmounted(() => {
             outline: 2px solid #000;
             outline-offset: 2px;
         }
+
+        &:disabled {
+            opacity: 0.62;
+            cursor: wait;
+        }
     }
 
     .floor-panel {
@@ -2088,8 +2175,23 @@ onUnmounted(() => {
         align-items: flex-start;
         gap: 8px;
         padding: 6px 8px;
+        margin-left: calc(var(--reply-depth, 0) * 18px);
         border-left: 2px solid rgba(0, 0, 0, 0.2);
         border-radius: 0;
+        transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .floor-item-nested {
+        border-left-color: rgba(0, 0, 0, 0.34);
+    }
+
+    .floor-item-reference {
+        background: rgba(0, 0, 0, 0.035);
+        border-left-style: dashed;
+
+        .floor-time {
+            letter-spacing: 0.2px;
+        }
     }
 
     .floor-avatar {
@@ -2199,6 +2301,30 @@ onUnmounted(() => {
                 background: rgba(0, 0, 0, 0.05);
                 transform: none;
             }
+        }
+    }
+
+    .floor-thread-toggle {
+        min-height: 32px;
+        margin-top: 6px;
+        padding: 4px 8px;
+        border: none;
+        background: rgba(0, 0, 0, 0.07);
+        color: rgba(0, 0, 0, 0.72);
+        font-family: SourceHanSansCN-Bold;
+        font-size: 11px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.2s ease, color 0.2s ease;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.13);
+            color: rgba(0, 0, 0, 0.88);
+        }
+
+        &:focus-visible {
+            outline: 2px solid #000;
+            outline-offset: 2px;
         }
     }
 
@@ -2569,6 +2695,7 @@ onUnmounted(() => {
         .floor-item {
             padding: 5px 6px;
             gap: 6px;
+            margin-left: calc(var(--reply-depth, 0) * 12px);
         }
 
         .floor-avatar {
@@ -2577,9 +2704,18 @@ onUnmounted(() => {
         }
 
         .floor-toggle,
+        .floor-thread-toggle,
         .floor-more,
         .floor-status {
             font-size: 11px;
+        }
+
+        .floor-thread-toggle {
+            min-height: 44px;
+        }
+
+        .floor-toggle {
+            min-height: 44px;
         }
 
         .floor-text {

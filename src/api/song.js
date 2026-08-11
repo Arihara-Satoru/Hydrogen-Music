@@ -2,6 +2,7 @@ import { get, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
 import { normalizeKugouKrcLyric } from "../utils/kugouLyric";
 import { findRememberedLyricCandidate, rememberLyricCandidate as saveRememberedLyricCandidate } from "../utils/lyricPreference";
+import { parseCommentReply } from "../utils/commentReplies";
 
 /**
  * 获取推荐新音乐
@@ -484,14 +485,20 @@ function normalizeCommentItem(item = {}) {
     const replyCount = toPositiveNumber(item.reply_num ?? item.comments_num ?? item.replyCount, 0)
     const specialChildId = item.special_child_id || item.special_id || item.specialChildId || ''
     const mixsongid = item.album_audio_id || item.mixsongid || item.mixsong_id || ''
+    const parsedContent = parseCommentReply(item.content, {
+        userId: item.puser_id,
+        userName: item.puser_name,
+        content: item.pcontent,
+    })
 
     return {
         commentId,
-        content: item.content || '',
+        content: parsedContent.content,
         time: normalizeCommentTimestamp(item.addtime || item.time || item.createTime || item.timestamp),
         liked: !!(item?.like?.haslike ?? item?.liked),
         likedCount,
-        parentCommentId: Number(item.puser_id || item.parentCommentId || item.pid || 0),
+        parentCommentId: Number(item.parentCommentId || item.parent_comment_id || item.parent_id || item.pid || 0),
+        replyTo: parsedContent.replyTo,
         replyCount,
         showFloorComment: {
             replyCount,
