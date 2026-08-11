@@ -163,8 +163,6 @@ request.interceptors.response.use(function (response) {
       || url === '/user/purchased/albums'
       || url === '/login/device'
       || url === '/login/device/kick'
-      || url === '/get/model'
-      || url === '/get/mode/info'
     if (!suppressGlobalNotice) {
       if (msg) noticeOpen(`请求错误：${msg}`, 2)
       else if (status) noticeOpen(`请求错误 (${status})`, 2)

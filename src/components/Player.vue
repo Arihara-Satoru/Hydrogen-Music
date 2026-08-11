@@ -228,10 +228,6 @@ const toggleLyricSelectorPanel = () => {
     switchRightPanel(props.rightPanelMode === 2 ? 0 : 2);
 };
 
-const toggleSoundEffectPanel = () => {
-    switchRightPanel(props.rightPanelMode === 3 ? 0 : 3);
-};
-
 const safeSliderRange = computed(() => {
     const currentTime = Number(time.value);
     const currentProgress = Number(progress.value);
@@ -838,31 +834,6 @@ const addToPlaylist = () => {
                         p-id="2662"
                     ></path>
                 </svg>
-
-                <!-- 社区音效管理 -->
-                <button
-                    type="button"
-                    @click="toggleSoundEffectPanel"
-                    v-delayed-tooltip="props.rightPanelMode === 3 ? '查看歌词' : '音效管理'"
-                    :class="{ active: props.rightPanelMode === 3 }"
-                    class="sound-effect-button"
-                    :aria-label="props.rightPanelMode === 3 ? '关闭音效管理并查看歌词' : '打开音效管理'"
-                    :aria-pressed="props.rightPanelMode === 3"
-                >
-                    <svg
-                        class="sound-effect-icon"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                    >
-                        <line x1="5" y1="5" x2="19" y2="5" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                        <line x1="5" y1="19" x2="19" y2="19" />
-                        <circle cx="9" cy="5" r="2" />
-                        <circle cx="15" cy="12" r="2" />
-                        <circle cx="11" cy="19" r="2" />
-                    </svg>
-                </button>
 
                 <!-- 歌词候选选择按钮 -->
                 <svg
@@ -1499,55 +1470,6 @@ const addToPlaylist = () => {
 
         &:active {
             transform: scale(0.95);
-        }
-    }
-
-    .sound-effect-button {
-        width: 44px;
-        height: 44px;
-        margin: -8px 0;
-        padding: 10px;
-        border: 0;
-        background: transparent;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--muted-text);
-        opacity: 0.58;
-        cursor: pointer;
-        transition: all 0.2s ease;
-
-        .sound-effect-icon {
-            width: 24px !important;
-            height: 24px !important;
-            overflow: visible;
-            line,
-            circle {
-                fill: var(--panel);
-                stroke: currentColor;
-                stroke-width: 1.5;
-                stroke-linecap: round;
-                vector-effect: non-scaling-stroke;
-            }
-            line {
-                fill: none;
-            }
-        }
-
-        &.active {
-            color: var(--text);
-            opacity: 1;
-        }
-
-        &:hover {
-            color: var(--text);
-            opacity: 0.85;
-            transform: scale(1.05);
-        }
-
-        &:focus-visible {
-            outline: 2px solid currentColor;
-            outline-offset: 3px;
         }
     }
 
