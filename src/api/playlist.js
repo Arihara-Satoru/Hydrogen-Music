@@ -411,6 +411,25 @@ export function playlistDynamic(id) {
 }
 
 /**
+ * 获取歌单评论。
+ * @param {string} id - 歌单 global_collection_id
+ */
+export function getPlaylistComments(id, { page = 1, pagesize = 30, show_classify = 1, show_hotword_list = 1 } = {}) {
+    if (!id) throw new TypeError('获取歌单评论需要 global_collection_id')
+    return request({
+      url: '/comment/playlist',
+      method: 'get',
+      params: {
+        id,
+        page,
+        pagesize,
+        show_classify,
+        show_hotword_list,
+      },
+    });
+}
+
+/**
  * 调用此接口可新建歌单，也可在 type=1 时收藏已有歌单。
  * 收藏场景需要补齐原歌单的 creator / listid / gid 信息。
  * @param {*} params

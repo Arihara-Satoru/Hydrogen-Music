@@ -8,7 +8,7 @@ import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
-import { getMusicComments } from '../api/song';
+import { getMusicCommentCount, getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
 import { resolveImageUrl } from '../utils/imageUtils';
 const playerStore = usePlayerStore();
@@ -80,6 +80,8 @@ const commentTarget = computed(() => {
         key: `song:${musicId}`,
         type: 'song',
         id: musicId,
+        hash: track?.hash || track?.Hash || track?.FileHash || track?.file_hash || '',
+        specialId: track?.special_child_id || track?.specialChildId || track?.special_id || track?.specialId || '',
     };
 });
 
@@ -104,6 +106,11 @@ const fetchCommentCount = async target => {
         let response = null;
         if (target.type === 'dj') {
             response = await getDjProgramComments(target.id, { limit: 1, offset: 0 });
+        } else if (target.hash || target.specialId) {
+            response = await getMusicCommentCount({
+                hash: target.hash,
+                special_child_id: target.specialId,
+            });
         } else {
             response = await getMusicComments({ id: target.id, limit: 1, offset: 0 });
         }

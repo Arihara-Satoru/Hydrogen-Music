@@ -263,3 +263,18 @@ export function albumDynamic(id, extraParams = {}) {
         shareCount: 0,
     });
 }
+
+/**
+ * 获取专辑评论。
+ * @param {string|number} id - 专辑评论资源 ID
+ */
+export function getAlbumComments(id, { page = 1, pagesize = 30, show_classify = 1, show_hotword_list = 1 } = {}) {
+    if (!id) throw new TypeError('获取专辑评论需要专辑 ID')
+    return get('/comment/album', {
+        id,
+        page,
+        pagesize,
+        show_classify,
+        show_hotword_list,
+    })
+}

@@ -35,7 +35,12 @@ const musicCommentId = computed(() => {
 
 const comments = ref([])
 const hotComments = ref([])
+const classifyOptions = ref([])
+const hotwordOptions = ref([])
+const activeFilter = ref({ kind: 'all', value: '', label: '全部评论' })
+const classifySort = ref(1)
 const loading = ref(false)
+const loadError = ref('')
 const total = ref(0)
 const hasMore = ref(true)
 const nextCursor = ref('0')
@@ -45,6 +50,9 @@ const newComment = ref('')
 const replyingTo = ref(null)
 const submitting = ref(false)
 const floorReplies = ref({})
+const imagePreview = ref(null)
+const imagePreviewCloseRef = ref(null)
+const imagePreviewTrigger = ref(null)
 
 const FLOOR_REPLY_LIMIT = 5
 
@@ -125,9 +133,38 @@ const clearScrollCheckRaf = () => {
 const getUserName = user => (user && user.nickname) || '未知用户'
 
 const getUserAvatar = (user, size = 40) => {
-    if (user && user.avatarUrl) return `${user.avatarUrl}?param=${size}y${size}`
+    if (user && user.avatarUrl) return `${user.avatarUrl}${user.avatarUrl.includes('?') ? '&' : '?'}param=${size}y${size}`
     return 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
 }
+
+const openImagePreview = async (image, trigger) => {
+    if (!image?.url) return
+    imagePreview.value = image
+    imagePreviewTrigger.value = trigger || null
+    await nextTick()
+    imagePreviewCloseRef.value?.focus()
+}
+
+const closeImagePreview = async () => {
+    if (!imagePreview.value) return
+    const trigger = imagePreviewTrigger.value
+    imagePreview.value = null
+    imagePreviewTrigger.value = null
+    await nextTick()
+    trigger?.focus?.()
+}
+
+const trapImagePreviewFocus = event => {
+    event.preventDefault()
+    imagePreviewCloseRef.value?.focus()
+}
+
+const isFilterActive = (kind, value = '') => activeFilter.value.kind === kind && `${activeFilter.value.value}` === `${value}`
+const commentSectionTitle = computed(() => {
+    if (isDj.value) return 'LATEST COMMENTS'
+    if (activeFilter.value.kind === 'all') return 'ALL COMMENTS'
+    return activeFilter.value.kind === 'classify' ? `CATEGORY · ${activeFilter.value.label}` : `HOTWORD · ${activeFilter.value.label}`
+})
 
 const resolveReplyRootCommentId = (comment, rootCommentId = null) => {
     const explicitRoot = Number(rootCommentId)
@@ -164,6 +201,7 @@ const createFloorState = replyCount => ({
     items: [],
     hasMore: replyCount > 0,
     nextTime: -1,
+    nextPage: 1,
     total: replyCount,
 })
 
@@ -235,7 +273,13 @@ const requestCommentList = async params => {
         return getDjProgramCommentsNew({ id: programId.value, ...params })
     }
     if (musicCommentId.value) {
-        return getMusicCommentsNew({ id: musicCommentId.value, ...params })
+        const filter = activeFilter.value
+        return getMusicCommentsNew({
+            id: musicCommentId.value,
+            ...params,
+            ...(filter.kind === 'classify' ? { typeId: filter.value, sort: classifySort.value } : {}),
+            ...(filter.kind === 'hotword' ? { hotWord: filter.value } : {}),
+        })
     }
     return null
 }
@@ -281,6 +325,7 @@ const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
             special_id: comment.special_child_id || comment.specialId || comment.special_id || '',
             limit: FLOOR_REPLY_LIMIT,
             time: isFirstPage ? -1 : state.nextTime,
+            page: isFirstPage ? 1 : state.nextPage,
         })
 
         if (response && response.code === 200) {
@@ -303,6 +348,13 @@ const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
             const nextTimeValue = Number(data.time)
             if (Number.isFinite(nextTimeValue) && nextTimeValue >= 0) {
                 state.nextTime = nextTimeValue
+            }
+
+            const nextPageValue = Number(data.nextPage)
+            if (Number.isFinite(nextPageValue) && nextPageValue > 0) {
+                state.nextPage = Math.floor(nextPageValue)
+            } else {
+                state.nextPage += 1
             }
 
             if (state.total > 0 && state.items.length >= state.total) {
@@ -351,91 +403,76 @@ const retryFloorReplies = async comment => {
     await loadFloorReplies(comment, { forceFirstPage: state.items.length === 0 })
 }
 
+const applyCommentListResponse = (response, reset) => {
+    if (!response || response.code !== 200) return false
+
+    const incoming = Array.isArray(response.comments) ? response.comments : []
+    comments.value = reset ? incoming : mergeFloorItems(comments.value, incoming)
+    total.value = toPositiveInt(response.total)
+    hasMore.value = !!response.hasMore && (reset || incoming.length > 0)
+    nextCursor.value = response.cursor || nextCursor.value
+    pageNo.value = reset ? 2 : pageNo.value + 1
+
+    if (!isDj.value && activeFilter.value.kind === 'all') {
+        classifyOptions.value = Array.isArray(response.classifyList) ? response.classifyList : []
+        hotwordOptions.value = Array.isArray(response.hotwordList) ? response.hotwordList : []
+    }
+    return true
+}
+
 // 获取评论数据
 const fetchComments = async (reset = false) => {
     if (loading.value || (!hasMore.value && !reset)) return
 
     const requestTargetKey = commentTargetKey.value
-    if (!requestTargetKey) return
-    if (!isCommentsVisible.value) return
+    if (!requestTargetKey || !isCommentsVisible.value) return
 
     loading.value = true
+    loadError.value = ''
     let fetchSucceeded = false
 
-    try {
-        if (reset) {
-            const [latestResult, hotResult] = await Promise.allSettled([
-                requestCommentList({
-                    sortType: 3,
-                    pageSize: limit.value,
-                    pageNo: 1,
-                    cursor: '0',
-                }),
-                requestCommentList({
-                    sortType: 2,
-                    pageSize: limit.value,
-                    pageNo: 1,
-                }),
-            ])
+    if (reset) {
+        comments.value = []
+        total.value = 0
+        hasMore.value = true
+        nextCursor.value = '0'
+        pageNo.value = 1
+        floorReplies.value = {}
+        if (!isDj.value) hotComments.value = []
+    }
 
+    try {
+        if (reset && isDj.value) {
+            const [latestResult, hotResult] = await Promise.allSettled([
+                requestCommentList({ sortType: 3, pageSize: limit.value, pageNo: 1, cursor: '0' }),
+                requestCommentList({ sortType: 2, pageSize: limit.value, pageNo: 1 }),
+            ])
             const latestResponse = latestResult.status === 'fulfilled' ? latestResult.value : null
             const hotResponse = hotResult.status === 'fulfilled' ? hotResult.value : null
-
-            if (latestResponse && latestResponse.code === 200) {
-                comments.value = latestResponse.comments || []
-                total.value = toPositiveInt(latestResponse.total)
-                hasMore.value = !!latestResponse.hasMore
-                nextCursor.value = latestResponse.cursor || ''
-                pageNo.value = 2
-                fetchSucceeded = true
-            } else {
-                comments.value = []
-                total.value = 0
-                hasMore.value = false
-                nextCursor.value = ''
-                pageNo.value = 1
-            }
-
-            if (hotResponse && hotResponse.code === 200) {
-                hotComments.value = hotResponse.comments || []
-                fetchSucceeded = true
-            } else {
-                hotComments.value = []
-            }
+            fetchSucceeded = applyCommentListResponse(latestResponse, true)
+            hotComments.value = hotResponse?.code === 200 && Array.isArray(hotResponse.comments) ? hotResponse.comments : []
         } else {
-            const latestResponse = await requestCommentList({
+            const response = await requestCommentList({
                 sortType: 3,
                 pageSize: limit.value,
-                pageNo: pageNo.value,
+                pageNo: reset ? 1 : pageNo.value,
                 ...(nextCursor.value ? { cursor: nextCursor.value } : {}),
             })
-
-            if (latestResponse && latestResponse.code === 200) {
-                const incoming = latestResponse.comments || []
-                comments.value.push(...incoming)
-                total.value = toPositiveInt(latestResponse.total)
-                hasMore.value = !!latestResponse.hasMore && incoming.length > 0
-                nextCursor.value = latestResponse.cursor || nextCursor.value
-                pageNo.value += 1
-                fetchSucceeded = true
-            }
+            fetchSucceeded = applyCommentListResponse(response, reset)
         }
 
         rebuildFloorStates(!reset)
 
         if (fetchSucceeded) {
-            if (requestTargetKey) {
-                emit('total-change', {
-                    targetKey: requestTargetKey,
-                    total: total.value,
-                })
+            if (isDj.value || activeFilter.value.kind === 'all') {
+                emit('total-change', { targetKey: requestTargetKey, total: total.value })
             }
         } else {
-            noticeOpen('获取评论失败', 2)
+            loadError.value = '评论加载失败，请点击重试'
         }
     } catch (error) {
         console.error('获取评论失败:', error)
-        noticeOpen('获取评论失败', 2)
+        loadError.value = '评论加载失败，请点击重试'
     } finally {
         loading.value = false
     }
@@ -446,6 +483,24 @@ const fetchComments = async (reset = false) => {
         tryAutoLoadMore()
     }
 }
+
+const selectCommentFilter = async (kind, value = '', label = '全部评论') => {
+    if (isDj.value || loading.value || isFilterActive(kind, value)) return
+    activeFilter.value = { kind, value, label }
+    classifySort.value = 1
+    pendingRestoreScrollTop.value = null
+    resetCommentsScroll()
+    await fetchComments(true)
+}
+
+const toggleClassifySort = async () => {
+    if (loading.value || activeFilter.value.kind !== 'classify') return
+    classifySort.value = classifySort.value === 1 ? 2 : 1
+    resetCommentsScroll()
+    await fetchComments(true)
+}
+
+const retryComments = () => fetchComments(comments.value.length === 0)
 
 // 发送评论
 const submitComment = async () => {
@@ -610,12 +665,23 @@ watch(
         if (!target) {
             comments.value = []
             hotComments.value = []
+            classifyOptions.value = []
+            hotwordOptions.value = []
+            activeFilter.value = { kind: 'all', value: '', label: '全部评论' }
             floorReplies.value = {}
+            loadError.value = ''
             total.value = 0
             hasMore.value = false
             nextCursor.value = '0'
             pageNo.value = 1
             return
+        }
+
+        if (previousTarget && previousTarget !== target) {
+            classifyOptions.value = []
+            hotwordOptions.value = []
+            activeFilter.value = { kind: 'all', value: '', label: '全部评论' }
+            classifySort.value = 1
         }
 
         const lastCommentTarget = getLastCommentTargetKey()
@@ -681,7 +747,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 发表评论区域 -->
-        <div class="comment-input-section" v-if="userStore.user && !replyingTo">
+        <div class="comment-input-section" v-if="isDj && userStore.user && !replyingTo">
             <div class="input-frame">
                 <div class="frame-corner frame-tl"></div>
                 <div class="frame-corner frame-tr"></div>
@@ -705,7 +771,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 未登录提示 -->
-        <div class="login-prompt" v-else-if="!userStore.user">
+        <div class="login-prompt" v-else-if="isDj && !userStore.user">
             <div class="prompt-frame">
                 <div class="frame-corner frame-tl"></div>
                 <div class="frame-corner frame-tr"></div>
@@ -714,6 +780,68 @@ onUnmounted(() => {
                 <span class="prompt-text">LOGIN REQUIRED TO COMMENT</span>
             </div>
         </div>
+
+        <div class="read-only-note" v-if="!isDj" role="note">
+            <span class="read-only-code">READ ONLY</span>
+            <span>酷狗开放接口当前支持评论浏览、筛选与楼层回复查看</span>
+        </div>
+
+        <section class="comment-filter-panel" v-if="!isDj && (classifyOptions.length > 0 || hotwordOptions.length > 0)" aria-label="评论筛选">
+            <div class="filter-row" v-if="classifyOptions.length > 0">
+                <span class="filter-label">分类</span>
+                <div class="filter-options">
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        :class="{ active: isFilterActive('all') }"
+                        :aria-pressed="isFilterActive('all')"
+                        :disabled="loading"
+                        @click="selectCommentFilter('all')"
+                    >
+                        全部
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        :class="{ active: isFilterActive('classify', option.id) }"
+                        :aria-pressed="isFilterActive('classify', option.id)"
+                        :disabled="loading"
+                        v-for="option in classifyOptions"
+                        :key="`classify-${option.id}`"
+                        @click="selectCommentFilter('classify', option.id, option.label)"
+                    >
+                        {{ option.label }}<span class="filter-count">{{ option.count }}</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="sort-button"
+                        v-if="activeFilter.kind === 'classify'"
+                        :disabled="loading"
+                        :aria-label="`切换为${classifySort === 1 ? '倒序' : '正序'}排列`"
+                        @click="toggleClassifySort"
+                    >
+                        {{ classifySort === 1 ? '正序' : '倒序' }}
+                    </button>
+                </div>
+            </div>
+            <div class="filter-row hotword-row" v-if="hotwordOptions.length > 0">
+                <span class="filter-label">热词</span>
+                <div class="filter-options">
+                    <button
+                        type="button"
+                        class="filter-chip hotword-chip"
+                        :class="{ active: isFilterActive('hotword', option.content) }"
+                        :aria-pressed="isFilterActive('hotword', option.content)"
+                        :disabled="loading"
+                        v-for="option in hotwordOptions"
+                        :key="`hotword-${option.content}`"
+                        @click="selectCommentFilter('hotword', option.content, option.content)"
+                    >
+                        #{{ option.content }}<span class="filter-count">{{ option.count }}</span>
+                    </button>
+                </div>
+            </div>
+        </section>
 
         <!-- 精彩评论区域 -->
         <div class="hot-comments-section" v-if="hotComments.length > 0">
@@ -748,8 +876,27 @@ onUnmounted(() => {
 
                         <CommentText :text="comment.content" :enable-emoji="true" :copyable="true" :show-copy-button="false" @copy-success="handleCopySuccess" @copy-error="handleCopyError" />
 
+                        <div class="comment-images" v-if="comment.images?.length">
+                            <button
+                                v-for="(image, imageIndex) in comment.images"
+                                :key="`${comment.commentId}-image-${imageIndex}`"
+                                type="button"
+                                class="comment-image-button"
+                                :aria-label="`放大查看${getUserName(comment.user)}的评论图片 ${imageIndex + 1}`"
+                                @click="openImagePreview(image, $event.currentTarget)"
+                            >
+                                <img
+                                    :src="image.url"
+                                    :alt="`${getUserName(comment.user)}的评论图片 ${imageIndex + 1}`"
+                                    :width="image.width || undefined"
+                                    :height="image.height || undefined"
+                                    loading="lazy"
+                                />
+                            </button>
+                        </div>
+
                         <div class="comment-controls">
-                            <div class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !songCommentMutationSupported }" @click="toggleLikeComment(comment)">
+                            <button type="button" class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -758,9 +905,9 @@ onUnmounted(() => {
                                     </svg>
                                 </div>
                                 <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
-                            </div>
+                            </button>
 
-                            <div class="control-item reply-control" :class="{ 'control-item-disabled': !songCommentMutationSupported }" @click="toggleReply(comment)">
+                            <button type="button" class="control-item reply-control" :class="{ 'control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -769,7 +916,7 @@ onUnmounted(() => {
                                     </svg>
                                 </div>
                                 <span class="control-text">REPLY</span>
-                            </div>
+                            </button>
                         </div>
 
                         <div class="floor-replies" v-if="getCommentReplyCount(comment) > 0">
@@ -799,7 +946,7 @@ onUnmounted(() => {
                                                 @copy-error="handleCopyError"
                                             />
                                             <div class="floor-controls">
-                                                <div class="floor-control-item floor-like" :class="{ active: reply.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" @click="toggleLikeComment(reply)">
+                                                <button type="button" class="floor-control-item floor-like" :class="{ active: reply.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(reply)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -808,9 +955,9 @@ onUnmounted(() => {
                                                         </svg>
                                                     </div>
                                                     <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
-                                                </div>
+                                                </button>
 
-                                                <div class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" @click="toggleReply(reply, comment.commentId)">
+                                                <button type="button" class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(reply, comment.commentId)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -819,15 +966,15 @@ onUnmounted(() => {
                                                         </svg>
                                                     </div>
                                                     <span class="floor-control-text">REPLY</span>
-                                                </div>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="floor-status floor-error" v-if="getFloorState(comment)?.error" @click="retryFloorReplies(comment)">
+                                <button type="button" class="floor-status floor-error" v-if="getFloorState(comment)?.error" @click="retryFloorReplies(comment)">
                                     {{ getFloorState(comment).error }}
-                                </div>
+                                </button>
 
                                 <div class="floor-status floor-empty" v-else-if="!getFloorState(comment)?.loading && (getFloorState(comment)?.items || []).length === 0">暂无回复</div>
 
@@ -852,7 +999,7 @@ onUnmounted(() => {
                                 <div class="reply-header">
                                     <span class="reply-prefix">REPLY TO</span>
                                     <span class="reply-target">{{ getUserName(replyingTo?.user || comment.user) }}</span>
-                                    <div class="close-reply" @click="cancelReply()">×</div>
+                                    <button type="button" class="close-reply" aria-label="取消回复" @click="cancelReply()">×</button>
                                 </div>
 
                                 <div class="reply-input-wrapper">
@@ -880,7 +1027,7 @@ onUnmounted(() => {
         <div class="latest-comments-section">
             <div class="section-header">
                 <div class="section-title-wrapper">
-                    <span class="section-title">LATEST COMMENTS</span>
+                    <span class="section-title">{{ commentSectionTitle }}</span>
                     <span class="section-count">[{{ total }}]</span>
                 </div>
                 <div class="section-line"></div>
@@ -909,8 +1056,27 @@ onUnmounted(() => {
 
                         <CommentText :text="comment.content" :enable-emoji="true" :copyable="true" :show-copy-button="false" @copy-success="handleCopySuccess" @copy-error="handleCopyError" />
 
+                        <div class="comment-images" v-if="comment.images?.length">
+                            <button
+                                v-for="(image, imageIndex) in comment.images"
+                                :key="`${comment.commentId}-image-${imageIndex}`"
+                                type="button"
+                                class="comment-image-button"
+                                :aria-label="`放大查看${getUserName(comment.user)}的评论图片 ${imageIndex + 1}`"
+                                @click="openImagePreview(image, $event.currentTarget)"
+                            >
+                                <img
+                                    :src="image.url"
+                                    :alt="`${getUserName(comment.user)}的评论图片 ${imageIndex + 1}`"
+                                    :width="image.width || undefined"
+                                    :height="image.height || undefined"
+                                    loading="lazy"
+                                />
+                            </button>
+                        </div>
+
                         <div class="comment-controls">
-                            <div class="control-item like-control" :class="{ active: comment.liked }" @click="toggleLikeComment(comment)">
+                            <button type="button" class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -919,9 +1085,9 @@ onUnmounted(() => {
                                     </svg>
                                 </div>
                                 <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
-                            </div>
+                            </button>
 
-                            <div class="control-item reply-control" @click="toggleReply(comment)">
+                            <button type="button" class="control-item reply-control" :class="{ 'control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -930,7 +1096,7 @@ onUnmounted(() => {
                                     </svg>
                                 </div>
                                 <span class="control-text">REPLY</span>
-                            </div>
+                            </button>
                         </div>
 
                         <div class="floor-replies" v-if="getCommentReplyCount(comment) > 0">
@@ -960,7 +1126,7 @@ onUnmounted(() => {
                                                 @copy-error="handleCopyError"
                                             />
                                             <div class="floor-controls">
-                                                <div class="floor-control-item floor-like" :class="{ active: reply.liked }" @click="toggleLikeComment(reply)">
+                                                <button type="button" class="floor-control-item floor-like" :class="{ active: reply.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(reply)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -969,9 +1135,9 @@ onUnmounted(() => {
                                                         </svg>
                                                     </div>
                                                     <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
-                                                </div>
+                                                </button>
 
-                                                <div class="floor-control-item floor-reply" @click="toggleReply(reply, comment.commentId)">
+                                                <button type="button" class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleReply(reply, comment.commentId)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -980,15 +1146,15 @@ onUnmounted(() => {
                                                         </svg>
                                                     </div>
                                                     <span class="floor-control-text">REPLY</span>
-                                                </div>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="floor-status floor-error" v-if="getFloorState(comment)?.error" @click="retryFloorReplies(comment)">
+                                <button type="button" class="floor-status floor-error" v-if="getFloorState(comment)?.error" @click="retryFloorReplies(comment)">
                                     {{ getFloorState(comment).error }}
-                                </div>
+                                </button>
 
                                 <div class="floor-status floor-empty" v-else-if="!getFloorState(comment)?.loading && (getFloorState(comment)?.items || []).length === 0">暂无回复</div>
 
@@ -1013,7 +1179,7 @@ onUnmounted(() => {
                                 <div class="reply-header">
                                     <span class="reply-prefix">REPLY TO</span>
                                     <span class="reply-target">{{ getUserName(replyingTo?.user || comment.user) }}</span>
-                                    <div class="close-reply" @click="cancelReply()">×</div>
+                                    <button type="button" class="close-reply" aria-label="取消回复" @click="cancelReply()">×</button>
                                 </div>
 
                                 <div class="reply-input-wrapper">
@@ -1038,6 +1204,10 @@ onUnmounted(() => {
 
             <!-- 状态提示区域 -->
             <div class="status-section">
+                <button type="button" class="error-status" v-if="!loading && loadError" @click="retryComments">
+                    <span>{{ loadError }}</span>
+                </button>
+
                 <!-- 加载中 -->
                 <div class="loading-status" v-if="loading">
                     <div class="loading-frame">
@@ -1053,7 +1223,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- 暂无更多 -->
-                <div class="no-more-status" v-if="!hasMore && comments.length > 0">
+                <div class="no-more-status" v-if="!loadError && !hasMore && comments.length > 0">
                     <div class="status-frame">
                         <div class="frame-corner frame-tl"></div>
                         <div class="frame-corner frame-tr"></div>
@@ -1064,7 +1234,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- 暂无评论 -->
-                <div class="empty-status" v-if="!loading && comments.length === 0 && hotComments.length === 0">
+                <div class="empty-status" v-if="!loading && !loadError && comments.length === 0 && hotComments.length === 0">
                     <div class="status-frame">
                         <div class="frame-corner frame-tl"></div>
                         <div class="frame-corner frame-tr"></div>
@@ -1076,6 +1246,36 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
+
+    <Teleport to="body">
+        <Transition name="image-preview">
+            <div
+                v-if="imagePreview"
+                class="image-preview-layer"
+                role="dialog"
+                aria-modal="true"
+                :aria-label="imagePreview.label || '评论图片预览'"
+                @click.self="closeImagePreview"
+                @keydown.esc.stop.prevent="closeImagePreview"
+                @keydown.tab="trapImagePreviewFocus"
+            >
+                <div class="image-preview-dialog">
+                    <img
+                        :src="imagePreview.url"
+                        :alt="imagePreview.label || '评论图片预览'"
+                        :width="imagePreview.width || undefined"
+                        :height="imagePreview.height || undefined"
+                    />
+                    <button ref="imagePreviewCloseRef" type="button" class="image-preview-close" aria-label="关闭图片预览" @click="closeImagePreview">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 5l14 14M19 5L5 19" />
+                        </svg>
+                    </button>
+                    <span class="image-preview-hint">点击空白处或按 ESC 关闭</span>
+                </div>
+            </div>
+        </Transition>
+    </Teleport>
 </template>
 
 <style scoped lang="scss">
@@ -1341,6 +1541,111 @@ onUnmounted(() => {
     }
 }
 
+.read-only-note {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    margin-bottom: 20px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.28);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    color: rgba(0, 0, 0, 0.72);
+    font-family: SourceHanSansCN-Bold;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.read-only-code {
+    flex-shrink: 0;
+    padding: 3px 6px;
+    background: #000;
+    color: #fff;
+    font-family: Bender-Bold, monospace;
+    font-size: 10px;
+    letter-spacing: 0.8px;
+}
+
+.comment-filter-panel {
+    margin-bottom: 24px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.24);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+
+    & + & {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+}
+
+.filter-label {
+    padding-top: 13px;
+    color: rgba(0, 0, 0, 0.58);
+    font-family: SourceHanSansCN-Bold;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+}
+
+.filter-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-chip,
+.sort-button {
+    min-height: 44px;
+    padding: 8px 11px;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    background: rgba(255, 255, 255, 0.38);
+    color: rgba(0, 0, 0, 0.76);
+    cursor: pointer;
+    font-family: SourceHanSansCN-Bold;
+    font-size: 12px;
+    line-height: 1.2;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+    &:hover:not(:disabled) {
+        border-color: rgba(0, 0, 0, 0.42);
+        background: rgba(255, 255, 255, 0.64);
+    }
+
+    &:focus-visible {
+        outline: 2px solid #000;
+        outline-offset: 2px;
+    }
+
+    &:disabled {
+        cursor: wait;
+        opacity: 0.58;
+    }
+
+    &.active {
+        border-color: #000;
+        background: #000;
+        color: #fff;
+    }
+}
+
+.filter-count {
+    margin-left: 6px;
+    font-family: Bender-Bold, monospace;
+    font-size: 10px;
+    opacity: 0.68;
+}
+
+.sort-button {
+    border-style: dashed;
+}
+
 // 区块标题
 .section-header {
     display: flex;
@@ -1512,6 +1817,150 @@ onUnmounted(() => {
     }
 }
 
+.comment-images {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin: 8px 0 10px;
+
+    .comment-image-button {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        padding: 0;
+        overflow: hidden;
+        border: none;
+        background: transparent;
+        cursor: zoom-in;
+        touch-action: manipulation;
+
+        &:hover img {
+            transform: scale(1.02);
+        }
+
+        &:focus-visible {
+            outline: 2px solid #000;
+            outline-offset: 2px;
+        }
+    }
+
+    img {
+        display: block;
+        width: 100%;
+        max-height: 260px;
+        object-fit: cover;
+        background: rgba(0, 0, 0, 0.06);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        transition: transform 0.2s ease;
+    }
+}
+
+.image-preview-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(4, 6, 8, 0.9);
+    backdrop-filter: blur(10px);
+}
+
+.image-preview-dialog {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 100%;
+    max-height: 100%;
+
+    > img {
+        display: block;
+        max-width: calc(100vw - 48px);
+        max-height: calc(100vh - 48px);
+        object-fit: contain;
+        background: #0a0c0e;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+}
+
+.image-preview-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.48);
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+
+    svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: square;
+        stroke-width: 1.8;
+    }
+
+    &:hover {
+        border-color: #fff;
+        background: #000;
+    }
+
+    &:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: 3px;
+    }
+}
+
+.image-preview-hint {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.72);
+    color: rgba(255, 255, 255, 0.82);
+    font-family: SourceHanSansCN-Bold;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.image-preview-enter-active,
+.image-preview-leave-active {
+    transition: opacity 0.2s ease;
+
+    .image-preview-dialog {
+        transition: transform 0.2s ease;
+    }
+}
+
+.image-preview-enter-from,
+.image-preview-leave-to {
+    opacity: 0;
+
+    .image-preview-dialog {
+        transform: scale(0.98);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .comment-images img,
+    .image-preview-layer,
+    .image-preview-dialog {
+        transition: none !important;
+    }
+}
+
 // 评论控制按钮
 .comment-controls {
     display: flex;
@@ -1525,7 +1974,9 @@ onUnmounted(() => {
         cursor: pointer;
         transition: all 0.2s;
         padding: 3px 7px;
+        border: none;
         background: rgba(0, 0, 0, 0.05);
+        font: inherit;
 
         &:hover {
             background: rgba(0, 0, 0, 0.1);
@@ -1601,10 +2052,14 @@ onUnmounted(() => {
             color: rgba(0, 0, 0, 0.86);
         }
 
-        &:focus,
-        &:focus-visible {
+        &:focus {
             outline: none;
             box-shadow: none;
+        }
+
+        &:focus-visible {
+            outline: 2px solid #000;
+            outline-offset: 2px;
         }
     }
 
@@ -1698,6 +2153,7 @@ onUnmounted(() => {
         align-items: center;
         gap: 4px;
         padding: 2px 5px;
+        border: none;
         background: rgba(0, 0, 0, 0.05);
         cursor: pointer;
         transition: all 0.2s;
@@ -1768,10 +2224,15 @@ onUnmounted(() => {
             color: rgba(0, 0, 0, 0.86);
         }
 
-        &:focus,
-        &:focus-visible {
+        &:focus {
             outline: none;
             box-shadow: none;
+        }
+
+
+        &:focus-visible {
+            outline: 2px solid #000;
+            outline-offset: 2px;
         }
 
         &:disabled {
@@ -1789,6 +2250,10 @@ onUnmounted(() => {
     }
 
     .floor-error {
+        display: block;
+        padding: 0;
+        border: none;
+        background: transparent;
         color: #d64545;
         cursor: pointer;
 
@@ -1832,6 +2297,26 @@ onUnmounted(() => {
         font-size: 12px;
         color: rgba(0, 0, 0, 0.6);
         letter-spacing: 1px;
+    }
+}
+
+.error-status {
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 1px solid rgba(194, 53, 53, 0.42);
+    background: rgba(194, 53, 53, 0.08);
+    color: #a62929;
+    cursor: pointer;
+    font-family: SourceHanSansCN-Bold;
+    font-size: 12px;
+
+    &:hover {
+        background: rgba(194, 53, 53, 0.14);
+    }
+
+    &:focus-visible {
+        outline: 2px solid #a62929;
+        outline-offset: 2px;
     }
 }
 
@@ -1915,6 +2400,7 @@ onUnmounted(() => {
             align-items: center;
             justify-content: center;
             background: rgba(0, 0, 0, 0.1);
+            border: none;
             color: #000;
             cursor: pointer;
             font-size: 12px;
@@ -2039,6 +2525,19 @@ onUnmounted(() => {
 @media (max-width: 768px) {
     .arknights-comments {
         padding: 16px;
+    }
+
+    .filter-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .filter-label {
+        padding-top: 0;
+    }
+
+    .comment-images {
+        grid-template-columns: 1fr;
     }
 
     .comment-card .card-content {

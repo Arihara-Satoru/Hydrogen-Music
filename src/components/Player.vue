@@ -888,9 +888,15 @@ const addToPlaylist = () => {
                 <svg
                     v-if="songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
                     @click="toggleCommentPanel"
+                    @keydown.enter.prevent="toggleCommentPanel"
+                    @keydown.space.prevent="toggleCommentPanel"
                     v-delayed-tooltip="props.rightPanelMode === 1 ? '查看歌词' : '查看评论'"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode !== 1 }"
                     class="icon comment-icon"
+                    role="button"
+                    tabindex="0"
+                    :aria-label="props.rightPanelMode === 1 ? '查看歌词' : '查看评论'"
+                    :aria-pressed="props.rightPanelMode === 1"
                     viewBox="0 0 24 24"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -1458,6 +1464,11 @@ const addToPlaylist = () => {
         &.comment-icon-active {
             opacity: 1;
             color: #000000;
+        }
+
+        &:focus-visible {
+            outline: 2px solid currentColor;
+            outline-offset: 3px;
         }
 
         &:hover {

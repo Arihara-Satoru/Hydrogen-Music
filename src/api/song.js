@@ -461,6 +461,23 @@ function normalizeCommentUser(item = {}) {
     }
 }
 
+function normalizeCommentImages(images) {
+    if (!Array.isArray(images)) return []
+    return images
+        .map(image => {
+            if (!image) return null
+            const url = typeof image === 'string' ? image : image.url
+            if (!url) return null
+            return {
+                url,
+                width: toPositiveNumber(image.width, 0),
+                height: toPositiveNumber(image.height, 0),
+                label: image.label || '评论图片',
+            }
+        })
+        .filter(Boolean)
+}
+
 function normalizeCommentItem(item = {}) {
     const commentId = Number(item.id || item.commentId || item.tid || 0)
     const likedCount = toPositiveNumber(item?.like?.count ?? item?.like?.likenum ?? item?.likedCount, 0)
@@ -489,46 +506,100 @@ function normalizeCommentItem(item = {}) {
         album_audio_id: mixsongid,
         user: normalizeCommentUser(item),
         ipLocation: { location: item.location || '' },
+        images: normalizeCommentImages(item.images),
         likedUsers: [],
         beReplied: [],
         raw: item,
     }
 }
 
+function getCommentResponseCode(response) {
+    const errorCode = Number(response?.err_code ?? response?.error_code ?? 0)
+    const status = Number(response?.status ?? 1)
+    return errorCode === 0 && status !== 0 ? 200 : (errorCode || 500)
+}
+
 function normalizeMusicCommentsResponse(response, pageSize = 20) {
     const rawList = Array.isArray(response?.list) ? response.list : Array.isArray(response?.data?.list) ? response.data.list : []
     const comments = rawList.map(item => normalizeCommentItem(item))
     const total = toPositiveNumber(response?.count ?? response?.combine_count ?? response?.data?.count, comments.length)
-    const currentPage = toPositiveNumber(response?.page ?? response?.p, 1)
+    const currentPage = toPositiveNumber(response?.current_page ?? response?.page ?? response?.p ?? response?.data?.current_page, 1) || 1
     const normalizedPageSize = toPositiveNumber(pageSize, 20) || 20
-    const hasMore = currentPage * normalizedPageSize < total
+    const maxPage = toPositiveNumber(response?.maxPage ?? response?.max_page ?? response?.data?.maxPage, 0)
+    const hasMore = maxPage > 0
+        ? currentPage < maxPage
+        : currentPage * normalizedPageSize < total
+    const rawClassifyList = Array.isArray(response?.classify_list) ? response.classify_list : []
+    const rawHotwordList = Array.isArray(response?.hot_word_list) ? response.hot_word_list : []
 
     return {
         ...(response || {}),
-        code: 200,
+        code: getCommentResponseCode(response),
         comments,
         total,
         hasMore,
         cursor: String(currentPage + 1),
+        currentPage,
+        classifyList: rawClassifyList.map(item => ({
+            id: item.id,
+            label: item.label || '',
+            count: toPositiveNumber(item.cnt ?? item.count, 0),
+            icon: item.icon || '',
+        })).filter(item => item.id && item.label),
+        hotwordList: rawHotwordList.map(item => ({
+            content: item.content || item.hot_word || '',
+            count: toPositiveNumber(item.count, 0),
+        })).filter(item => item.content),
+        specialChildId: response?.childrenid || '',
     }
 }
 
-function normalizeMusicCommentFloorResponse(response, pageSize = 20) {
+function normalizeMusicCommentFloorResponse(response, pageSize = 20, requestPage = 1) {
     const rawList = Array.isArray(response?.list) ? response.list : Array.isArray(response?.data?.list) ? response.data.list : []
     const comments = rawList.map(item => normalizeCommentItem(item))
     const normalizedPageSize = toPositiveNumber(pageSize, 20) || 20
     const lastItem = rawList[rawList.length - 1] || {}
     const nextTime = toPositiveNumber(lastItem.loadoffset ?? response?.time ?? response?.data?.time, -1)
+    const currentPage = toPositiveNumber(response?.current_page ?? response?.page ?? requestPage, requestPage) || 1
+    const totalCount = toPositiveNumber(response?.comments_num ?? response?.count ?? response?.data?.comments_num, comments.length)
 
     return {
-        code: 200,
+        code: getCommentResponseCode(response),
         data: {
             comments,
-            totalCount: comments.length,
-            hasMore: rawList.length >= normalizedPageSize,
+            totalCount,
+            hasMore: currentPage * normalizedPageSize < totalCount,
             time: nextTime,
+            page: currentPage,
+            nextPage: currentPage + 1,
         },
     }
+}
+
+function normalizeMusicCommentCountResponse(response, lookupKey) {
+    const source = response?.data && typeof response.data === 'object' ? response.data : response
+    const directValue = source && lookupKey ? source[lookupKey] : undefined
+    const fallbackValue = source && typeof source === 'object' ? Object.values(source).find(value => Number.isFinite(Number(value))) : 0
+    return {
+        code: getCommentResponseCode(response),
+        total: toPositiveNumber(directValue ?? fallbackValue, 0),
+    }
+}
+
+/**
+ * 获取音乐评论数。优先使用 hash，也可传评论中的 special_child_id。
+ * @param {object|string|number} input - 歌曲对象、hash 或 special_child_id
+ */
+export function getMusicCommentCount(input) {
+    const source = input && typeof input === 'object' ? input : {}
+    const primitive = input && typeof input !== 'object' ? `${input}` : ''
+    const hash = source.hash || (/^[a-f\d]{32}$/i.test(primitive) ? primitive : '')
+    const specialId = source.special_child_id || source.specialChildId || source.special_id || source.specialId || (!hash ? primitive : '')
+    const lookupKey = `${hash || specialId || ''}`
+    if (!lookupKey) throw new TypeError('获取歌曲评论数需要 hash 或 special_id')
+
+    return get('/comment/count', hash ? { hash } : { special_id: specialId })
+        .then(response => normalizeMusicCommentCountResponse(response, lookupKey))
 }
 
 function buildUnsupportedCommentActionResponse(action = '操作') {
@@ -550,9 +621,10 @@ function buildUnsupportedCommentActionResponse(action = '操作') {
 export function getMusicComments(id, { limit = 20, offset = 0, ...extraParams } = {}) {
     const source = typeof id === 'object' ? id : { id, limit, offset, ...extraParams }
     const mixsongid = resolveMixsongId(source)
+    if (!mixsongid) throw new TypeError('获取歌曲评论需要 mixsongid')
     const requestLimit = toPositiveNumber(source.limit ?? limit, 20) || 20
     const requestOffset = toPositiveNumber(source.offset ?? offset, 0)
-    const page = Math.floor(requestOffset / requestLimit) + 1
+    const page = toPositiveNumber(source.page, 0) || Math.floor(requestOffset / requestLimit) + 1
 
     return get('/comment/music', {
         mixsongid,
@@ -564,51 +636,53 @@ export function getMusicComments(id, { limit = 20, offset = 0, ...extraParams } 
 }
 
 /**
- * 归一化 comment/new 返回结构，避免上层关心 data 字段层级
- * @param {object} response - 原始接口响应
- * @returns {object}
+ * 按分类获取音乐评论。
  */
-function normalizeCommentNewResponse(response) {
-    const data = response && typeof response === 'object' ? response.data || {} : {};
-    return {
-        ...(response || {}),
-        comments: Array.isArray(data.comments) ? data.comments : [],
-        total: Number.isFinite(Number(data.totalCount)) ? Number(data.totalCount) : 0,
-        hasMore: !!data.hasMore,
-        cursor: data.cursor ?? '',
-    };
+export function getMusicCommentsByClassify({ id, typeId, type_id, pageSize = 20, pagesize, pageNo = 1, page, sort = 1 } = {}) {
+    const mixsongid = resolveMixsongId(id)
+    const classifyId = typeId || type_id
+    const requestPageSize = pagesize || pageSize
+    const requestPage = page || pageNo
+    if (!mixsongid || !classifyId) throw new TypeError('分类评论需要 mixsongid 和 type_id')
+
+    return get('/comment/music/classify', {
+        mixsongid,
+        type_id: classifyId,
+        page: requestPage,
+        pagesize: requestPageSize,
+        sort,
+    }).then(response => normalizeMusicCommentsResponse(response, requestPageSize))
 }
 
 /**
- * 获取新版音乐评论（comment/new）
+ * 按热词获取音乐评论。
+ */
+export function getMusicCommentsByHotword({ id, hotWord, hot_word, pageSize = 20, pagesize, pageNo = 1, page } = {}) {
+    const mixsongid = resolveMixsongId(id)
+    const keyword = hotWord || hot_word
+    const requestPageSize = pagesize || pageSize
+    const requestPage = page || pageNo
+    if (!mixsongid || !keyword) throw new TypeError('热词评论需要 mixsongid 和 hot_word')
+
+    return get('/comment/music/hotword', {
+        mixsongid,
+        hot_word: keyword,
+        page: requestPage,
+        pagesize: requestPageSize,
+    }).then(response => normalizeMusicCommentsResponse(response, requestPageSize))
+}
+
+/**
+ * 获取音乐评论，并按需切换到分类/热词接口。
  * @param {object} params
  * @param {string|number} params.id - 音乐ID
- * @param {number|string} params.sortType - 1推荐/2热度/3时间
  * @param {number|string} params.pageSize - 每页数量
  * @param {number|string} params.pageNo - 页码
- * @param {number|string} params.cursor - 时间排序游标
  */
-export async function getMusicCommentsNew({ id, sortType = 3, pageSize = 20, pageNo = 1, cursor } = {}) {
-    const mixsongid = resolveMixsongId(id)
-    const response = await get('/comment/music', {
-        mixsongid,
-        page: pageNo,
-        pagesize: pageSize,
-        show_classify: sortType === 2 ? 0 : 1,
-        show_hotword_list: sortType === 2 ? 0 : 1,
-    })
-
-    const normalized = normalizeMusicCommentsResponse(response, pageSize)
-    if (sortType === 2) {
-        return {
-            ...normalized,
-            comments: [],
-            total: normalized.total,
-            hasMore: false,
-            cursor: '',
-        }
-    }
-    return normalized
+export async function getMusicCommentsNew({ id, pageSize = 20, pageNo = 1, typeId, hotWord, sort = 1 } = {}) {
+    if (typeId) return getMusicCommentsByClassify({ id, typeId, pageSize, pageNo, sort })
+    if (hotWord) return getMusicCommentsByHotword({ id, hotWord, pageSize, pageNo })
+    return getMusicComments({ id, limit: pageSize, page: pageNo, show_classify: 1, show_hotword_list: 1 })
 }
 
 /**
@@ -617,22 +691,23 @@ export async function getMusicCommentsNew({ id, sortType = 3, pageSize = 20, pag
  * @param {string|number} params.id - 音乐ID
  * @param {string|number} params.parentCommentId - 父评论ID
  * @param {number|string} params.limit - 分页数量
- * @param {number|string} params.time - 分页游标时间
+ * @param {number|string} params.page - 页码
  */
-export function getMusicCommentFloor({ id, parentCommentId, limit = 20, time = -1 } = {}) {
+export function getMusicCommentFloor({ id, parentCommentId, limit = 20, page = 1 } = {}) {
     const mixsongid = resolveMixsongId(id)
     const commentTid = Number(parentCommentId)
     const specialId = id && typeof id === 'object'
         ? (id.special_id || id.special_child_id || id.specialId || id.specialChildId || '')
         : ''
+    if (!mixsongid || !specialId || !commentTid) throw new TypeError('楼层评论需要 mixsongid、special_id 和 tid')
 
     return get('/comment/floor', {
         mixsongid,
         special_id: specialId,
         tid: commentTid,
-        page: 1,
+        page,
         pagesize: limit,
-    }).then(response => normalizeMusicCommentFloorResponse(response, limit))
+    }).then(response => normalizeMusicCommentFloorResponse(response, limit, page))
 }
 
 /**

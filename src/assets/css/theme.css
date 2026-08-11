@@ -934,6 +934,51 @@ html.dark.dynamic-theme .title-container .title-player {
   color: var(--muted-text) !important;
 }
 
+.dark .arknights-comments .read-only-note,
+.dark .arknights-comments .comment-filter-panel {
+  background: rgba(30, 34, 38, 0.52) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .read-only-code {
+  background: var(--text) !important;
+  color: #000 !important;
+}
+
+.dark .arknights-comments .filter-row + .filter-row {
+  border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .arknights-comments .filter-label {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .filter-chip,
+.dark .arknights-comments .sort-button {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .filter-chip:hover:not(:disabled),
+.dark .arknights-comments .sort-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.38) !important;
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .filter-chip.active {
+  background: var(--text) !important;
+  border-color: var(--text) !important;
+  color: #000 !important;
+}
+
+.dark .arknights-comments .filter-chip:focus-visible,
+.dark .arknights-comments .sort-button:focus-visible {
+  outline-color: var(--text) !important;
+}
+
 .dark .arknights-comments .section-title {
   color: var(--text) !important;
 }
@@ -978,6 +1023,15 @@ html.dark.dynamic-theme .title-container .title-player {
 
 .dark .arknights-comments .comment-text {
   color: var(--text) !important;
+}
+
+.dark .arknights-comments .comment-images img {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comment-image-button:focus-visible {
+  outline-color: var(--text) !important;
 }
 
 .dark .arknights-comments .comment-controls .control-item {
@@ -1074,11 +1128,10 @@ html.dark.dynamic-theme .title-container .title-player {
   color: var(--text) !important;
 }
 
-.dark .arknights-comments .floor-replies .floor-toggle:focus,
 .dark .arknights-comments .floor-replies .floor-toggle:focus-visible,
-.dark .arknights-comments .floor-replies .floor-more:focus,
 .dark .arknights-comments .floor-replies .floor-more:focus-visible {
-  outline: none !important;
+  outline: 2px solid var(--text) !important;
+  outline-offset: 2px !important;
   box-shadow: none !important;
 }
 
@@ -1192,6 +1245,12 @@ html.dark.dynamic-theme .title-container .title-player {
 
 .dark .arknights-comments .loading-status .loading-text {
   color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .error-status {
+  background: rgba(255, 91, 91, 0.1) !important;
+  border-color: rgba(255, 123, 123, 0.38) !important;
+  color: #ff9d9d !important;
 }
 
 .dark .arknights-comments .no-more-status,
