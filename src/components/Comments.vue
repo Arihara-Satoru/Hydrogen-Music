@@ -54,6 +54,7 @@ const floorReplies = ref({})
 const imagePreview = ref(null)
 const imagePreviewCloseRef = ref(null)
 const imagePreviewTrigger = ref(null)
+let commentRequestSerial = 0
 
 const FLOOR_REPLY_LIMIT = 5
 
@@ -457,10 +458,12 @@ const applyCommentListResponse = (response, reset) => {
 
 // 获取评论数据
 const fetchComments = async (reset = false) => {
-    if (loading.value || (!hasMore.value && !reset)) return
+    if (!reset && (loading.value || !hasMore.value)) return
 
     const requestTargetKey = commentTargetKey.value
     if (!requestTargetKey || !isCommentsVisible.value) return
+    const requestSerial = ++commentRequestSerial
+    const isCurrentRequest = () => requestSerial === commentRequestSerial && requestTargetKey === commentTargetKey.value
 
     loading.value = true
     loadError.value = ''
@@ -482,6 +485,7 @@ const fetchComments = async (reset = false) => {
                 requestCommentList({ sortType: 3, pageSize: limit.value, pageNo: 1, cursor: '0' }),
                 requestCommentList({ sortType: 2, pageSize: limit.value, pageNo: 1 }),
             ])
+            if (!isCurrentRequest()) return
             const latestResponse = latestResult.status === 'fulfilled' ? latestResult.value : null
             const hotResponse = hotResult.status === 'fulfilled' ? hotResult.value : null
             fetchSucceeded = applyCommentListResponse(latestResponse, true)
@@ -493,6 +497,7 @@ const fetchComments = async (reset = false) => {
                 pageNo: reset ? 1 : pageNo.value,
                 ...(nextCursor.value ? { cursor: nextCursor.value } : {}),
             })
+            if (!isCurrentRequest()) return
             fetchSucceeded = applyCommentListResponse(response, reset)
         }
 
@@ -506,13 +511,14 @@ const fetchComments = async (reset = false) => {
             loadError.value = '评论加载失败，请点击重试'
         }
     } catch (error) {
+        if (!isCurrentRequest()) return
         console.error('获取评论失败:', error)
         loadError.value = '评论加载失败，请点击重试'
     } finally {
-        loading.value = false
+        if (requestSerial === commentRequestSerial) loading.value = false
     }
 
-    if (fetchSucceeded) {
+    if (fetchSucceeded && isCurrentRequest()) {
         await nextTick()
         restoreCommentsScrollIfNeeded()
         tryAutoLoadMore()
@@ -759,6 +765,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+    commentRequestSerial += 1
     cacheCurrentScrollPosition()
     setLastCommentTargetKey(commentTargetKey.value)
     clearScrollCheckRaf()

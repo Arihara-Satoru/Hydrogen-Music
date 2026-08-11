@@ -14,6 +14,7 @@
     "check:cloud-api": "node --experimental-vm-modules scripts/check-cloud-api.mjs",
     "check:cloud-metadata": "node scripts/check-cloud-metadata.cjs",
     "check:comment-api": "node --experimental-vm-modules scripts/check-comment-api.mjs",
+    "check:comment-panel": "node scripts/check-comment-panel.mjs",
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",

@@ -191,12 +191,13 @@ watch([currentTrack, isDj], ([song, djMode]) => {
 
         <!-- 右侧面板 -->
         <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
-            <!-- 内容区域 -->
-            <Transition name="panel-switch" mode="out-in">
-                <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
-                <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
-                <Comments class="comments-container" v-else-if="rightPanelMode === 1" :key="commentPanelKey" @total-change="handleCommentTotalChange"></Comments>
-                <LyricSelector class="lyric-selector-container" v-else-if="rightPanelMode === 2" :key="`lyric-selector-${commentPanelKey}`"></LyricSelector>
+            <Transition name="panel-switch" mode="out-in" :duration="{ enter: 400, leave: 300 }">
+                <div class="right-panel-content" :key="rightPanelMode">
+                    <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
+                    <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
+                    <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments" @total-change="handleCommentTotalChange"></Comments>
+                    <LyricSelector class="lyric-selector-container" v-else-if="rightPanelMode === 2" :key="`lyric-selector-${commentPanelKey}`"></LyricSelector>
+                </div>
             </Transition>
         </div>
 
@@ -323,6 +324,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         transition: 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
         position: relative;
         z-index: 1;
+        .right-panel-content,
         .lyric-container,
         .comments-container,
         .lyric-selector-container {
@@ -335,8 +337,8 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         opacity: 0;
         visibility: hidden;
     }
-    
-    // 右侧面板切换动画
+
+    // 只让稳定外壳参与过渡，避免评论内容刷新打断 out-in 的离场回调
     .panel-switch-enter-active {
         transition: all 0.4s cubic-bezier(0.4, 0, 0.12, 1);
     }
@@ -351,6 +353,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         opacity: 0;
         transform: translateX(-30px) scale(0.95);
     }
+
     .music-video {
         position: absolute;
         z-index: 999;
@@ -410,4 +413,5 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         transform: none;
     }
 }
+
 </style>
