@@ -231,6 +231,16 @@ const showLyricNoData = computed(() => {
 const showLyricArea = computed(() => {
     return !!(hasLyricsList.value && hasAnyLyricContent.value && lyricShow.value && lyricType.value.indexOf('original') != -1);
 });
+const showLyricPlaceholder = ref(showLyricNoData.value);
+
+// 原文重新显示时保留占位，等歌词完成测量后再交叉淡化，避免中间出现空白帧
+watch(
+    showLyricNoData,
+    visible => {
+        if (visible || !showLyricArea.value) showLyricPlaceholder.value = visible;
+    },
+    { flush: 'sync' }
+);
 
 // 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
 function computeCumulativeOffset(index) {
@@ -465,6 +475,7 @@ const prepareLyricReveal = async () => {
 
     lyricAreaReady.value = true;
     suppressLyricFlash.value = false;
+    showLyricPlaceholder.value = false;
 };
 
 // —— 间奏等待动画——
@@ -827,8 +838,16 @@ watch([playing, lyricShow], ([p, show]) => {
 
 <template>
     <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
-        <Transition name="fade">
-            <div v-show="showLyricArea" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash || !lyricAreaReady }" ref="lyricScroll">
+        <Transition name="lyric-content">
+            <div
+                v-show="showLyricArea"
+                class="lyric-area"
+                :class="{
+                    'no-flash': suppressLyricFlash || !lyricAreaReady,
+                    'reveal-active': lyricAreaReady,
+                }"
+                ref="lyricScroll"
+            >
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
                 <div class="lyric-lines" :style="{ transform: `translate3d(0, ${lineOffset}px, 0)` }">
                     <div class="lyric-line" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
@@ -976,8 +995,8 @@ watch([playing, lyricShow], ([p, show]) => {
                 </div>
             </div>
         </Transition>
-        <Transition name="fade">
-            <div v-show="showLyricNoData" class="lyric-nodata">
+        <Transition name="lyric-placeholder">
+            <div v-show="showLyricPlaceholder" class="lyric-nodata" aria-hidden="true">
                 <div class="line1"></div>
                 <span class="tip">Lyric-Area</span>
                 <div class="line2"></div>
@@ -1005,16 +1024,38 @@ watch([playing, lyricShow], ([p, show]) => {
     align-items: center;
     z-index: 1;
     .lyric-area {
-        width: calc(100% - 3vh);
-        height: calc(100% - 3vh);
+        position: absolute;
+        inset: 1.5vh;
         overflow: hidden;
-        transition: opacity 0.3s cubic-bezier(0.3, 0, 0.12, 1);
+        transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate3d(-100%, 0, 0);
+            background: linear-gradient(
+                90deg,
+                transparent 0,
+                transparent calc(100% - 20px),
+                rgba(0, 0, 0, 0.04) calc(100% - 20px),
+                rgba(0, 0, 0, 0.38) calc(100% - 2px),
+                rgba(0, 0, 0, 0.9) 100%
+            );
+        }
+        &.reveal-active {
+            animation: lyric-panel-reveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+            &::after {
+                animation: lyric-scan 0.36s 0.04s cubic-bezier(0.22, 1, 0.36, 1) both;
+            }
+        }
         &.no-flash {
-            visibility: hidden;
             opacity: 0;
             pointer-events: none;
         }
-        &.no-flash, &.no-flash * {
+        &.no-flash * {
             transition: none !important;
         }
         .lyric-scroll-area {
@@ -1219,13 +1260,13 @@ watch([playing, lyricShow], ([p, show]) => {
         opacity: 0;
     }
     .lyric-nodata {
-        width: 100%;
-        height: 100%;
+        position: absolute;
+        inset: 0;
         display: flex;
         flex-direction: row;
         justify-content: center;
         align-items: center;
-        position: relative;
+        pointer-events: none;
         .line1,
         .line2 {
             width: 0;
@@ -1334,14 +1375,134 @@ watch([playing, lyricShow], ([p, show]) => {
         left: $boderPosition;
     }
 }
-.fade-enter-active {
-    transition: opacity 0.25s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
+.lyric-content-enter-active,
+.lyric-placeholder-enter-active {
+    transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
-.fade-leave-active {
-    transition: opacity 0.2s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
+.lyric-content-leave-active {
+    transition: opacity 0.16s cubic-bezier(0.4, 0, 1, 1) !important;
 }
-.fade-enter-from,
-.fade-leave-to {
+.lyric-container .lyric-placeholder-leave-active {
+    animation: lyric-placeholder-exit 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+    .tip {
+        animation: lyric-placeholder-tip-exit 0.16s steps(3, end) both;
+    }
+    .line1 {
+        transform-origin: left bottom;
+        animation: lyric-placeholder-line1-exit 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+    }
+    .line2 {
+        transform-origin: right top;
+        animation: lyric-placeholder-line2-exit 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+    }
+}
+.lyric-content-enter-from,
+.lyric-content-leave-to,
+.lyric-placeholder-enter-from {
     opacity: 0;
+}
+
+@keyframes lyric-panel-reveal {
+    0% {
+        opacity: 0;
+        transform: translate3d(14px, 0, 0);
+        clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+    }
+    42% {
+        opacity: 0.78;
+        transform: translate3d(6px, 0, 0);
+        clip-path: polygon(0 0, 72% 0, 61% 100%, 0 100%);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    }
+}
+
+@keyframes lyric-scan {
+    0% {
+        opacity: 0;
+        transform: translate3d(-100%, 0, 0);
+    }
+    12% {
+        opacity: 1;
+    }
+    78% {
+        opacity: 0.75;
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+@keyframes lyric-placeholder-exit {
+    0%,
+    60% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes lyric-placeholder-tip-exit {
+    0% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+    34% {
+        opacity: 0;
+    }
+    67% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(-8px, 0, 0);
+    }
+}
+
+@keyframes lyric-placeholder-line1-exit {
+    from {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translate3d(12px, -12px, 0) scale(0.35);
+    }
+}
+
+@keyframes lyric-placeholder-line2-exit {
+    from {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translate3d(-12px, 12px, 0) scale(0.35);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lyric-area,
+    .lyric-area.reveal-active,
+    .lyric-area.reveal-active::after,
+    .lyric-content-enter-active,
+    .lyric-content-leave-active,
+    .lyric-placeholder-enter-active,
+    .lyric-placeholder-leave-active,
+    .lyric-placeholder-leave-active .tip,
+    .lyric-placeholder-leave-active .line1,
+    .lyric-placeholder-leave-active .line2 {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
+    .lyric-area.reveal-active {
+        clip-path: none;
+        transform: none;
+    }
 }
 </style>

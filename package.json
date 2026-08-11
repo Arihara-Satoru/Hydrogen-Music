@@ -18,6 +18,7 @@
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",
+    "check:lyric-reveal": "node scripts/check-lyric-reveal.mjs",
     "check:purchased-api": "node --experimental-vm-modules scripts/check-purchased-api.mjs",
     "preview": "vite preview",
     "start": "node scripts/set-console-encoding.cjs && electron .",
