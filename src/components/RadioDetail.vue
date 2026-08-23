@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { getDjDetail, getDjPrograms } from '../api/dj'
 import { usePlayerStore } from '../store/playerStore'
@@ -17,6 +17,7 @@ const programSongs = ref([])
 // 介绍弹层开关，保持与歌单详情一致
 const introduceDetailShow = ref(false)
 const introduceDetailShowDelay = ref(false)
+let detailRequestToken = 0
 
 const rid = computed(() => router.currentRoute.value.params.id)
 
@@ -58,24 +59,27 @@ function convertPrograms(arr) {
 }
 
 // 一次性加载全部节目（取消懒加载）
-async function loadAllPrograms(radioId) {
-  programSongs.value = []
+async function loadAllPrograms(radioId, requestToken, programCount = 0) {
+  const songs = []
   const pageLimit = 100
   let offset = 0
   // 以 programCount 为上限，逐页取齐
   while (true) {
     const res = await getDjPrograms(radioId, { limit: pageLimit, offset })
+    if (requestToken !== detailRequestToken) return null
     const arr = res?.programs || res?.data || []
     if (!arr.length) break
-    programSongs.value = programSongs.value.concat(convertPrograms(arr))
+    songs.push(...convertPrograms(arr))
     offset += arr.length
     if (arr.length < pageLimit) break
-    if (radioInfo.value?.programCount && programSongs.value.length >= radioInfo.value.programCount) break
+    if (programCount && songs.length >= programCount) break
   }
+  return songs
 }
 
 async function loadDetailFor(radioId) {
   if (!radioId) return
+  const requestToken = ++detailRequestToken
   loading.value = true
   error.value = null
   radioInfo.value = null
@@ -83,12 +87,20 @@ async function loadDetailFor(radioId) {
   try {
     const requestRid = String(radioId)
     const detail = await getDjDetail(requestRid)
-    radioInfo.value = detail?.data || detail?.djRadio || detail || null
-    await loadAllPrograms(requestRid)
+    if (requestToken !== detailRequestToken) return
+    const nextRadioInfo = detail?.data || detail?.djRadio || detail || null
+    const nextProgramSongs = await loadAllPrograms(
+      requestRid,
+      requestToken,
+      Number(nextRadioInfo?.programCount || 0),
+    )
+    if (requestToken !== detailRequestToken || !nextProgramSongs) return
+    radioInfo.value = nextRadioInfo
+    programSongs.value = nextProgramSongs
   } catch (e) {
-    error.value = '加载电台详情失败'
+    if (requestToken === detailRequestToken) error.value = '加载电台详情失败'
   } finally {
-    loading.value = false
+    if (requestToken === detailRequestToken) loading.value = false
   }
 }
 
@@ -97,6 +109,9 @@ onBeforeRouteUpdate(async (to) => {
   await loadDetailFor(to.params.id)
   const scroller = document.getElementById('libraryScroll')
   if (scroller) scroller.scrollTop = 0
+})
+onBeforeUnmount(() => {
+  detailRequestToken += 1
 })
 
 // 播放全部节目（从第一期开始）

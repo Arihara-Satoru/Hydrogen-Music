@@ -38,6 +38,7 @@ export const useLocalStore = defineStore("localStore", {
 
       quitApp: null,
       lookupIndex: createLookupIndexState(),
+      localDetailToken: 0,
     };
   },
   actions: {
@@ -132,6 +133,7 @@ export const useLocalStore = defineStore("localStore", {
       );
     },
     updateLocalMusicDetail(type, query, id) {
+      const requestToken = ++this.localDetailToken;
       this.currentType = type;
       this.currentSelectedFilePicUrl = null;
       if (type == "localFiles") {
@@ -178,9 +180,10 @@ export const useLocalStore = defineStore("localStore", {
         )
           this.getImgBase64(this.currentSelectedSongs[0].common.fileUrl).then(
             (res) => {
-              this.currentSelectedFilePicUrl = res;
+              if (this.localDetailToken === requestToken)
+                this.currentSelectedFilePicUrl = res;
             },
-          );
+          ).catch(() => {});
       }
       if (type == "localArtist") {
         const artistEntry = this.lookupIndex.artistsById?.[String(id)] || null;
@@ -198,9 +201,10 @@ export const useLocalStore = defineStore("localStore", {
         )
           this.getImgBase64(this.currentSelectedSongs[0].common.fileUrl).then(
             (res) => {
-              this.currentSelectedFilePicUrl = res;
+              if (this.localDetailToken === requestToken)
+                this.currentSelectedFilePicUrl = res;
             },
-          );
+          ).catch(() => {});
       }
     },
   },

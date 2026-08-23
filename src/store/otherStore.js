@@ -118,6 +118,7 @@ export const useOtherStore = defineStore('otherStore', {
           player: null,
           videoIsBlur: false,
           currentVideoId: null,
+          mvRequestToken: 0,
           videoIsFull: false,
           searchResult: {},
           searchLoading: false,
@@ -151,9 +152,11 @@ export const useOtherStore = defineStore('otherStore', {
 
             this.videoPlayerShow = true;
             this.currentVideoId = mvId;
+            const requestToken = ++this.mvRequestToken;
 
             try {
                 const detail = await getMVDetail(mvId);
+                if (this.mvRequestToken !== requestToken) return false;
                 const mv = detail?.data || null;
                 const mvHash = String(mv?.hash || mvSource?.hash || '')
 
@@ -176,12 +179,14 @@ export const useOtherStore = defineStore('otherStore', {
                     const src = urlResult?.data?.url || ''
                     return src ? { src, type: 'video/mp4', size } : null
                 }))).filter(Boolean)
+                if (this.mvRequestToken !== requestToken) return false;
                 if (sources.length === 0) {
                     noticeOpen('MV 资源不可用', 2);
                     return false;
                 }
 
                 const player = await this.waitForPlayerReady();
+                if (this.mvRequestToken !== requestToken) return false;
                 if (!player) {
                     noticeOpen('MV 加载失败，请稍后重试', 2);
                     return false;
@@ -196,7 +201,9 @@ export const useOtherStore = defineStore('otherStore', {
 
                 return true;
             } catch (_) {
-                noticeOpen('MV 加载失败，请稍后重试', 2);
+                if (this.mvRequestToken === requestToken) {
+                    noticeOpen('MV 加载失败，请稍后重试', 2);
+                }
                 return false;
             }
         },

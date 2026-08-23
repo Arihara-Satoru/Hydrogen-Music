@@ -111,7 +111,6 @@ onMounted(() => {
     window.addEventListener('resize', updateTracker)
     window.addEventListener('focus', updateTracker)
     // 字体加载完成后再次校准，避免字体替换引起的偏移
-    window.addEventListener('focus', updateTracker)
 })
 
 onBeforeUnmount(() => {

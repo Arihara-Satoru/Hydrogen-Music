@@ -107,8 +107,6 @@ export const initSettings = () => {
 
 //初始化
 export const init = async () => {
-  // 渲染进程版本迁移：清理旧版本可能不兼容的 localStorage 数据
-  migrateLocalStorage();
   initSettings();
   installGlobalImageFallback();
   initDownloadManager(); // 初始化下载管理器
@@ -132,82 +130,3 @@ export const init = async () => {
     });
   }
 };
-
-/**
- * 渲染进程本地存储版本迁移
- * 当检测到应用版本变更时，清理可能不兼容的旧数据
- */
-function migrateLocalStorage() {
-  try {
-    const MIGRATION_KEY = "_hydrogenmusic_app_version";
-    // 尝试从 electron-store 获取当前版本（通过 windowApi）
-    // 如果无法获取，从 package.json 或 userAgent 推断
-    const storedVersion = localStorage.getItem(MIGRATION_KEY);
-
-    // 获取当前版本字符串（从 windowApi 或回退方案）
-    const getCurrentVersion = async () => {
-      try {
-        const settings = await windowApi.getSettings();
-        return settings?._appVersion || null;
-      } catch (_) {
-        return null;
-      }
-    };
-
-    // 异步执行版本检查
-    getCurrentVersion()
-      .then((currentVersion) => {
-        if (!currentVersion) return;
-
-        if (storedVersion !== currentVersion) {
-          console.log(
-            `[localStorage migration] 版本变更: ${storedVersion || "无"} → ${currentVersion}`,
-          );
-
-          // 清理可能不兼容的 Pinia 持久化数据
-          // 保留用户认证相关的 cookie 数据
-          const keysToKeep = [
-            "cookie:token",
-            "cookie:userid",
-            "cookie:vip_type",
-            "cookie:vip_token",
-            "cookie:t1",
-            "cookie:dfid",
-          ];
-          const allKeys = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            allKeys.push(localStorage.key(i));
-          }
-
-          // 清理 pinia 持久化数据（通常以 store 名称为前缀）
-          const piniaKeys = allKeys.filter(
-            (key) =>
-              key &&
-              (key.startsWith("playerStore") ||
-                key.startsWith("userStore") ||
-                key.startsWith("localStore") ||
-                key.startsWith("libraryStore") ||
-                key.startsWith("otherStore") ||
-                key.startsWith("cloudStore") ||
-                key.startsWith("sirenStore")),
-          );
-
-          for (const key of piniaKeys) {
-            try {
-              localStorage.removeItem(key);
-            } catch (_) {}
-          }
-
-          if (piniaKeys.length > 0) {
-            console.log(
-              `[localStorage migration] 已清理 ${piniaKeys.length} 个旧的 Pinia 持久化条目`,
-            );
-          }
-
-          // 更新版本标记
-          localStorage.setItem(MIGRATION_KEY, currentVersion);
-        }
-      })
-      .catch(() => {});
-  } catch (_) {}
-}

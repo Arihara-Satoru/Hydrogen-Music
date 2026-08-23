@@ -31,6 +31,9 @@ const lyricPreferenceModule = syntheticModule('mock:lyricPreference', {
   findRememberedLyricCandidate: () => null,
   rememberLyricCandidate: () => null,
 })
+const commentRepliesModule = syntheticModule('mock:commentReplies', {
+  parseCommentReply: content => ({ content, replyTo: null }),
+})
 
 const songPath = resolve('src/api/song.js')
 const songModule = new SourceTextModule(await readFile(songPath, 'utf8'), {
@@ -42,6 +45,7 @@ await songModule.link(specifier => {
   if (specifier === './params') return paramsModule
   if (specifier === '../utils/kugouLyric') return lyricModule
   if (specifier === '../utils/lyricPreference') return lyricPreferenceModule
+  if (specifier === '../utils/commentReplies') return commentRepliesModule
   throw new Error(`Unexpected song import: ${specifier}`)
 })
 await songModule.evaluate()

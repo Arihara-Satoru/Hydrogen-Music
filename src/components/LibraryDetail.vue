@@ -36,6 +36,7 @@ const introduceDetailShowDelay = ref(false);
 const songSearchKeyword = ref('');
 const deletePlaylistPromptVisible = ref(false);
 const deletePlaylistPromptText = ref('');
+const librarySubPending = ref(false);
 
 const canGoBack = ref(false);
 const canGoForward = ref(false);
@@ -633,21 +634,18 @@ const subHandle = id => {
         (type1 = 0), (type2 = 1);
     }
     if (isAlbum.value) {
-        scheduleAlbumSublistCacheInvalidation();
         (type1 = 1), (type2 = 0);
     }
     if (isSinger.value) {
         (type1 = 1), (type2 = 1);
-        scheduleArtistSublistCacheInvalidation();
     }
 
     if (libraryInfo.value.followed) {
         libraryInfo.value.followed = false;
-        if (listType1.value == type1 && listType2.value == type2)
-            libraryList.value.splice(
-                (libraryList.value || []).findIndex(item => item.id === id),
-                1
-            );
+        if (listType1.value == type1 && listType2.value == type2) {
+            const itemIndex = (libraryList.value || []).findIndex(item => item.id === id);
+            if (itemIndex >= 0) libraryList.value.splice(itemIndex, 1);
+        }
         return;
     }
     if (!libraryInfo.value.followed) {
@@ -657,36 +655,40 @@ const subHandle = id => {
     }
 };
 
-const librarySub = id => {
+const librarySub = async id => {
+    if (librarySubPending.value) return;
+    if (!isAlbum.value && !isSinger.value) {
+        await togglePlaylistCollect();
+        return;
+    }
+
+    const targetInfo = libraryInfo.value;
+    const targetIsSinger = isSinger.value;
     let params = {
         id: id,
-        t: libraryInfo.value.followed ? 0 : 1,
+        t: targetInfo.followed ? 0 : 1,
         timestamp: new Date().getTime(),
     };
-    if (isSinger.value) {
-        subArtist(params).then(result => {
-            if (result.code == 200) {
-                subHandle(id);
-                if (params.t == 1) noticeOpen('收藏成功', 2);
-                else noticeOpen('已取消收藏', 2);
-            } else {
-                noticeOpen(result?.message || '收藏/取消收藏失败', 2);
-            }
-        });
-    }
-    if (isAlbum.value) {
-        subAlbum(params).then(result => {
-            if (result.code == 200) {
-                subHandle(id);
-                if (params.t == 1) noticeOpen('收藏成功', 2);
-                else noticeOpen('已取消收藏', 2);
-            } else {
-                noticeOpen(result?.message || '收藏/取消收藏失败', 2);
-            }
-        });
-    }
-    if (!isAlbum.value && !isSinger.value) {
-        void togglePlaylistCollect();
+
+    librarySubPending.value = true;
+    try {
+        const result = await (targetIsSinger ? subArtist(params) : subAlbum(params));
+        if (result.code != 200) {
+            noticeOpen(result?.message || '收藏/取消收藏失败', 2);
+            return;
+        }
+
+        if (targetIsSinger) scheduleArtistSublistCacheInvalidation();
+        else scheduleAlbumSublistCacheInvalidation();
+        if (libraryInfo.value !== targetInfo) return;
+
+        subHandle(id);
+        noticeOpen(params.t == 1 ? '收藏成功' : '已取消收藏', 2);
+    } catch (error) {
+        console.error('收藏操作失败:', error);
+        noticeOpen('收藏/取消收藏失败', 2);
+    } finally {
+        librarySubPending.value = false;
     }
 };
 

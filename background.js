@@ -21,10 +21,15 @@ const {
   Menu,
   ipcMain,
   session,
+  shell,
 } = require("electron");
 const net = require("net");
 const path = require("path");
 const { getElectronStore } = require("./src/electron/store");
+const {
+  isAllowedInternalNavigation,
+  shouldOpenExternally,
+} = require("./src/electron/externalLinks");
 // 必须在 app.requestSingleInstanceLock() 之前设置应用名称
 // 否则 userData 路径会使用 package.json 中的 "hydrogenmusic" 而非 "Hydrogen Music"
 // 导致用户找不到正确的数据目录
@@ -314,19 +319,6 @@ if (!gotTheLock) {
     });
   });
 
-  // 监听渲染进程触发的手动检查更新事件
-  // 与 src/electron/ipcMain.js 中的处理并存，仅用于设置标记
-  ipcMain.on("check-for-update", async () => {
-    try {
-      const Store = await getElectronStore();
-      const settingsStore = new Store({ name: "settings" });
-      const settings = await settingsStore.get("settings");
-      // 更新开关关闭时，不标记手动检查状态，避免后续自动更新事件被错误吞掉。
-      manualUpdateCheckInProgress = settings?.other?.enableUpdate !== false;
-    } catch (_) {
-      manualUpdateCheckInProgress = true;
-    }
-  });
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
@@ -428,6 +420,19 @@ const createWindow = (winstate = createMainWindowState()) => {
     },
   });
   myWindow = win;
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (shouldOpenExternally(url, win.webContents.getURL())) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    const currentUrl = win.webContents.getURL();
+    if (isAllowedInternalNavigation(url, currentUrl)) return;
+    event.preventDefault();
+    if (shouldOpenExternally(url, currentUrl)) void shell.openExternal(url);
+  });
 
   // 监听来自 ipcMain 的菜单更新事件（仅 macOS 生效，并加强负载校验）
   const { updateApplicationMenu } = require("./src/electron/shortcuts");
@@ -683,6 +688,9 @@ const createWindow = (winstate = createMainWindowState()) => {
     closeLyricWindow,
     setLyricWindowMovable,
     getLyricWindow: () => lyricWindow,
+    setManualUpdateCheckInProgress: (value) => {
+      manualUpdateCheckInProgress = Boolean(value);
+    },
   });
   MusicDownload(win);
   LocalFiles(win, app);

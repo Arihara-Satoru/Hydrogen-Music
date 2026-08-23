@@ -799,12 +799,17 @@ export const useLibraryStore = defineStore('libraryStore', {
             })
         },
         async updateRecommendSongs(date, historyName) {
+            const requestToken = `recommend-${String(date || 'today')}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            this.libraryDetailToken = requestToken
+            this.resetPlaylistHydration()
             const request = date ? getHistoryRecommendSongsDetail({ date, history_name: historyName }) : getRecommendSongs()
-            await request.then(result => {
-                const songs = normalizeRecommendSongList(result)
-                this.librarySongs = mapSongsPlayableStatus(songs.map(song => normalizePlaylistSong(song))) || []
-                this.indexLibrarySongs(this.librarySongs)
-            })
+            const result = await request
+            if (this.libraryDetailToken != requestToken) return false
+
+            const songs = normalizeRecommendSongList(result)
+            this.librarySongs = mapSongsPlayableStatus(songs.map(song => normalizePlaylistSong(song))) || []
+            this.indexLibrarySongs(this.librarySongs)
+            return true
         },
     },
 })

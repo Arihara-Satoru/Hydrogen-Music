@@ -37,9 +37,8 @@
   }
   const playRecAll = async () => {
     if(isLogin()) {
-        await libraryStore.updateRecommendSongs().then(() => {
-            playAll('rec', libraryStore.librarySongs)
-        })
+        const loaded = await libraryStore.updateRecommendSongs()
+        if (loaded) playAll('rec', libraryStore.librarySongs)
     } else {
         noticeOpen("请先登录", 2)
         router.push('/login')

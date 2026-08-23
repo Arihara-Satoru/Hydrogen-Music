@@ -17,6 +17,7 @@ const historyNameMap = ref({});
 const selectedDate = ref('');
 const loadingDates = ref(false);
 const loadingSongs = ref(false);
+let recommendLoadToken = 0;
 const initialized = ref(false);
 const syncingFromRoute = ref(false);
 const dateDropdownOpen = ref(false);
@@ -231,13 +232,14 @@ const loadRecommendSongs = async date => {
     const shouldUseTodayRecommend = date == todayDate.value && shouldInsertTodayOption.value;
     const historyName = historyNameMap.value[date];
 
+    const requestToken = ++recommendLoadToken;
     loadingSongs.value = true;
     try {
         await libraryStore.updateRecommendSongs(shouldUseTodayRecommend ? '' : date, historyName);
     } catch (e) {
         noticeOpen('获取推荐歌曲失败', 2);
     } finally {
-        loadingSongs.value = false;
+        if (requestToken == recommendLoadToken) loadingSongs.value = false;
     }
 };
 
@@ -339,6 +341,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    recommendLoadToken += 1;
     window.removeEventListener('click', handleClickOutside);
 });
 

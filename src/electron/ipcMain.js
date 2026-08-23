@@ -30,6 +30,7 @@ const registerShortcuts = require("./shortcuts");
 const { getElectronStore } = require("./store");
 const { replaceOtherAudioMonitor } = require("./otherAudioMonitor");
 const CancelToken = axios.CancelToken;
+const { shouldOpenExternally } = require("./externalLinks");
 let cancel = null;
 
 function normalizeDirectoryPath(value) {
@@ -326,6 +327,11 @@ function getCoverThemePalette(data, width, height) {
 }
 
 module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
+  let manualUpdateCheckRunning = false;
+  const setManualUpdateCheckInProgress =
+    typeof lyricFunctions.setManualUpdateCheckInProgress === "function"
+      ? lyricFunctions.setManualUpdateCheckInProgress
+      : () => {};
   const Store = await getElectronStore();
   const settingsStore = new Store({ name: "settings" });
   const lastPlaylistStore = new Store({ name: "lastPlaylist" });
@@ -398,7 +404,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     }
   });
   ipcMain.on("to-register", (e, url) => {
-    shell.openExternal(url);
+    if (shouldOpenExternally(url)) void shell.openExternal(url);
   });
   ipcMain.on("download-start", () => {
     win.webContents.send("download-next");
@@ -1461,9 +1467,23 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
 
   // 处理应用更新相关的 IPC 事件
   ipcMain.on("check-for-update", async () => {
-    const settings = await settingsStore.get("settings");
+    if (manualUpdateCheckRunning) return;
+    manualUpdateCheckRunning = true;
+    setManualUpdateCheckInProgress(true);
+
+    let settings;
+    try {
+      settings = await settingsStore.get("settings");
+    } catch (error) {
+      manualUpdateCheckRunning = false;
+      setManualUpdateCheckInProgress(false);
+      win.webContents.send("update-error", error?.message || "读取更新设置失败");
+      return;
+    }
     // 设置页关闭更新后，统一拦截所有手动检查入口，避免出现“开关关闭但仍然请求更新”的状态。
     if (settings?.other?.enableUpdate === false) {
+      manualUpdateCheckRunning = false;
+      setManualUpdateCheckInProgress(false);
       win.webContents.send("update-error", "应用更新已关闭，请先在设置中开启");
       return;
     }
@@ -1514,50 +1534,52 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       } catch (error) {
         console.error("手动检查更新失败（macOS）:", error);
         win.webContents.send("update-error", error.message || "检查更新失败");
+      } finally {
+        manualUpdateCheckRunning = false;
+        setManualUpdateCheckInProgress(false);
       }
       return;
     }
 
     // 其他平台走 electron-updater
     const { autoUpdater } = require("electron-updater");
+    const cleanupManualUpdateListeners = () => {
+      autoUpdater.removeListener("update-available", handleUpdateAvailable);
+      autoUpdater.removeListener(
+        "update-not-available",
+        handleUpdateNotAvailable,
+      );
+      autoUpdater.removeListener("error", handleUpdateError);
+      manualUpdateCheckRunning = false;
+      setManualUpdateCheckInProgress(false);
+    };
     // 为手动检查设置一次性事件监听器
     const handleUpdateAvailable = (info) => {
+      if (!manualUpdateCheckRunning) return;
       console.log("手动检查更新完成，发现新版本:", info.version);
       win.webContents.send("manual-update-available", info.version);
-      autoUpdater.removeListener("update-available", handleUpdateAvailable);
-      autoUpdater.removeListener(
-        "update-not-available",
-        handleUpdateNotAvailable,
-      );
-      autoUpdater.removeListener("error", handleUpdateError);
+      cleanupManualUpdateListeners();
     };
     const handleUpdateNotAvailable = () => {
+      if (!manualUpdateCheckRunning) return;
       console.log("手动检查更新完成，当前已是最新版本");
       win.webContents.send("update-not-available");
-      autoUpdater.removeListener("update-available", handleUpdateAvailable);
-      autoUpdater.removeListener(
-        "update-not-available",
-        handleUpdateNotAvailable,
-      );
-      autoUpdater.removeListener("error", handleUpdateError);
+      cleanupManualUpdateListeners();
     };
     const handleUpdateError = (error) => {
+      if (!manualUpdateCheckRunning) return;
       console.error("手动检查更新失败:", error);
       win.webContents.send("update-error", error.message);
-      autoUpdater.removeListener("update-available", handleUpdateAvailable);
-      autoUpdater.removeListener(
-        "update-not-available",
-        handleUpdateNotAvailable,
-      );
-      autoUpdater.removeListener("error", handleUpdateError);
+      cleanupManualUpdateListeners();
     };
     autoUpdater.once("update-available", handleUpdateAvailable);
     autoUpdater.once("update-not-available", handleUpdateNotAvailable);
     autoUpdater.once("error", handleUpdateError);
-    autoUpdater.checkForUpdates().catch((error) => {
-      console.error("检查更新失败:", error);
-      win.webContents.send("update-error", error.message);
-    });
+    try {
+      autoUpdater.checkForUpdates().catch(handleUpdateError);
+    } catch (error) {
+      handleUpdateError(error);
+    }
   });
 
   ipcMain.on("download-update", () => {
