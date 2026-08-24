@@ -1,5 +1,5 @@
 // 非 Electron 环境下提供 windowApi 降级，必须最先加载
-import './utils/windowApiStub.js'
+import './utils/windowApiStub.mjs'
 
 import { createApp } from 'vue'
 import App from './App.vue'
@@ -21,6 +21,9 @@ app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
 app.mount('#app')
+void Promise.resolve(windowApi.registerShortcuts?.()).catch((error) => {
+  console.warn('Some shortcuts could not be registered:', error)
+})
 
 // 懒加载初始化逻辑，减小首屏包体
 ;(async () => {

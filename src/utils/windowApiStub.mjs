@@ -1,7 +1,9 @@
 /**
- * windowApi Stub - 在非 Electron 环境（如 vite preview / 浏览器）下提供 windowApi 降级实现
+ * windowApi Stub - 在非 Electron 环境下提供 windowApi 降级实现；Tauri 覆盖已迁移能力
  * 避免因 windowApi 未定义导致 ReferenceError 崩溃（白屏）
  */
+import { getTauriElectronApi, getTauriPlayerApi, getTauriWindowApi } from './tauriWindowApi.mjs'
+
 (function () {
   if (typeof windowApi !== "undefined") return;
 
@@ -9,7 +11,7 @@
   const noopPromise = () => Promise.resolve();
   const noopResolve = (val) => () => Promise.resolve(val);
 
-  window.windowApi = {
+  const fallbackApi = {
     // ── 窗口控制 ──
     windowMin: noop,
     windowMax: noop,
@@ -49,11 +51,22 @@
       },
       other: {
         quitApp: "minimize",
+        globalShortcuts: true,
         enableUpdate: false,
         startupAnimation: "ark",
       },
+      shortcuts: [
+        { id: "play", name: "播放/暂停", shortcut: "CommandOrControl+P", globalShortcut: "CommandOrControl+Alt+P" },
+        { id: "last", name: "上一首", shortcut: "CommandOrControl+Left", globalShortcut: "CommandOrControl+Alt+Left" },
+        { id: "next", name: "下一首", shortcut: "CommandOrControl+Right", globalShortcut: "CommandOrControl+Alt+Right" },
+        { id: "volumeUp", name: "增加音量", shortcut: "CommandOrControl+Up", globalShortcut: "CommandOrControl+Alt+Up" },
+        { id: "volumeDown", name: "减少音量", shortcut: "CommandOrControl+Down", globalShortcut: "CommandOrControl+Alt+Down" },
+        { id: "processForward", name: "快进(3s)", shortcut: "CommandOrControl+]", globalShortcut: "CommandOrControl+Alt+]" },
+        { id: "processBack", name: "后退(3s)", shortcut: "CommandOrControl+[", globalShortcut: "CommandOrControl+Alt+[" },
+      ],
     }),
     setSettings: noop,
+    getSystemFonts: noopResolve([]),
     getOtherAudioMonitorState: noopResolve({
       supported: false,
       active: false,
@@ -80,6 +93,7 @@
     // ── 歌单 ──
     getLastPlaylist: noopResolve(null),
     saveLastPlaylist: noop,
+    saveLastPlaybackProgress: noop,
 
     // ── 更新 ──
     checkUpdate: noop,
@@ -147,13 +161,38 @@
     resetAllData: noopResolve({ success: false, error: "Not in Electron" }),
     onResetLocalStorage: noop,
   };
+  Object.assign(fallbackApi, getTauriWindowApi(fallbackApi));
+  window.windowApi = fallbackApi;
+  const tauriElectronApi = getTauriElectronApi();
+  const tauriPlayerApi = getTauriPlayerApi();
 
-  // 如果 electronAPI 也未定义，也补充一个空对象避免引用错误
+  // 桌面歌词尚未迁移时保留完整方法形状，避免初始化阶段直接白屏
   if (typeof window.electronAPI === "undefined") {
-    window.electronAPI = {};
+    window.electronAPI = tauriElectronApi || {
+      createLyricWindow: noopResolve({ success: false }),
+      closeLyricWindow: noopResolve({ success: false }),
+      setLyricWindowMovable: noopPromise,
+      lyricWindowReady: noop,
+      onLyricUpdate: noop,
+      requestLyricData: noop,
+      updateLyricData: noop,
+      seekDesktopLyric: noopPromise,
+      controlDesktopLyricPlayback: noopPromise,
+      getCurrentLyricData: noop,
+      isLyricWindowVisible: noopResolve(false),
+      onDesktopLyricClosed: noop,
+      getLyricWindowBounds: noopResolve(null),
+      resizeWindow: noopPromise,
+      moveLyricWindowContentTo: noop,
+      setLyricWindowResizable: noop,
+      getLyricWindowMinMax: noopResolve(null),
+      setLyricWindowMinMax: noopPromise,
+      getLyricWindowContentBounds: noopResolve(null),
+      notifyLyricWindowClosed: noop,
+    };
   }
   if (typeof window.playerApi === "undefined") {
-    window.playerApi = {
+    window.playerApi = tauriPlayerApi || {
       onSetPosition: noop,
       onPlayPause: noop,
       onNext: noop,

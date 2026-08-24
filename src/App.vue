@@ -93,7 +93,7 @@ const handleTitleBarDoubleClick = () => {
             <SearchInput></SearchInput>
         </div>
     </div>
-    <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
+    <div class="dragBar" data-tauri-drag-region @dblclick="handleTitleBarDoubleClick">
         <WindowControl></WindowControl>
     </div>
     <Transition name="widget">

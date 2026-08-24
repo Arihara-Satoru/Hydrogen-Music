@@ -1,5 +1,5 @@
 // 非 Electron 环境下提供 windowApi 降级，必须最先加载
-import './utils/windowApiStub.js'
+import './utils/windowApiStub.mjs'
 
 import { createApp } from 'vue'
 import DesktopLyric from './components/DesktopLyric.vue'

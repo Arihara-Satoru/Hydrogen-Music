@@ -2,7 +2,7 @@
   "name": "hydrogenmusic",
   "private": true,
   "version": "0.6.6",
-  "description": "A modern music player built with Electron and Vue.js",
+  "description": "A modern music player built with Vue.js, Electron and Tauri",
   "main": "background.js",
   "author": {
     "name": "Arihara-Satoru",
@@ -10,7 +10,14 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:tauri-ui": "vite --host 0.0.0.0 --port 1420 --strictPort",
     "build": "vite build",
+    "prepare:tauri-sidecar": "node scripts/prepare-tauri-sidecar.cjs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "check:tauri-window-api": "node scripts/check-tauri-window-api.mjs",
+    "check:tauri-sidecar": "node scripts/check-tauri-sidecar.cjs",
     "check:cloud-api": "node --experimental-vm-modules scripts/check-cloud-api.mjs",
     "check:cloud-metadata": "node scripts/check-cloud-metadata.cjs",
     "check:comment-api": "node --experimental-vm-modules scripts/check-comment-api.mjs",
@@ -32,6 +39,10 @@
     "release:dry": "semantic-release --dry-run"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "axios": "^1.17.0",
     "dbus-next": "^0.10.2",
     "electron-store": "^11.0.2",
@@ -54,6 +65,7 @@
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/github": "^12.0.8",
     "@semantic-release/release-notes-generator": "^14.1.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@vitejs/plugin-vue": "^6.0.7",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "electron": "^42.3.3",
