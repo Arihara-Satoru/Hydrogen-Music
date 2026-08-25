@@ -124,7 +124,7 @@ export const useOtherStore = defineStore('otherStore', {
           searchLoading: false,
           searchRequestToken: 0,
           toUpdate: false,
-          newVersion: null,
+          updateInfo: null,
         }
     },
     actions: {

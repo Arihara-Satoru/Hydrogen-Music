@@ -1,7 +1,7 @@
 {
   "name": "hydrogenmusic",
   "private": true,
-  "version": "0.6.6",
+  "version": "0.6.7",
   "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
@@ -23,6 +23,7 @@
     "check:loudness-normalization": "node scripts/check-loudness-normalization.mjs",
     "check:lyric-reveal": "node scripts/check-lyric-reveal.mjs",
     "check:purchased-api": "node --experimental-vm-modules scripts/check-purchased-api.mjs",
+    "check:release-notes": "node scripts/check-release-notes.mjs",
     "check:siren-play-all": "node scripts/check-siren-play-all.mjs",
     "preview": "vite preview",
     "start": "node scripts/set-console-encoding.cjs && electron .",

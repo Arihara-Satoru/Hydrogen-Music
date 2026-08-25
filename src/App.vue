@@ -69,9 +69,11 @@ onUnmounted(() => {
     destroyListenTimeReporter();
 });
 
-windowApi.checkUpdate((event, version) => {
+windowApi.checkUpdate((updateInfo) => {
     otherStore.toUpdate = true;
-    otherStore.newVersion = version;
+    otherStore.updateInfo = typeof updateInfo === 'string'
+        ? { version: updateInfo }
+        : updateInfo;
 });
 
 // 双击标题栏最大化窗口的处理函数

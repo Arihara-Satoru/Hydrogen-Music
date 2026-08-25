@@ -131,7 +131,7 @@ function copyTxt(txt) {
   ipcRenderer.send("copy-txt", txt);
 }
 function checkUpdate(callback) {
-  ipcRenderer.on("check-update", (_event, version) => callback?.(version));
+  ipcRenderer.on("check-update", (_event, updateInfo) => callback?.(updateInfo));
 }
 function manualUpdateAvailable(callback) {
   ipcRenderer.on("manual-update-available", (_event, version, url) =>

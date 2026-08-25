@@ -544,7 +544,11 @@ const createWindow = (winstate = createMainWindowState()) => {
           manualUpdateCheckInProgress = false;
           return;
         }
-        win.webContents.send("check-update", info.version);
+        win.webContents.send("check-update", {
+          version: info.version,
+          releaseNotes: info.releaseNotes || "",
+          releaseDate: info.releaseDate || "",
+        });
       });
 
       // 监听更新不可用事件

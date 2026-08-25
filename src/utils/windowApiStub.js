@@ -8,6 +8,20 @@
   const noop = () => {};
   const noopPromise = () => Promise.resolve();
   const noopResolve = (val) => () => Promise.resolve(val);
+  const checkUpdatePreview = (callback) => {
+    // ponytail: one representative query fixture is enough until update states need separate visual regression coverage.
+    if (new URLSearchParams(window.location.search).has("preview-update")) {
+      queueMicrotask(() => callback?.({
+        version: "0.7.0-preview",
+        releaseDate: "2026-08-25T00:00:00.000Z",
+        releaseNotes: [
+          "新增应用内更新日志，版本变化现在可以直接查看。",
+          "优化更新信息的层级、窄屏布局和键盘操作。",
+          "修复部分情况下新版本号未显示的问题。",
+        ].map((note) => `- ${note}`).join("\n"),
+      }));
+    }
+  };
 
   window.windowApi = {
     // ── 窗口控制 ──
@@ -84,7 +98,7 @@
     saveLastPlaylist: noop,
 
     // ── 更新 ──
-    checkUpdate: noop,
+    checkUpdate: checkUpdatePreview,
     manualUpdateAvailable: noop,
     updateNotAvailable: noop,
     updateDownloadProgress: noop,
