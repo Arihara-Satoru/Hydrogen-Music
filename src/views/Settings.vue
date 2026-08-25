@@ -376,7 +376,6 @@ onActivated(() => {
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
     playerStore.audioVisualizer = settings?.music?.audioVisualizer === true;
-    playerStore.loudnessNormalization = settings?.music?.loudnessNormalization === true;
     videoFolder.value = settings.local.videoFolder;
     downloadFolder.value = settings.local.downloadFolder;
     downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder;
@@ -475,7 +474,6 @@ const setAppSettings = () => {
       showSongTranslation: playerStore.showSongTranslation,
       coverSize: coverSize.value,
       audioVisualizer: playerStore.audioVisualizer,
-      loudnessNormalization: playerStore.loudnessNormalization,
       // 启动恢复上次歌单后是否自动播放。
       autoPlayOnStartup: autoPlayOnStartup.value,
       pauseOnOtherAudio: pauseOnOtherAudio.value,
@@ -1282,28 +1280,6 @@ const clearFmRecent = () => {
                     <div
                       class="toggle-on"
                       v-show="playerStore.audioVisualizer"
-                    ></div>
-                  </Transition>
-                </div>
-              </div>
-            </div>
-            <div class="option">
-              <div class="option-name">响度均衡（实验性）</div>
-              <div class="option-operation">
-                <div
-                  class="toggle"
-                  @click="playerStore.loudnessNormalization = !playerStore.loudnessNormalization"
-                >
-                  <div
-                    class="toggle-off"
-                    :class="{ 'toggle-on-in': playerStore.loudnessNormalization }"
-                  >
-                    {{ playerStore.loudnessNormalization ? "已开启" : "已关闭" }}
-                  </div>
-                  <Transition name="toggle">
-                    <div
-                      class="toggle-on"
-                      v-show="playerStore.loudnessNormalization"
                     ></div>
                   </Transition>
                 </div>

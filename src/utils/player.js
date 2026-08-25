@@ -23,10 +23,6 @@ import { createDecodedAudioPlayer } from "./webAudioGapless";
 import { pickMusicVideoPoolEntry } from "./musicVideoPool.mjs";
 import { createOtherAudioPauseController } from "./otherAudioPause.mjs";
 import {
-  calculateLoudnessGain,
-  getAdjustedPlaybackVolume,
-} from "./loudnessNormalization.mjs";
-import {
   PLAYBACK_TICK_FAST_INTERVAL_MS,
   subscribePlaybackTick,
 } from "./player/playbackTicker";
@@ -69,7 +65,6 @@ const {
   lyricBlur,
   currentLyricIndex,
   showSongTranslation,
-  loudnessNormalization,
   chorusMode,
 } = storeToRefs(playerStore);
 
@@ -148,23 +143,6 @@ function normalizePlaybackVolume(value) {
   return Math.max(0, Math.min(1, parsed));
 }
 
-function getPlaybackTargetVolume(
-  playback = currentMusic.value,
-  baseVolume = volume.value,
-) {
-  return getAdjustedPlaybackVolume(
-    normalizePlaybackVolume(baseVolume),
-    playback?.__hmLoudnessGain,
-    loudnessNormalization.value,
-  );
-}
-
-function setPlaybackLoudness(playback, streamInfo) {
-  if (!playback) return playback;
-  playback.__hmLoudnessGain = calculateLoudnessGain(streamInfo);
-  return playback;
-}
-
 watch(volume, (v) => {
   const normalizedVolume = normalizePlaybackVolume(v);
   if (normalizedVolume !== v) {
@@ -172,12 +150,6 @@ watch(volume, (v) => {
     return;
   }
   window.playerApi?.setVolume?.(normalizedVolume);
-  currentMusic.value?.volume?.(
-    getPlaybackTargetVolume(currentMusic.value, normalizedVolume),
-  );
-});
-watch(loudnessNormalization, () => {
-  currentMusic.value?.volume?.(getPlaybackTargetVolume());
 });
 watch(showSongTranslation, () => {
   updateWindowTitleDock();
@@ -251,9 +223,9 @@ function syncPlaybackStarted(playback = currentMusic.value, options = {}) {
   if (options.restoreVolume === true && playback) {
     try {
       if (typeof playback.fade === "function")
-        playback.fade(0, getPlaybackTargetVolume(playback), 200);
+        playback.fade(0, volume.value, 200);
       else if (typeof playback.volume === "function")
-        playback.volume(getPlaybackTargetVolume(playback));
+        playback.volume(volume.value);
     } catch (_) {}
   }
   startProgress();
@@ -534,10 +506,7 @@ async function preloadGaplessSong() {
     );
     if (token !== gaplessPreloadToken || !playbackInfo?.url) return null;
 
-    const player = setPlaybackLoudness(
-      markRaw(await createDecodedAudioPlayer(playbackInfo.url)),
-      playbackInfo.trackInfo,
-    );
+    const player = markRaw(await createDecodedAudioPlayer(playbackInfo.url));
     if (token !== gaplessPreloadToken) {
       try {
         player.unload?.();
@@ -758,7 +727,6 @@ function startGaplessTarget(target, entry, options = {}) {
   play(entry.url, true, null, entry.player, {
     keepPrevious: true,
     fadeInMs: GAPLESS_CROSSFADE_MS,
-    trackInfo: entry.trackInfo,
   });
   fadeOutPreviousPlayback(previousPlayback, currentMusic.value);
 
@@ -1679,7 +1647,7 @@ async function refreshStreamAndResume(eventType, error) {
     }
 
     progress.value = resumePosition;
-    play(nextStreamUrl, true, resumePosition, null, { trackInfo });
+    play(nextStreamUrl, true, resumePosition);
   } catch (fetchError) {
     console.error("刷新歌曲播放地址失败:", fetchError);
     noticeOpen("刷新播放地址失败，请尝试切换歌曲", 2);
@@ -1705,7 +1673,6 @@ export function play(
     ? Math.max(0, playOptions.fadeInMs)
     : 200;
   const previousPlayback = currentMusic.value;
-  const requestedLoudnessGain = calculateLoudnessGain(playOptions.trackInfo);
 
   // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
   stopProgressSampling();
@@ -1787,7 +1754,7 @@ export function play(
   };
   const handlePlaybackStart = (playback) => {
     if (currentMusic.value !== playback) return;
-    playback.fade(0, getPlaybackTargetVolume(playback), fadeInMs);
+    playback.fade(0, volume.value, fadeInMs);
     syncPlaybackStarted();
     // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
     updateWindowTitleDock();
@@ -1801,14 +1768,9 @@ export function play(
 
   if (preloadedPlayer) {
     const playback = markRaw(preloadedPlayer);
-    if (playOptions.trackInfo) setPlaybackLoudness(playback, playOptions.trackInfo);
-    else if (playback.__hmLoudnessGain === undefined)
-      playback.__hmLoudnessGain = 1;
     currentMusic.value = playback;
     playback.loop?.(playMode.value == 2);
-    playback.volume?.(
-      keepPreviousPlayback ? 0 : getPlaybackTargetVolume(playback),
-    );
+    playback.volume?.(keepPreviousPlayback ? 0 : volume.value);
     playback.on?.("play", () => handlePlaybackStart(playback));
     playback.on?.("pause", () => handlePlaybackPause(playback));
     playback.on?.("end", () => handlePlaybackEnd(playback));
@@ -1840,11 +1802,7 @@ export function play(
       "oga",
     ],
     loop: playMode.value == 2,
-    volume: getAdjustedPlaybackVolume(
-      volume.value,
-      requestedLoudnessGain,
-      loudnessNormalization.value,
-    ),
+    volume: volume.value,
     xhr: {
       method: "GET",
       withCredentials: true,
@@ -1858,7 +1816,6 @@ export function play(
       refreshStreamAndResume("loaderror", err);
     },
   }));
-  playback.__hmLoudnessGain = requestedLoudnessGain;
   currentMusic.value = playback;
   playback.once("load", () => applyLoadedState(playback));
   playback.on("play", () => handlePlaybackStart(playback));
@@ -2170,7 +2127,7 @@ export function addSong(id, index, autoplay, isLocal, playbackOptions = {}) {
   }
 
   if (currentMusic.value && volume.value != 0) {
-    currentMusic.value.fade(getPlaybackTargetVolume(), 0, 200);
+    currentMusic.value.fade(volume.value, 0, 200);
     currentMusic.value.once("fade", () => {
       if (!isActivePlaybackRequest(requestToken, id)) return;
       getSongUrl(
@@ -2670,10 +2627,7 @@ export async function getSongUrl(
       autoplay,
       null,
       preloadedEntry?.player || null,
-      {
-        ...playbackOptions,
-        trackInfo: preloadedEntry?.trackInfo || trackInfo,
-      },
+      playbackOptions,
     );
     setSongLevel(
       preloadedEntry?.level || level,
@@ -2723,10 +2677,7 @@ export async function getSongUrl(
             autoplay,
             null,
             preloadedEntry?.player || null,
-            {
-              ...playbackOptions,
-              trackInfo: preloadedEntry?.trackInfo || trackInfo,
-            },
+            playbackOptions,
           );
           setSongLevel(
             preloadedEntry?.level || trackInfo.level,
@@ -2789,7 +2740,7 @@ export function startMusic(options = {}) {
       (options?.userInitiated === true && wasWaitingForOtherAudio));
   playbackPauseToken++;
   if (cancelFadingPause) {
-    currentMusic.value.fade?.(0, getPlaybackTargetVolume(), 200);
+    currentMusic.value.fade?.(0, volume.value, 200);
     syncPlaybackStarted(currentMusic.value);
   }
   if (
@@ -2858,7 +2809,7 @@ export function pauseMusic(options = {}) {
   const playback = currentMusic.value;
   if (playing.value && playback) {
     const pauseToken = ++playbackPauseToken;
-    playback.fade(getPlaybackTargetVolume(playback), 0, 200);
+    playback.fade(volume.value, 0, 200);
     playback.once("fade", () => {
       if (
         currentMusic.value !== playback ||
@@ -2866,7 +2817,7 @@ export function pauseMusic(options = {}) {
       )
         return;
       playback.pause();
-      playback.volume?.(getPlaybackTargetVolume(playback));
+      playback.volume?.(volume.value);
       playing.value = false;
       persistPlaybackProgress();
     });
@@ -3716,7 +3667,7 @@ export function musicVideoCheck(seek, update) {
 
 function setVolumeForPlay(value) {
   volume.value = normalizePlaybackVolume(value);
-  currentMusic.value?.volume?.(getPlaybackTargetVolume());
+  currentMusic.value?.volume?.(volume.value);
 }
 
 window.addEventListener("mousedown", (e) => {
@@ -3783,12 +3734,12 @@ windowApi.changeMusicPlaymode((event, mode) => {
 windowApi.volumeUp(() => {
   if (volume.value + 0.1 < 1) volume.value += 0.1;
   else volume.value = 1;
-  currentMusic.value?.volume?.(getPlaybackTargetVolume());
+  currentMusic.value?.volume?.(normalizePlaybackVolume(volume.value));
 });
 windowApi.volumeDown(() => {
   if (volume.value - 0.1 > 0) volume.value -= 0.1;
   else volume.value = 0;
-  currentMusic.value?.volume?.(getPlaybackTargetVolume());
+  currentMusic.value?.volume?.(normalizePlaybackVolume(volume.value));
 });
 windowApi.musicProcessControl((event, mode) => {
   const duration = normalizePlaybackDuration(

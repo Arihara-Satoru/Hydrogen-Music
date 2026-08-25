@@ -416,6 +416,7 @@ const createWindow = (winstate = createMainWindowState()) => {
       //预加载脚本
       preload: path.resolve(__dirname, "./src/electron/preload.js"),
       webSecurity: false,
+      backgroundThrottling: false,
     },
   });
   myWindow = win;
