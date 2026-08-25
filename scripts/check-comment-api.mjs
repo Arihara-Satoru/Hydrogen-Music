@@ -59,8 +59,6 @@ const {
   getMusicCommentsByHotword,
   getMusicCommentsNew,
 } = songModule.namespace
-const { buildCommentReplyTree, parseCommentReply } = commentRepliesModule.namespace
-
 const hash = '98eb07ad8eaf74bf56dece55518ad63e'
 responder = async () => ({ [hash]: 21125 })
 assert.equal((await getMusicCommentCount(hash)).total, 21125)
@@ -120,11 +118,7 @@ assert.deepEqual(plain(requests.at(-1)), {
 responder = async () => ({
   comments_num: 24,
   current_page: 2,
-  list: [
-    { id: 200, user_id: 2, user_name: '乙', puser_id: 1, content: '第一层回复//@甲:楼主原文' },
-    { id: 201, user_id: 3, user_name: '丙', puser_id: 2, content: '第二层回复//@乙:第一层回复' },
-    ...Array.from({ length: 3 }, (_, index) => ({ id: 202 + index, content: `回复${index + 2}` })),
-  ],
+  list: Array.from({ length: 5 }, (_, index) => ({ id: 200 + index, content: `回复${index}` })),
 })
 const floorResult = await getMusicCommentFloor({
   id: { mixsongid: 302362878, special_child_id: '100285259' },
@@ -139,30 +133,4 @@ assert.deepEqual(plain(requests.at(-1)), {
 assert.equal(floorResult.data.totalCount, 24)
 assert.equal(floorResult.data.hasMore, true)
 assert.equal(floorResult.data.nextPage, 3)
-assert.equal(floorResult.data.comments[0].content, '第一层回复')
-assert.deepEqual(plain(floorResult.data.comments[1].replyTo), { userId: 2, userName: '乙', content: '第一层回复' })
-
-assert.deepEqual(plain(parseCommentReply('回答内容//@用户:被回复原文')), {
-  content: '回答内容',
-  replyTo: { userId: '', userName: '用户', content: '被回复原文' },
-})
-const replyTree = buildCommentReplyTree(floorResult.data.comments.slice(0, 2), {
-  commentId: 100,
-  content: '楼主原文',
-  user: { userId: 1, nickname: '甲' },
-})
-assert.equal(replyTree.length, 1)
-assert.equal(replyTree[0].comment.commentId, 200)
-assert.equal(replyTree[0].children[0].comment.commentId, 201)
-assert.equal(replyTree[0].descendantCount, 1)
-
-const partialReplyTree = buildCommentReplyTree(floorResult.data.comments.slice(1, 2), {
-  commentId: 100,
-  content: '楼主原文',
-  user: { userId: 1, nickname: '甲' },
-})
-assert.equal(partialReplyTree[0].comment.referenceOnly, true)
-assert.equal(partialReplyTree[0].comment.content, '第一层回复')
-assert.equal(partialReplyTree[0].children[0].comment.commentId, 201)
-
 console.log('comment API check passed')

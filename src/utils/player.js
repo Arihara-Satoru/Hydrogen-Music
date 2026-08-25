@@ -1158,7 +1158,7 @@ function syncExternalPlaybackState() {
   syncWindowsTaskbarPlaybackState();
 }
 
-function applyPlayMode(mode, options = {}) {
+export function applyPlayMode(mode, options = {}) {
   const inFM = Object.prototype.hasOwnProperty.call(options, "inFM")
     ? options.inFM
     : isPersonalFMContext();

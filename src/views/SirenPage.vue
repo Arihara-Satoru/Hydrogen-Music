@@ -1,10 +1,14 @@
 <script setup>
-import { computed, watch, nextTick } from 'vue'
+import { computed, watch, nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { playAll } from '../utils/player'
+import { applyPlayMode, playAll } from '../utils/player'
 import { useSirenStore } from '../store/sirenStore'
+import { runWithConcurrency } from '../utils/runWithConcurrency.mjs'
+import { buildSirenPlaybackQueue } from '../utils/sirenPlayback.mjs'
+import { noticeOpen } from '../utils/dialog'
 import LibrarySongList from '../components/LibrarySongList.vue'
+import BaseModal from '../components/base/BaseModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +23,8 @@ const currentAlbum = computed(() => {
 })
 const currentAlbumLoading = computed(() => !!albumLoadingById.value[currentAlbumId.value])
 const currentAlbumError = computed(() => albumErrorById.value[currentAlbumId.value] || '')
+const playModeDialogShow = ref(false)
+const allAlbumsLoading = ref(false)
 
 const normalizedKeyword = computed(() => String(keyword.value || '').trim().toLocaleLowerCase())
 const visibleAlbums = computed(() => {
@@ -79,6 +85,34 @@ const reloadPage = () => {
 const playAllSongs = () => {
     if (!visibleSongs.value.length) return
     playAll('siren', visibleSongs.value, { id: currentAlbumId.value || 'siren' })
+}
+
+const playAllAlbums = async randomize => {
+    const targetAlbums = visibleAlbums.value.slice()
+    if (!targetAlbums.length || allAlbumsLoading.value) return
+
+    allAlbumsLoading.value = true
+    const detailsById = {}
+    try {
+        // ponytail: four concurrent detail requests match the existing Siren preloader ceiling; raise only if API profiling supports it.
+        await runWithConcurrency(targetAlbums, 4, async album => {
+            const albumId = String(album?.id || '').trim()
+            if (!albumId) return
+            detailsById[albumId] = await sirenStore.ensureAlbumDetail(albumId)
+        })
+
+        const queue = buildSirenPlaybackQueue(targetAlbums, detailsById)
+        if (!queue.length) {
+            noticeOpen('没有可播放的曲目', 2)
+            return
+        }
+
+        applyPlayMode(randomize ? 3 : 0, { inFM: false })
+        playAll('siren', queue, { id: 'siren-all' })
+        playModeDialogShow.value = false
+    } finally {
+        allAlbumsLoading.value = false
+    }
 }
 
 watch(
@@ -144,6 +178,15 @@ watch(
                         type="search"
                     />
                 </label>
+                <button
+                    v-if="!isAlbumRoute"
+                    class="action-button primary"
+                    type="button"
+                    :disabled="visibleAlbums.length === 0 || albumsLoading"
+                    @click="playModeDialogShow = true"
+                >
+                    随机播放全部
+                </button>
                 <button v-if="isAlbumRoute" class="action-button primary" type="button" :disabled="visibleSongs.length === 0" @click="playAllSongs">
                     播放全部
                 </button>
@@ -246,6 +289,21 @@ watch(
                 </section>
             </template>
         </div>
+
+        <BaseModal
+            :show="playModeDialogShow"
+            title="播放全部专辑"
+            size="small"
+            :loading="allAlbumsLoading"
+            loading-text="正在载入全部专辑..."
+            @close="playModeDialogShow = false"
+        >
+            <p class="play-mode-copy">随机播放会打乱全部曲目，下一首可能来自另一张专辑；顺序播放会播完当前专辑后进入下一张。</p>
+            <div class="play-mode-options">
+                <button class="play-mode-button primary" type="button" @click="playAllAlbums(true)">随机播放</button>
+                <button class="play-mode-button" type="button" @click="playAllAlbums(false)">顺序播放</button>
+            </div>
+        </BaseModal>
     </section>
 </template>
 
@@ -492,6 +550,50 @@ watch(
     inset: 0 auto 0 0;
     width: 7px;
     background: var(--siren-signal);
+}
+
+.play-mode-copy {
+    margin: 0;
+    color: #555;
+    font: 14px/1.7 SourceHanSansCN-Regular, sans-serif;
+}
+
+.play-mode-options {
+    margin-top: 22px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.play-mode-button {
+    min-height: 44px;
+    border: 1px solid #191919;
+    border-radius: 0;
+    color: #191919;
+    background: transparent;
+    font: 13px SourceHanSansCN-Bold;
+    cursor: pointer;
+}
+
+.play-mode-button.primary,
+.play-mode-button:hover {
+    color: #fff;
+    background: #191919;
+}
+
+:global(html.dark) .play-mode-copy {
+    color: #c4c8ca;
+}
+
+:global(html.dark) .play-mode-button {
+    border-color: #18d1ff;
+    color: #f4f6f6;
+}
+
+:global(html.dark) .play-mode-button.primary,
+:global(html.dark) .play-mode-button:hover {
+    color: #080a0b;
+    background: #18d1ff;
 }
 
 :global(html.dark .siren-page .action-button.primary) {

@@ -23,6 +23,7 @@
     "check:loudness-normalization": "node scripts/check-loudness-normalization.mjs",
     "check:lyric-reveal": "node scripts/check-lyric-reveal.mjs",
     "check:purchased-api": "node --experimental-vm-modules scripts/check-purchased-api.mjs",
+    "check:siren-play-all": "node scripts/check-siren-play-all.mjs",
     "preview": "vite preview",
     "start": "node scripts/set-console-encoding.cjs && electron .",
     "start:watch": "node scripts/set-console-encoding.cjs && nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
