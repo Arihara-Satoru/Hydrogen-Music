@@ -1,5 +1,5 @@
 # Logs
-logs
+/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,21 +7,30 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Build output
+/node_modules/
+/dist/
+/dist-ssr/
+/release/
+/release2/
+/output/
 
-dist-ssr
+# Tauri generated build artifacts. Keep src-tauri source and icons trackable.
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/binaries/
 
 # Editor directories and files
-node_modules/*
-release/*
-release2/*
-dist/*
-.vscode/*
+/.vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-*.zip
+
+/src-tauri/

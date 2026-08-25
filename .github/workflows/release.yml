@@ -125,6 +125,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download packages
         uses: actions/download-artifact@v4
@@ -132,18 +134,49 @@ jobs:
           path: release
           merge-multiple: true
 
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          # ponytail: versions are assigned before the parallel builds; derive only notes here to keep artifact and tag versions aligned.
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          REPOSITORY_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            TARGET="${TAG}"
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          else
+            TARGET="HEAD"
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${TARGET}" 2>/dev/null || true)
+          fi
+
+          {
+            echo "## 更新日志"
+            echo
+            if [ -n "${PREVIOUS_TAG}" ]; then
+              git log --no-merges --format='%H%x09%s' "${PREVIOUS_TAG}..${TARGET}"
+            else
+              git log --no-merges --format='%H%x09%s' "${TARGET}"
+            fi | while IFS=$'\t' read -r SHA SUBJECT; do
+              printf -- '- %s ([`%.7s`](%s/commit/%s))\n' "${SUBJECT}" "${SHA}" "${REPOSITORY_URL}" "${SHA}"
+            done
+          } > RELEASE_NOTES.md
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="v${VERSION}"
+          TAG="${{ steps.notes.outputs.tag }}"
           if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" --notes-file RELEASE_NOTES.md
             gh release upload "${TAG}" release/* --clobber
           else
             gh release create "${TAG}" \
               --title "${TAG}" \
-              --generate-notes \
+              --notes-file RELEASE_NOTES.md \
               release/*
           fi
