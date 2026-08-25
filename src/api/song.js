@@ -119,12 +119,15 @@ function extractPlayableUrl(value) {
     return ''
 }
 
-function extractStreamMeta(body = {}) {
+function extractStreamMeta(body = {}, fallback = {}) {
     return {
-        sr: body?.sr || body?.sampleRate || body?.sample_rate,
-        br: body?.br || body?.bitrate || body?.bitRate,
-        bitsPerSample: body?.bitsPerSample || body?.bitDepth || body?.bit_depth || body?.bits_per_sample,
-        size: body?.size || body?.fileSize || body?.filesize,
+        sr: body?.sr || body?.sampleRate || body?.sample_rate || fallback?.sr || fallback?.sampleRate || fallback?.sample_rate,
+        br: body?.br || body?.bitrate || body?.bitRate || fallback?.br || fallback?.bitrate || fallback?.bitRate,
+        bitsPerSample: body?.bitsPerSample || body?.bitDepth || body?.bit_depth || body?.bits_per_sample || fallback?.bitsPerSample || fallback?.bitDepth || fallback?.bit_depth || fallback?.bits_per_sample,
+        size: body?.size || body?.fileSize || body?.filesize || fallback?.size || fallback?.fileSize || fallback?.filesize,
+        volume: body?.volume ?? fallback?.volume,
+        volumeGain: body?.volume_gain ?? body?.volumeGain ?? fallback?.volume_gain ?? fallback?.volumeGain,
+        volumePeak: body?.volume_peak ?? body?.volumePeak ?? fallback?.volume_peak ?? fallback?.volumePeak,
     }
 }
 
@@ -162,7 +165,7 @@ function selectStreamByQuality(body, preferredQuality) {
             level,
             type: info?.extname || info?.extName || info?.ext || item?.extname || item?.extName || item?.ext
                 || (level === 'flac' || level === 'high' ? 'flac' : 'mp3'),
-            ...extractStreamMeta(info),
+            ...extractStreamMeta(info, item),
         }
     }).filter(Boolean)
 

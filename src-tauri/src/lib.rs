@@ -130,6 +130,7 @@ fn default_settings() -> Value {
             "searchAssistLimit": 8,
             "showSongTranslation": true,
             "audioVisualizer": false,
+            "loudnessNormalization": false,
             "autoPlayOnStartup": false,
             "pauseOnOtherAudio": false,
             "coverSize": 400

@@ -64,6 +64,9 @@ const responseWithQualities = flacUrl => ({
       {
         quality: 'flac',
         level: 5,
+        volume: -11.4,
+        volume_gain: -0.2,
+        volume_peak: 0.91,
         info: { extname: 'flac', tracker_url: flacUrl ? [flacUrl] : [], bitrate: 900 },
       },
     ],
@@ -76,6 +79,9 @@ assert.equal(stream.url, 'https://audio.test/lossless.flac')
 assert.equal(stream.level, 'flac')
 assert.equal(stream.type, 'flac')
 assert.equal(stream.br, 900)
+assert.equal(stream.volume, -11.4)
+assert.equal(stream.volumeGain, -0.2)
+assert.equal(stream.volumePeak, 0.91)
 
 apiResponse = {
   data: [{
