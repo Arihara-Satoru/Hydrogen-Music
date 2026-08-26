@@ -22,10 +22,8 @@ export const useLocalStore = defineStore("localStore", {
       downloadList: [],
       downloadedFolderSettings: null,
       downloadedMusicFolder: null,
-      downloadedFiles: null,
       localFolderSettings: [],
       localMusicFolder: null,
-      localMusicList: null,
       localMusicClassify: null,
 
       currentSelectedFile: { name: null },

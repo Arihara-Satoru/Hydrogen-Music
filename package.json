@@ -18,6 +18,7 @@
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
     "check:external-links": "node scripts/check-external-links.cjs",
+    "check:foreground-memory": "node scripts/check-foreground-memory.mjs",
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",
     "check:logic-races": "node scripts/check-logic-races.mjs",
     "check:background-memory": "node scripts/check-background-memory.mjs",

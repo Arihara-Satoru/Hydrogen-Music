@@ -61,7 +61,6 @@ export const initSettings = () => {
       if (localStore.downloadedMusicFolder) {
         windowApi.clearLocalMusicData("downloaded");
         localStore.downloadedMusicFolder = null;
-        localStore.downloadedFiles = null;
       }
     }
     if (
@@ -81,7 +80,6 @@ export const initSettings = () => {
       if (localStore.localMusicFolder) {
         windowApi.clearLocalMusicData("local");
         localStore.localMusicFolder = null;
-        localStore.localMusicList = null;
         localStore.localMusicClassify = null;
       }
     }
@@ -95,12 +93,10 @@ export const initSettings = () => {
       localStore.downloadedMusicFolder
     ) {
       localStore.downloadedMusicFolder = null;
-      localStore.downloadedFiles = null;
       windowApi.clearLocalMusicData("downloaded");
     }
     if (newLocalFolders.length == 0 && localStore.localMusicFolder) {
-      ((localStore.localMusicFolder = null),
-        (localStore.localMusicList = null));
+      localStore.localMusicFolder = null;
       localStore.localMusicClassify = null;
       windowApi.clearLocalMusicData("local");
     }

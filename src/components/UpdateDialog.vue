@@ -82,7 +82,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 const props = defineProps({
     visible: {
@@ -104,6 +104,7 @@ const isDownloading = ref(false)
 const manualDownloadUrl = ref('')
 const errorMessage = ref('')
 const isActive = ref(false)
+const updateListenerDisposers = []
 
 const title = computed(() => {
     switch (updateStatus.value) {
@@ -158,38 +159,42 @@ const retryUpdate = () => {
 const setupUpdateListeners = () => {
     if (typeof windowApi !== 'undefined') {
         // 手动更新检查结果（用于设置页面的手动检查）
-        windowApi.manualUpdateAvailable((version, url) => {
+        updateListenerDisposers.push(windowApi.manualUpdateAvailable((version, url) => {
             updateStatus.value = 'available'
             if (url) manualDownloadUrl.value = url
-        })
+        }))
         
         // 更新不可用
-        windowApi.updateNotAvailable(() => {
+        updateListenerDisposers.push(windowApi.updateNotAvailable(() => {
             updateStatus.value = 'latest'
-        })
+        }))
         
         // 下载进度
-        windowApi.updateDownloadProgress((progress) => {
+        updateListenerDisposers.push(windowApi.updateDownloadProgress((progress) => {
             downloadProgress.value = progress
-        })
+        }))
         
         // 下载完成
-        windowApi.updateDownloaded(() => {
+        updateListenerDisposers.push(windowApi.updateDownloaded(() => {
             updateStatus.value = 'ready'
             isDownloading.value = false
-        })
+        }))
         
         // 更新错误
-        windowApi.updateError((error) => {
+        updateListenerDisposers.push(windowApi.updateError((error) => {
             updateStatus.value = 'error'
             errorMessage.value = error
             isDownloading.value = false
-        })
+        }))
     }
 }
 
 onMounted(() => {
     setupUpdateListeners()
+})
+
+onUnmounted(() => {
+    updateListenerDisposers.forEach(dispose => dispose?.())
 })
 </script>
 

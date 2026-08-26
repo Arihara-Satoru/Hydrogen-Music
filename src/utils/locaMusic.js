@@ -8,9 +8,7 @@ import { buildLocalSongSearchText } from "./songFilter";
 const localStore = useLocalStore(pinia);
 const {
   downloadedMusicFolder,
-  downloadedFiles,
   localMusicFolder,
-  localMusicList,
   localMusicClassify,
   isRefreshLocalFile,
 } = storeToRefs(localStore);
@@ -64,18 +62,17 @@ function buildFolderIndex(metadataRoot) {
     if (node.name && node.dirPath) {
       // 以 dirPath 为主键（保证唯一），避免同名文件夹互相覆盖
       if (!foldersByPath[node.dirPath]) {
-        foldersByPath[node.dirPath] = {
+        const folderEntry = {
           name: node.name,
           dirPath: node.dirPath,
           songs: aggregatedSongs.slice(),
         };
+        foldersByPath[node.dirPath] = folderEntry;
+        // 名称与路径索引共享同一条目，避免为每个文件夹复制两次歌曲引用数组。
+        foldersByName[node.name] = folderEntry;
+      } else {
+        foldersByName[node.name] = foldersByPath[node.dirPath];
       }
-      // 以 name 为键的索引保留最后一个，方便按名称查找
-      foldersByName[node.name] = {
-        name: node.name,
-        dirPath: node.dirPath,
-        songs: aggregatedSongs.slice(),
-      };
     }
 
     return aggregatedSongs;
@@ -155,7 +152,6 @@ windowApi.localMusicCount((event, count) => {
 windowApi.localMusicFiles((event, localData) => {
   if (localData.type == "downloaded") {
     downloadedMusicFolder.value = localData.dirTree;
-    downloadedFiles.value = localData.locaFilesMetadata;
 
     const downloadedIndex = buildFolderIndex(localData.locaFilesMetadata);
     localStore.updateLookupIndex("downloaded", {
@@ -167,7 +163,6 @@ windowApi.localMusicFiles((event, localData) => {
 
   if (localData.type == "local") {
     localMusicFolder.value = localData.dirTree;
-    localMusicList.value = localData.locaFilesMetadata;
 
     const localIndex = buildFolderIndex(localData.locaFilesMetadata);
     const localClassify = buildLocalClassify(localIndex.flatSongs);

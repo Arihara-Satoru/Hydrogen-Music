@@ -40,6 +40,7 @@ function downloadNext(callback) {
 }
 function downloadProgress(callback) {
   ipcRenderer.on("download-progress", callback);
+  return () => ipcRenderer.removeListener("download-progress", callback);
 }
 function downloadPause(close) {
   ipcRenderer.send("download-pause", close);
@@ -123,6 +124,7 @@ function saveLastPlaybackProgress(progressState) {
 }
 function downloadVideoProgress(callback) {
   ipcRenderer.on("download-video-progress", callback);
+  return () => ipcRenderer.removeListener("download-video-progress", callback);
 }
 function cancelDownloadMusicVideo() {
   ipcRenderer.send("cancel-download-music-video");
@@ -134,25 +136,29 @@ function checkUpdate(callback) {
   ipcRenderer.on("check-update", (_event, updateInfo) => callback?.(updateInfo));
 }
 function manualUpdateAvailable(callback) {
-  ipcRenderer.on("manual-update-available", (_event, version, url) =>
-    callback?.(version, url),
-  );
+  const listener = (_event, version, url) => callback?.(version, url);
+  ipcRenderer.on("manual-update-available", listener);
+  return () => ipcRenderer.removeListener("manual-update-available", listener);
 }
 function updateNotAvailable(callback) {
-  ipcRenderer.on("update-not-available", (_event, infoOrVersion) =>
-    callback?.(infoOrVersion),
-  );
+  const listener = (_event, infoOrVersion) => callback?.(infoOrVersion);
+  ipcRenderer.on("update-not-available", listener);
+  return () => ipcRenderer.removeListener("update-not-available", listener);
 }
 function updateDownloadProgress(callback) {
-  ipcRenderer.on("update-download-progress", (_event, percent) =>
-    callback?.(percent),
-  );
+  const listener = (_event, percent) => callback?.(percent);
+  ipcRenderer.on("update-download-progress", listener);
+  return () => ipcRenderer.removeListener("update-download-progress", listener);
 }
 function updateDownloaded(callback) {
-  ipcRenderer.on("update-downloaded", (_event, version) => callback?.(version));
+  const listener = (_event, version) => callback?.(version);
+  ipcRenderer.on("update-downloaded", listener);
+  return () => ipcRenderer.removeListener("update-downloaded", listener);
 }
 function updateError(callback) {
-  ipcRenderer.on("update-error", (_event, message) => callback?.(message));
+  const listener = (_event, message) => callback?.(message);
+  ipcRenderer.on("update-error", listener);
+  return () => ipcRenderer.removeListener("update-error", listener);
 }
 function checkForUpdate() {
   ipcRenderer.send("check-for-update");

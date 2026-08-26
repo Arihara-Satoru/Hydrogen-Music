@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch } from "vue";
+import { computed, onActivated, onUnmounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { author, version } from "../../package.json";
 import { noticeOpen, dialogOpen } from "@/utils/dialog";
@@ -250,6 +250,7 @@ const shortcutCharacter = [
 const showUpdateDialog = ref(false);
 const newVersion = ref("");
 let updateListenersInitialized = false;
+let disposeManualUpdateAvailable = null;
 
 const normalizeSearchAssistLimit = (value) => {
   const num = Number.parseInt(value, 10);
@@ -440,11 +441,13 @@ const setupUpdateListeners = () => {
   if (updateListenersInitialized) return;
   updateListenersInitialized = true;
   // 监听手动更新检查结果（不显示大窗弹出）
-  windowApi.manualUpdateAvailable((version) => {
+  disposeManualUpdateAvailable = windowApi.manualUpdateAvailable((version) => {
     newVersion.value = version;
     // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
   });
 };
+
+onUnmounted(() => disposeManualUpdateAvailable?.());
 
 watch(
   () => userStore.user?.userId ?? null,

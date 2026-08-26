@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import QRCode from 'qrcode';
 import axios from 'axios';
 import { songTime2, loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrentMusicVideo } from '../utils/player';
@@ -551,8 +551,12 @@ const loadData = () => {
         });
     }
 };
-windowApi.downloadVideoProgress((event, value) => {
+const disposeDownloadVideoProgress = windowApi.downloadVideoProgress((event, value) => {
     progress.value = value;
+});
+onUnmounted(() => {
+    disposeDownloadVideoProgress?.();
+    clearInterval(checkQRTimer.value);
 });
 loadData();
 
