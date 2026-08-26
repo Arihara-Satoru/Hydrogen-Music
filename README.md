@@ -22,7 +22,7 @@
 
 本项目基于 [Hydrogen-Music](https://github.com/ldx123000/Hydrogen-Music) 修改而来。感谢原作者的创意与付出。
 
-本项目将主要后端能力切换至 **酷狗概念版**，并在原有设计基础上继续完善播放、漫游、桌面歌词、音乐视频等功能。
+本项目将主要后端能力切换至 **酷狗概念版**(https://github.com/MakcRe/KuGouMusicApi)，并在原有设计基础上继续完善播放、漫游、桌面歌词、音乐视频等功能。
 
 这不是原版功能的完整迁移：部分能力已经完成适配，部分能力受现有接口限制只能提供有限支持。如原作者认为本项目存在不妥之处，请联系仓库维护者处理。
 
@@ -154,6 +154,7 @@ pnpm run dist -- --linux
 ## 致谢
 
 - [Kaidesuyo/Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music)和[ldx123000/Hydrogen-Music](https://github.com/ldx123000/Hydrogen-Music) — 原始项目
+- [MakcRe/KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi) — 感谢该仓库提供的后端项目
 - [OpenAI Codex](https://openai.com/codex/) — 感谢 Codex 在项目开发与完善过程中提供的协助
 - [Brandon030722/ark-ui-skill](https://github.com/Brandon030722/ark-ui-skill) — 感谢该 Skill 仓库提供的界面设计灵感与工作流参考
 - README 中的音乐视频示例取自哔哩哔哩视频 [BV1rTs3zyEPF](https://www.bilibili.com/video/BV1rTs3zyEPF)
