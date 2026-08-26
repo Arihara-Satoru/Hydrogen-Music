@@ -2855,6 +2855,8 @@ export function pauseMusic(options = {}) {
     otherAudioPauseController.handleManualPause();
   }
   stopProgressSampling();
+  // ponytail: paused playback drops the decoded next track; add a compressed cache only if resume-near-end profiling shows gapless misses.
+  clearGaplessPreload();
   const playback = currentMusic.value;
   if (playing.value && playback) {
     const pauseToken = ++playbackPauseToken;
@@ -3633,6 +3635,11 @@ export function musicVideoCheck(seek, update) {
 
   if (!musicVideoDOM.value) {
     return; // 视频播放器不存在
+  }
+
+  if (document.hidden) {
+    musicVideoDOM.value.pause?.();
+    return;
   }
 
   // 检查当前歌曲ID是否匹配，FM模式下需要特殊处理

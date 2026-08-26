@@ -229,7 +229,8 @@ watch(
                 :class="{ 'home-content-full-window': router.currentRoute.value.name === 'personalfm' }"
             >
                 <router-view v-slot="{ Component }">
-                    <keep-alive>
+                    <!-- ponytail: three inactive route trees cover normal back-navigation; raise the LRU ceiling only if profiling shows frequent costly reloads. -->
+                    <keep-alive :max="3">
                         <component :is="Component"></component>
                     </keep-alive>
                 </router-view>

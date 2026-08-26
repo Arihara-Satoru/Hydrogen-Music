@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, onMounted } from 'vue'
+  import { markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
   import Plyr from 'plyr'
   import '../assets/css/plyr.css'
   import { useOtherStore } from '../store/otherStore';
@@ -7,6 +7,7 @@
 
   const otherStore = useOtherStore()
   const { videoPlayerShow, player, videoIsBlur, currentVideoId, videoIsFull } = storeToRefs(otherStore)
+  let plyr = null
   onMounted(() => {
     let config = {
       settings: ['captions', 'quality', 'speed', 'loop'],
@@ -16,14 +17,27 @@
         options: [1080, 720, 540, 432, 270],
       },
     };
-    player.value = new Plyr('#player', config)
+    plyr = markRaw(new Plyr('#player', config))
+    player.value = plyr
+  })
+
+  onBeforeUnmount(() => {
+    const media = plyr?.media
+    try {
+      plyr?.pause()
+      media?.removeAttribute('src')
+      media?.querySelectorAll('source').forEach(source => source.remove())
+      media?.load()
+      plyr?.destroy()
+    } catch (_) {}
+    if (player.value === plyr) player.value = null
+    plyr = null
   })
   const videoFull = () => {
     videoIsFull.value = !videoIsFull.value
   }
   const close = () => {
     videoPlayerShow.value = false
-    player.value = null
     currentVideoId.value = null
   }
 </script>

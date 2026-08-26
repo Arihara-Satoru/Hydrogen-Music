@@ -20,9 +20,23 @@
   }
 
   const playPoolVideo = () => {
-    if (!isPoolVideo || !playerStore.playing || !player) return
+    if (!isPoolVideo || !playerStore.playing || !player || document.hidden) return
     const playResult = player.play()
     if (playResult?.catch) playResult.catch(() => {})
+  }
+
+  const handleVisibilityChange = () => {
+    if (!player) return
+    if (document.hidden) {
+      player.pause()
+      return
+    }
+    if (!playerStore.playing) return
+    if (isPoolVideo) playPoolVideo()
+    else {
+      const seek = playerStore.currentMusic?.seek?.()
+      if (Number.isFinite(seek)) musicVideoCheck(seek, true)
+    }
   }
 
   const handlePlaybackError = event => {
@@ -125,10 +139,12 @@
         else player.pause()
       },
     )
+    document.addEventListener('visibilitychange', handleVisibilityChange)
   })
 
   onBeforeUnmount(() => {
     stopPlayingWatch?.()
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     if (playerStore.musicVideoDOM === player) playerStore.musicVideoDOM = null
     try {
       player?.destroy()
