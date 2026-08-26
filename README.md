@@ -153,5 +153,8 @@ pnpm run dist -- --linux
 
 ## 致谢
 
-- [Kaidesuyo/Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music) — 原始项目与设计灵感
+- [Kaidesuyo/Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music)和[ldx123000/Hydrogen-Music](https://github.com/ldx123000/Hydrogen-Music) — 原始项目
+- [OpenAI Codex](https://openai.com/codex/) — 感谢 Codex 在项目开发与完善过程中提供的协助
+- [Brandon030722/ark-ui-skill](https://github.com/Brandon030722/ark-ui-skill) — 感谢该 Skill 仓库提供的界面设计灵感与工作流参考
+- README 中的音乐视频示例取自哔哩哔哩视频 [BV1rTs3zyEPF](https://www.bilibili.com/video/BV1rTs3zyEPF)
 - 感谢所有参与维护、测试和反馈的贡献者
