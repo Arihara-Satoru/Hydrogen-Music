@@ -2,6 +2,7 @@
   "name": "hydrogenmusic",
   "private": true,
   "version": "0.6.8",
+  "packageManager": "pnpm@10.26.0",
   "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
