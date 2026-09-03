@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const verifyPackagedMetadata = require('./scripts/check-packaged-metadata.cjs');
 
 const NODE_MODULE_PRUNE_DIRS = [
   'test',
@@ -102,6 +103,7 @@ module.exports = {
   asar: true,
   compression: 'maximum',
   npmRebuild: false,
+  afterPack: verifyPackagedMetadata,
   // Electron locale naming differs across platforms, so keep both macOS and Windows/Linux variants.
   electronLanguages: ['en', 'en-US', 'zh_CN', 'zh_TW', 'zh-CN', 'zh-TW'],
   asarUnpack: [
