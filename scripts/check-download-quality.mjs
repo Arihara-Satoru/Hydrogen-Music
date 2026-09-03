@@ -14,7 +14,7 @@ function syntheticModule(identifier, exports) {
 let apiResponse = null
 const baseModule = syntheticModule('mock:base', {
   get: async (url) => {
-    assert.equal(url, '/song/url/new')
+    assert.ok(['/song/url', '/song/url/new'].includes(url))
     return apiResponse
   },
   getById: () => null,
@@ -50,6 +50,11 @@ await songModule.link(specifier => {
 })
 await songModule.evaluate()
 
+apiResponse = { data: { url: ['https://audio.test/downgraded.mp3'], extName: 'mp3', quality: 'flac', bitrate: 128 } }
+let stream = (await songModule.namespace.getMusicUrl({ hash: 'A'.repeat(32) }, 'flac')).data[0]
+assert.equal(stream.level, '128')
+assert.equal(stream.type, 'mp3')
+
 const responseWithQualities = flacUrl => ({
   data: [{
     quality: 'flac',
@@ -74,7 +79,7 @@ const responseWithQualities = flacUrl => ({
 })
 
 apiResponse = responseWithQualities('https://audio.test/lossless.flac')
-let stream = (await songModule.namespace.getMusicUrlNew({ hash: 'A'.repeat(32) }, 'flac')).data[0]
+stream = (await songModule.namespace.getMusicUrlNew({ hash: 'A'.repeat(32) }, 'flac')).data[0]
 assert.equal(stream.url, 'https://audio.test/lossless.flac')
 assert.equal(stream.level, 'flac')
 assert.equal(stream.type, 'flac')
@@ -102,9 +107,15 @@ assert.equal(stream.level, '128')
 assert.equal(stream.type, 'mp3')
 
 let requestedLevels = []
+let resolverMode = 'missing-until-128'
 const resolverSongModule = syntheticModule('mock:resolver-song', {
   getMusicUrl: async (_song, level) => {
     requestedLevels.push(level)
+    if (resolverMode === 'downgraded-flac') {
+      return level === 'flac'
+        ? { data: [{ url: 'https://audio.test/downgraded.mp3', level: '128', type: 'mp3' }] }
+        : { data: [{ url: 'https://audio.test/high-quality.mp3', level, type: 'mp3' }] }
+    }
     return { data: [{ url: level === '128' ? 'https://audio.test/standard.mp3' : null, level, type: level === '128' ? 'mp3' : 'flac' }] }
   },
   getMusicUrlNew: async () => ({ data: [{ url: 'https://audio.test/standard.mp3', level: '128', type: 'mp3' }] }),
@@ -141,5 +152,11 @@ await resolverModule.evaluate()
 const fallbackResult = await resolverModule.namespace.resolveTrackByQualityPreference({}, 'flac')
 assert.equal(fallbackResult.level, '128')
 assert.deepEqual(requestedLevels, ['flac', 'flac', '320', '320', '128'])
+
+resolverMode = 'downgraded-flac'
+requestedLevels = []
+const verifiedResult = await resolverModule.namespace.resolveTrackByQualityPreference({}, 'flac')
+assert.equal(verifiedResult.level, '320')
+assert.deepEqual(requestedLevels, ['flac', 'flac', '320'])
 
 console.log('download quality check passed')

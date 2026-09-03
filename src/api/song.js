@@ -151,6 +151,23 @@ function normalizeStreamQuality(item, fallback = '') {
     return STREAM_QUALITY_ALIASES[quality] || quality || STREAM_QUALITY_BY_LEVEL[Number(item?.level)] || fallback
 }
 
+function inferStreamQuality(body, requestedQuality, type) {
+    const reportedQuality = normalizeStreamQuality(body)
+    const normalizedType = String(type || '').toLowerCase()
+    if (normalizedType === 'flac') {
+        return ['flac', 'high'].includes(reportedQuality)
+            ? reportedQuality
+            : requestedQuality === 'high' ? 'high' : 'flac'
+    }
+    if (normalizedType !== 'mp3') return reportedQuality || requestedQuality
+    if (['128', '320'].includes(reportedQuality)) return reportedQuality
+
+    const rawBitrate = Number(body?.br || body?.bitrate || body?.bitRate)
+    const bitrateKbps = rawBitrate >= 1000 ? rawBitrate / 1000 : rawBitrate
+    if (Number.isFinite(bitrateKbps) && bitrateKbps > 0) return bitrateKbps >= 256 ? '320' : '128'
+    return requestedQuality === '320' ? '320' : '128'
+}
+
 function selectStreamByQuality(body, preferredQuality) {
     const roots = Array.isArray(body) ? body : [body]
     const candidates = roots.flatMap(item => [item, ...(Array.isArray(item?.relate_goods) ? item.relate_goods : [])])
@@ -200,8 +217,8 @@ export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
     const raw = await get('/song/url', buildSongUrlParams(input, quality, requestParams))
     const body = raw?.body || raw?.data || raw || {}
     const url = extractPlayableUrl(body)
-    const type = body?.extName || body?.ext || 'mp3'
-    return { data: [{ url: url || null, level: quality, type, ...extractStreamMeta(body) }] }
+    const type = String(body?.extName || body?.ext || 'mp3').toLowerCase()
+    return { data: [{ url: url || null, level: inferStreamQuality(body, quality, type), type, ...extractStreamMeta(body) }] }
 }
 
 /**

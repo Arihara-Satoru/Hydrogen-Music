@@ -89,6 +89,7 @@ function buildQualityHashMap(response) {
     const qualityHashes = new Map()
 
     for (const item of [firstSong, ...relatedSongs]) {
+        if (Number(item?.level) === 0) continue
         const hash = String(item?.hash || '').trim()
         if (!/^[A-Fa-f0-9]{32}$/.test(hash)) continue
 
@@ -120,6 +121,7 @@ async function getQualityHashes(song) {
  */
 async function requestTrack(song, level) {
     let lastError = null
+    let fallbackTrack = null
 
     // 云盘歌曲优先走酷狗专用接口，拿不到时再回退到普通歌曲地址接口。
     if (song && typeof song === 'object' && song.source === 'cloud') {
@@ -150,7 +152,9 @@ async function requestTrack(song, level) {
     // 先尝试 /song/url（基础接口）
     try {
         const songInfo = await getMusicUrl(song, level)
-        if (songInfo?.data?.[0]?.url) return songInfo.data[0]
+        const trackInfo = songInfo?.data?.[0]
+        if (trackInfo?.url && trackInfo.level === level) return trackInfo
+        if (trackInfo?.url) fallbackTrack = trackInfo
     } catch (error) {
         lastError = error
     }
@@ -160,11 +164,14 @@ async function requestTrack(song, level) {
         const songInfo = await getMusicUrl(song, level, {
             ppage_id: PLAYBACK_PPAGE_ID,
         })
-        if (songInfo?.data?.[0]?.url) return songInfo.data[0]
+        const trackInfo = songInfo?.data?.[0]
+        if (trackInfo?.url && trackInfo.level === level) return trackInfo
+        if (trackInfo?.url) fallbackTrack = trackInfo
     } catch (error) {
         lastError = error
     }
 
+    if (fallbackTrack) return fallbackTrack
     if (lastError) throw lastError
     return null
 }
@@ -194,7 +201,7 @@ export async function resolveTrackByQualityPreference(song, preferredLevel) {
                 qualityHash ? withSongHash(song, qualityHash) : song,
                 level
             )
-            if (trackInfo?.url) return trackInfo
+            if (trackInfo?.url && trackInfo.level === level) return trackInfo
         } catch (error) {
             // 记录最后一次错误，继续尝试更低一档音质。
             lastError = error
