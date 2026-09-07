@@ -415,6 +415,11 @@ import {
   updateFavoritePlaylistTrack,
 } from "../utils/player";
 import { schedulePlaylistCacheInvalidation } from "../utils/cacheInvalidation";
+import {
+  clearExpiredFmRecentCache,
+  FM_RECENT_CACHE_CLEANUP_INTERVAL_MS,
+  getFmRecentCacheKey,
+} from "../utils/fmRecentCache.mjs";
 import { storeToRefs } from "pinia";
 import { getPreferredQuality } from "../utils/quality";
 import { resolveTrackByQualityPreference } from "../utils/musicUrlResolver";
@@ -443,6 +448,7 @@ const fmPoolIds = new Set(); // 当前候选池中的歌曲ID，避免同一池�
 const recentPlayedSet = new Set(); // 近期播放过的歌曲集合（窗口集合）
 const recentPlayedQueue = []; // 维护顺序的队列，配合 recentPlayedSet 形成滑动窗口
 const RECENT_WINDOW = 300; // 近期去重窗口大小，避免短期内重复
+let fmRecentCacheCleanupTimer = null;
 const FM_REFRESH_SOURCE = Object.freeze({
   PERSONAL_FM: "personal_fm",
   FM_MODE_RESCUE: "fm_mode_rescue",
@@ -474,8 +480,7 @@ const awaitingSceneSubmodePick = ref(false);
 
 // 仅持久化“近期去重队列”（按账号隔离）
 function getRecentQueueKey() {
-  const uid = userStore?.user?.userId || "guest";
-  return `hm.fm.recentPlayedQueue:${uid}`;
+  return getFmRecentCacheKey(userStore?.user?.userId);
 }
 
 function safeParseArray(raw) {
@@ -768,6 +773,7 @@ function loadPersistentRecent() {
   // 清空并加载“近期播放队列”（按账号隔离）
   recentPlayedQueue.length = 0;
   recentPlayedSet.clear();
+  clearExpiredRecentCache();
   const recentArr = safeParseArray(localStorage.getItem(getRecentQueueKey()));
   for (const rawId of recentArr) {
     const id = normalizeSongId(rawId);
@@ -775,6 +781,17 @@ function loadPersistentRecent() {
     recentPlayedQueue.push(id);
     recentPlayedSet.add(id);
   }
+}
+
+function clearExpiredRecentCache() {
+  if (!userStore.autoClearFmCacheEvery3Days) return false;
+  return clearExpiredFmRecentCache(localStorage, userStore?.user?.userId);
+}
+
+function startFmRecentCacheCleanupTimer() {
+  fmRecentCacheCleanupTimer = window.setInterval(() => {
+    if (clearExpiredRecentCache()) loadPersistentRecent();
+  }, FM_RECENT_CACHE_CLEANUP_INTERVAL_MS);
 }
 
 function persistRecent() {
@@ -1842,6 +1859,7 @@ onMounted(() => {
   window.addEventListener("fmClearRecent", handleFmClearRecent);
   window.addEventListener("mousedown", handleModePanelClickOutside);
   window.addEventListener("touchstart", handleModePanelClickOutside);
+  startFmRecentCacheCleanupTimer();
 });
 
 onActivated(() => {
@@ -1851,6 +1869,7 @@ onActivated(() => {
   }
   startPanelIntro();
   if (isFmQaPreview()) return;
+  if (clearExpiredRecentCache()) loadPersistentRecent();
   if (getCurrentFmUserId() && lastLoadedUserId.value !== getCurrentFmUserId()) {
     void refreshFM({ silent: true });
   }
@@ -1870,6 +1889,7 @@ onUnmounted(() => {
   window.removeEventListener("fmClearRecent", handleFmClearRecent);
   window.removeEventListener("mousedown", handleModePanelClickOutside);
   window.removeEventListener("touchstart", handleModePanelClickOutside);
+  window.clearInterval(fmRecentCacheCleanupTimer);
   clearCoverReleaseTimer();
   clearPanelIntroSchedule();
   isPanelIntroActive.value = false;
@@ -1894,6 +1914,13 @@ watch(
         silent: router.currentRoute.value?.name !== "personalfm",
       });
     }
+  },
+);
+
+watch(
+  () => userStore.autoClearFmCacheEvery3Days,
+  (enabled) => {
+    if (enabled) clearExpiredRecentCache();
   },
 );
 

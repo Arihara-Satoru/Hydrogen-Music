@@ -25,6 +25,10 @@ import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
 import { applyCustomFontStyle } from "@/utils/setFont";
 import { refreshListenGradeInfo } from "@/utils/listenTimeReporter";
 import {
+  getFmRecentCacheKey,
+  markFmRecentCacheCleaned,
+} from "@/utils/fmRecentCache.mjs";
+import {
   buildFontOptions,
   loadSystemFontOptions,
   resolveSystemFontLabel,
@@ -922,7 +926,10 @@ const CACHE_LOCAL_STORAGE_KEYS = [
   "hydrogen-music-search-history",
   "siren_song_durations",
 ];
-const CACHE_LOCAL_STORAGE_PREFIXES = ["hm.fm.recentPlayedQueue:"];
+const CACHE_LOCAL_STORAGE_PREFIXES = [
+  "hm.fm.recentPlayedQueue:",
+  "hm.fm.recentPlayedQueueCleanup:",
+];
 
 const isCacheLocalStorageKey = (key) =>
   CACHE_LOCAL_STORAGE_KEYS.includes(key) ||
@@ -993,12 +1000,18 @@ const confirmClearAllCacheData = () => {
 
 // 清空当前账号的“私人漫游”近期去重队列
 const getFmRecentKey = () => {
-  const uid = userStore?.user?.userId || "guest";
-  return `hm.fm.recentPlayedQueue:${uid}`;
+  return getFmRecentCacheKey(userStore?.user?.userId);
+};
+const toggleFmCacheAutoClear = () => {
+  userStore.autoClearFmCacheEvery3Days = !userStore.autoClearFmCacheEvery3Days;
+  if (userStore.autoClearFmCacheEvery3Days) {
+    markFmRecentCacheCleaned(localStorage, userStore?.user?.userId);
+  }
 };
 const clearFmRecent = () => {
   try {
     localStorage.removeItem(getFmRecentKey());
+    markFmRecentCacheCleaned(localStorage, userStore?.user?.userId);
     // 通知个人FM组件刷新其内存中的近期队列
     window.dispatchEvent(
       new CustomEvent("fmClearRecent", {
@@ -1743,6 +1756,28 @@ const clearFmRecent = () => {
                   </div>
                   <Transition name="toggle">
                     <div class="toggle-on" v-show="userStore.sirenPage"></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option" v-if="userStore.personalFMPage">
+              <div class="option-name">每 3 天自动清理漫游缓存</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  @click="toggleFmCacheAutoClear"
+                >
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': userStore.autoClearFmCacheEvery3Days }"
+                  >
+                    {{ userStore.autoClearFmCacheEvery3Days ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div
+                      class="toggle-on"
+                      v-show="userStore.autoClearFmCacheEvery3Days"
+                    ></div>
                   </Transition>
                 </div>
               </div>
