@@ -96,7 +96,7 @@
 
             <main
                 class="lyric-stage"
-                :class="{ 'native-drag': nativeDragEnabled && compactMode }"
+                :class="{ 'native-drag': nativeDragEnabled && (compactMode || transparentMode) }"
                 @mousedown="onCompactDragStart"
             >
                 <div class="stage-guides" aria-hidden="true"></div>
@@ -286,6 +286,21 @@
                             <span></span>
                         </span>
                     </label>
+                    <label class="mode-option">
+                        <span class="mode-option__label">
+                            <strong>透明模式</strong>
+                            <small>隐藏面板背景，仅保留悬浮歌词</small>
+                        </span>
+                        <input
+                            v-model="transparentMode"
+                            type="checkbox"
+                            role="switch"
+                            :aria-checked="transparentMode"
+                        />
+                        <span class="mode-switch" aria-hidden="true">
+                            <span></span>
+                        </span>
+                    </label>
                 </fieldset>
 
                 <fieldset class="control-group">
@@ -350,6 +365,7 @@ const seekPreviewTime = ref(null);
 const lyricFontSize = ref(28);
 const selectedLyricType = ref('auto');
 const compactMode = ref(false);
+const transparentMode = ref(false);
 const coverFailed = ref(false);
 const controlDockVisible = ref(false);
 const isClosing = ref(false);
@@ -494,6 +510,7 @@ const rootClasses = computed(() => ({
     'has-cover': Boolean(coverUrl.value),
     'is-empty': !currentSong.value || lyricsArray.value.length === 0,
     'is-compact': compactMode.value,
+    'is-transparent': transparentMode.value,
     'is-closing': isClosing.value,
 }));
 
@@ -755,7 +772,7 @@ const onDragStart = async event => {
 };
 
 const onCompactDragStart = event => {
-    if (compactMode.value) onDragStart(event);
+    if (compactMode.value || transparentMode.value) onDragStart(event);
 };
 
 const onDragMove = event => {
@@ -2221,6 +2238,76 @@ onUnmounted(() => {
     grid-template-columns: 72px minmax(0, 1fr);
     gap: 8px;
     padding-block: 5px;
+}
+
+.endfield-lyric.is-transparent {
+    filter: none;
+}
+
+.endfield-lyric.is-transparent .field-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    background: transparent;
+    border: 0;
+    clip-path: none;
+    animation: none;
+}
+
+.endfield-lyric.is-transparent .field-shell::after,
+.endfield-lyric.is-transparent .stage-guides,
+.endfield-lyric.is-transparent .lyric-stage::before,
+.endfield-lyric.is-transparent .current-line::before,
+.endfield-lyric.is-transparent .line-meter {
+    display: none;
+}
+
+.endfield-lyric.is-transparent .field-rail,
+.endfield-lyric.is-transparent .field-header,
+.endfield-lyric.is-transparent .media-field,
+.endfield-lyric.is-transparent .timeline-dock {
+    display: none;
+}
+
+.endfield-lyric.is-transparent .lyric-stage {
+    grid-column: 1;
+    grid-row: 1;
+    padding: clamp(9px, 2vw, 14px);
+    background: transparent;
+    cursor: move;
+}
+
+.endfield-lyric.is-transparent.is-locked .lyric-stage {
+    cursor: default;
+}
+
+.endfield-lyric.is-transparent .lyric-stack {
+    gap: 7px;
+    -webkit-app-region: no-drag;
+}
+
+.endfield-lyric.is-transparent .current-line {
+    min-height: 0;
+    padding: 8px 12px;
+    background: transparent;
+    clip-path: none;
+}
+
+.endfield-lyric.is-transparent .current-line__header,
+.endfield-lyric.is-transparent .next-line__label {
+    display: none;
+}
+
+.endfield-lyric.is-transparent .current-line__text,
+.endfield-lyric.is-transparent .current-line__text::after,
+.endfield-lyric.is-transparent .next-line p {
+    color: #fff;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 80%);
+}
+
+.endfield-lyric.is-transparent .next-line {
+    display: block;
+    padding: 0 12px;
+    border: 0;
 }
 
 @media (prefers-contrast: more) {
