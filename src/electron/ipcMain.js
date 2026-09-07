@@ -31,7 +31,7 @@ const { getElectronStore } = require("./store");
 const { replaceOtherAudioMonitor } = require("./otherAudioMonitor");
 const CancelToken = axios.CancelToken;
 const { shouldOpenExternally } = require("./externalLinks");
-let cancel = null;
+let activeVideoDownloadCancel = null;
 
 function normalizeDirectoryPath(value) {
   if (typeof value !== "string") return null;
@@ -355,6 +355,22 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   ipcMain.handle("get-other-audio-monitor-state", () =>
     otherAudioMonitor.getState(),
   );
+  ipcMain.removeHandler("performance:process-snapshot");
+  ipcMain.handle("performance:process-snapshot", async () => ({
+    main: await process.getProcessMemoryInfo(),
+    rendererPid: win.webContents.getOSProcessId(),
+    ipcListeners: Object.fromEntries(
+      ipcMain.eventNames().map((channel) => [
+        String(channel),
+        ipcMain.listenerCount(channel),
+      ]),
+    ),
+    processes: app.getAppMetrics().map(({ pid, type, memory }) => ({
+      pid,
+      type,
+      memory,
+    })),
+  }));
   const initialSettings = await settingsStore.get("settings");
   otherAudioMonitor.setEnabled(
     initialSettings?.music?.pauseOnOtherAudio === true,
@@ -908,42 +924,74 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     );
     let returnCode = "success";
     let transcodeProc = null;
+    let transcodeOutputPath = null;
+    let requestCancel = null;
     if (await fileIsExists(videoPath)) {
       request.option.params.timing = JSON.parse(request.option.params.timing);
       request.option.params.path = videoPath;
       saveMusicVideo(request.option.params);
       return returnCode;
     } else {
-      if (cancel != null) cancel();
-      const result = await axios({
-        url: request.url,
-        method: "get",
-        headers: request.option.headers,
-        responseType: "stream",
-        onDownloadProgress: (progressEvent) => {
-          let progress = Math.round(
-            (progressEvent.loaded / progressEvent.total) * 100,
-          );
-          win.webContents.send("download-video-progress", progress);
-          if (returnCode == "cancel") win.setProgressBar(-1);
-          else win.setProgressBar(progress / 100);
-        },
-        cancelToken: new CancelToken(function executor(c) {
-          cancel = c;
-        }),
-      });
+      activeVideoDownloadCancel?.();
+      let result;
+      try {
+        result = await axios({
+          url: request.url,
+          method: "get",
+          headers: request.option.headers,
+          responseType: "stream",
+          onDownloadProgress: (progressEvent) => {
+            let progress = Math.round(
+              (progressEvent.loaded / progressEvent.total) * 100,
+            );
+            win.webContents.send("download-video-progress", progress);
+            if (returnCode == "cancel") win.setProgressBar(-1);
+            else win.setProgressBar(progress / 100);
+          },
+          cancelToken: new CancelToken(function executor(c) {
+            requestCancel = c;
+            activeVideoDownloadCancel = c;
+          }),
+        });
+      } catch (error) {
+        if (activeVideoDownloadCancel === requestCancel) {
+          activeVideoDownloadCancel = null;
+        }
+        throw error;
+      }
       const writer = fs.createWriteStream(videoPath);
       await result.data.pipe(writer);
-      ipcMain.on("cancel-download-music-video", () => {
+      let settleDownload = null;
+      const cancelListener = () => {
+        if (returnCode === "cancel") return;
         returnCode = "cancel";
-        writer.close();
-        writer.once("close", () => {
-          cancel();
+        if (transcodeProc) {
+          try {
+            transcodeProc.kill("SIGKILL");
+          } catch (_) {}
+          try {
+            if (transcodeOutputPath) fs.unlinkSync(transcodeOutputPath);
+          } catch (_) {}
+          try {
+            fs.unlinkSync(videoPath);
+          } catch (_) {}
           win.setProgressBar(-1);
-          fs.unlinkSync(videoPath);
+          settleDownload?.("cancel");
+          return;
+        }
+        requestCancel?.();
+        writer.once("close", () => {
+          win.setProgressBar(-1);
+          try {
+            fs.unlinkSync(videoPath);
+          } catch (_) {}
+          settleDownload?.("cancel");
         });
-      });
+        writer.close();
+      };
+      ipcMain.on("cancel-download-music-video", cancelListener);
       return new Promise((resolve, reject) => {
+        settleDownload = resolve;
         writer.on("finish", async () => {
           if (returnCode == "cancel") {
             win.setProgressBar(-1);
@@ -978,6 +1026,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           if (isHevc && ffmpegPath) {
             try {
               const tmpOut = videoPath.replace(/\.mp4$/i, "_avc.mp4");
+              transcodeOutputPath = tmpOut;
               // 开始转码，视频转 H.264，移除音频(-an)（B站 dash 为纯视频流）
               const args = [
                 "-y",
@@ -998,15 +1047,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
               ];
               transcodeProc = spawn(ffmpegPath, args, { windowsHide: true });
 
-              // 若用户取消，则同时终止转码
-              const cancelListener = () => {
-                try {
-                  transcodeProc && transcodeProc.kill("SIGKILL");
-                } catch (_) {}
-              };
-              ipcMain.once("cancel-download-music-video", cancelListener);
-
               transcodeProc.on("error", (err) => {
+                if (returnCode === "cancel") return;
                 console.warn(
                   "Transcode process failed to start, keeping original file:",
                   err && err.message ? err.message : err,
@@ -1014,13 +1056,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
                 finalizeSave();
               });
               transcodeProc.on("exit", (code) => {
-                // 移除取消监听
-                try {
-                  ipcMain.removeListener(
-                    "cancel-download-music-video",
-                    cancelListener,
-                  );
-                } catch (_) {}
+                if (returnCode === "cancel") return;
                 if (code === 0) {
                   try {
                     fs.unlinkSync(videoPath);
@@ -1061,6 +1097,11 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           } catch (_) {}
           reject("failed");
         });
+      }).finally(() => {
+        ipcMain.removeListener("cancel-download-music-video", cancelListener);
+        if (activeVideoDownloadCancel === requestCancel) {
+          activeVideoDownloadCancel = null;
+        }
       });
     }
   });

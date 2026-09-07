@@ -23,6 +23,7 @@
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",
     "check:logic-races": "node scripts/check-logic-races.mjs",
     "check:background-memory": "node scripts/check-background-memory.mjs",
+    "check:performance": "node scripts/check-performance.mjs",
     "check:loudness-normalization": "node scripts/check-loudness-normalization.mjs",
     "check:lyric-reveal": "node scripts/check-lyric-reveal.mjs",
     "check:purchased-api": "node --experimental-vm-modules scripts/check-purchased-api.mjs",

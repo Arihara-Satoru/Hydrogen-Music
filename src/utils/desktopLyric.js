@@ -18,6 +18,8 @@ let unwatchIsDesktopLyricOpen = null;
 let unwatchSongSnapshot = null;
 let unwatchProgress = null;
 let unwatchCurrentLyricIndex = null;
+let disposeCurrentLyricData = null;
+let disposeDesktopLyricClosed = null;
 
 const playerStore = usePlayerStore(pinia);
 const {
@@ -220,13 +222,13 @@ export const initDesktopLyric = () => {
             playerStore.isDesktopLyricOpen = isVisible;
         });
 
-        window.electronAPI.getCurrentLyricData(() => {
+        disposeCurrentLyricData = window.electronAPI.getCurrentLyricData(() => {
             sendCurrentLyricData({ force: true });
             sendPlayState({ force: true });
             sendLyricProgress({ force: true });
         });
 
-        window.electronAPI.onDesktopLyricClosed(() => {
+        disposeDesktopLyricClosed = window.electronAPI.onDesktopLyricClosed(() => {
             playerStore.isDesktopLyricOpen = false;
         });
     }
@@ -301,6 +303,11 @@ export const destroyDesktopLyric = () => {
     stopDesktopLyricSync();
     clearSongChangeTimer();
     clearProgressTimer();
+
+    disposeCurrentLyricData?.();
+    disposeCurrentLyricData = null;
+    disposeDesktopLyricClosed?.();
+    disposeDesktopLyricClosed = null;
 
     if (unwatchPlaying) {
         unwatchPlaying();

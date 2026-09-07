@@ -34,6 +34,14 @@ const {
 // 否则 userData 路径会使用 package.json 中的 "hydrogenmusic" 而非 "Hydrogen Music"
 // 导致用户找不到正确的数据目录
 app.setName("Hydrogen Music");
+const gpuDisabledForDiagnostics =
+  process.env.HYDROGEN_DISABLE_GPU === "1" ||
+  process.argv.includes("--hydrogen-disable-gpu");
+if (gpuDisabledForDiagnostics) {
+  // ponytail: this is a restart-only diagnostic switch, not a persisted user setting.
+  app.disableHardwareAcceleration();
+  console.warn("[perf] GPU hardware acceleration disabled for A/B diagnostics");
+}
 let myWindow = null;
 let lyricWindow = null;
 let forceQuit = false;

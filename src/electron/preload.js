@@ -133,7 +133,9 @@ function copyTxt(txt) {
   ipcRenderer.send("copy-txt", txt);
 }
 function checkUpdate(callback) {
-  ipcRenderer.on("check-update", (_event, updateInfo) => callback?.(updateInfo));
+  const listener = (_event, updateInfo) => callback?.(updateInfo);
+  ipcRenderer.on("check-update", listener);
+  return () => ipcRenderer.removeListener("check-update", listener);
 }
 function manualUpdateAvailable(callback) {
   const listener = (_event, version, url) => callback?.(version, url);
@@ -228,6 +230,24 @@ function toFileUrl(filePathOrUrl) {
   return encoded.startsWith("/") ? `file://${encoded}` : `file:///${encoded}`;
 }
 
+async function getPerformanceSnapshot() {
+  const [rendererMemory, processSnapshot] = await Promise.all([
+    process.getProcessMemoryInfo(),
+    ipcRenderer.invoke("performance:process-snapshot"),
+  ]);
+  const ipcListeners = Object.fromEntries(
+    ipcRenderer.eventNames().map((channel) => [
+      String(channel),
+      ipcRenderer.listenerCount(channel),
+    ]),
+  );
+
+  return {
+    renderer: { pid: process.pid, memory: rendererMemory, ipcListeners },
+    ...processSnapshot,
+  };
+}
+
 contextBridge.exposeInMainWorld("windowApi", {
   windowMin,
   windowMax,
@@ -314,6 +334,7 @@ contextBridge.exposeInMainWorld("windowApi", {
   updatePlaylistStatus,
   updateDockMenu,
   clearAllCacheData: () => ipcRenderer.invoke("clear-all-cache-data"),
+  getPerformanceSnapshot,
   // 数据重置（修复旧版本数据残留问题）
   resetAllData: () => ipcRenderer.invoke("reset-all-data"),
   onResetLocalStorage: (callback) => {
@@ -342,15 +363,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("seek-desktop-lyric", position),
   controlDesktopLyricPlayback: (action) =>
     ipcRenderer.invoke("control-desktop-lyric-playback", action),
-  getCurrentLyricData: (callback) =>
-    ipcRenderer.on("get-current-lyric-data", callback),
+  getCurrentLyricData: (callback) => {
+    ipcRenderer.on("get-current-lyric-data", callback);
+    return () => ipcRenderer.removeListener("get-current-lyric-data", callback);
+  },
   sendCurrentLyricData: (data) => ipcRenderer.send("current-lyric-data", data),
   isLyricWindowVisible: () => ipcRenderer.invoke("is-lyric-window-visible"),
   resizeWindow: (width, height) =>
     ipcRenderer.invoke("resize-lyric-window", { width, height }),
   notifyLyricWindowClosed: () => ipcRenderer.send("lyric-window-closed"),
-  onDesktopLyricClosed: (callback) =>
-    ipcRenderer.on("desktop-lyric-closed", callback),
+  onDesktopLyricClosed: (callback) => {
+    ipcRenderer.on("desktop-lyric-closed", callback);
+    return () => ipcRenderer.removeListener("desktop-lyric-closed", callback);
+  },
   // 拖拽相关：获取与移动桌面歌词窗口
   getLyricWindowBounds: () => ipcRenderer.invoke("get-lyric-window-bounds"),
   moveLyricWindow: (x, y) => ipcRenderer.send("move-lyric-window", { x, y }),

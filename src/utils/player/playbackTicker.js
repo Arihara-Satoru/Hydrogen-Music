@@ -143,3 +143,11 @@ export function subscribePlaybackTick(callback, options = {}) {
         syncTicker()
     }
 }
+
+export function getPlaybackTickerDiagnostics() {
+    return {
+        active: Boolean(tickerTimer),
+        interval: tickerInterval,
+        subscribers: subscribers.size,
+    }
+}

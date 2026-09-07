@@ -39,6 +39,7 @@ const currentCoverUrl = computed(() => {
     const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url;
     return url ? resolveImageUrl(url) : '';
 });
+let disposeCheckUpdate = null;
 
 watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
     if (customColor) applyCustomTheme(customColor);
@@ -67,9 +68,11 @@ onUnmounted(() => {
     destroyDesktopLyric();
     destroyLyricRuntime();
     destroyListenTimeReporter();
+    disposeCheckUpdate?.();
+    disposeCheckUpdate = null;
 });
 
-windowApi.checkUpdate((updateInfo) => {
+disposeCheckUpdate = windowApi.checkUpdate((updateInfo) => {
     otherStore.toUpdate = true;
     otherStore.updateInfo = typeof updateInfo === 'string'
         ? { version: updateInfo }

@@ -21,6 +21,11 @@ app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
 app.mount('#app')
+if (import.meta.env.DEV) {
+  void import('./utils/performanceDiagnostics').then(({ initPerformanceDiagnostics }) => {
+    initPerformanceDiagnostics()
+  })
+}
 
 // 懒加载初始化逻辑，减小首屏包体
 ;(async () => {

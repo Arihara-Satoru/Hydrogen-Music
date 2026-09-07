@@ -1,5 +1,10 @@
+import { getBoundedCacheValue, setBoundedCacheValue } from '../utils/boundedCache.mjs'
+
 const SIREN_API_BASE = 'https://monster-siren.hypergryph.com/api'
 const DEFAULT_REQUEST_TIMEOUT = 15000
+const ALBUM_DETAIL_CACHE_LIMIT = 64
+const SONG_CACHE_LIMIT = 256
+const LYRIC_CACHE_LIMIT = 256
 
 const albumsCache = {
     value: null,
@@ -58,27 +63,27 @@ export async function getSirenAlbums(force = false) {
 export async function getSirenAlbumDetail(albumCid, options = {}) {
     const cacheKey = String(albumCid || '').trim()
     if (!cacheKey) throw new Error('缺少专辑 ID')
-    if (!options.force && albumDetailCache.has(cacheKey)) return albumDetailCache.get(cacheKey)
+    if (!options.force && albumDetailCache.has(cacheKey)) return getBoundedCacheValue(albumDetailCache, cacheKey)
 
     const data = await requestSirenJson(`/album/${encodeURIComponent(cacheKey)}/detail`)
-    albumDetailCache.set(cacheKey, data)
+    setBoundedCacheValue(albumDetailCache, cacheKey, data, ALBUM_DETAIL_CACHE_LIMIT)
     return data
 }
 
 export async function getSirenSong(songCid, options = {}) {
     const cacheKey = String(songCid || '').trim()
     if (!cacheKey) throw new Error('缺少歌曲 ID')
-    if (!options.force && songCache.has(cacheKey)) return songCache.get(cacheKey)
+    if (!options.force && songCache.has(cacheKey)) return getBoundedCacheValue(songCache, cacheKey)
 
     const data = await requestSirenJson(`/song/${encodeURIComponent(cacheKey)}`)
-    songCache.set(cacheKey, data)
+    setBoundedCacheValue(songCache, cacheKey, data, SONG_CACHE_LIMIT)
     return data
 }
 
 export async function getSirenLyricText(lyricUrl, options = {}) {
     const cacheKey = String(lyricUrl || '').trim()
     if (!cacheKey) return ''
-    if (!options.force && lyricCache.has(cacheKey)) return lyricCache.get(cacheKey)
+    if (!options.force && lyricCache.has(cacheKey)) return getBoundedCacheValue(lyricCache, cacheKey)
 
     const payload = await requestViaMain(cacheKey, {
         timeout: DEFAULT_REQUEST_TIMEOUT,
@@ -89,6 +94,15 @@ export async function getSirenLyricText(lyricUrl, options = {}) {
     })
 
     const lyricText = typeof payload === 'string' ? payload : String(payload || '')
-    lyricCache.set(cacheKey, lyricText)
+    setBoundedCacheValue(lyricCache, cacheKey, lyricText, LYRIC_CACHE_LIMIT)
     return lyricText
+}
+
+export function getSirenCacheSizes() {
+    return {
+        albums: Array.isArray(albumsCache.value) ? albumsCache.value.length : 0,
+        albumDetails: albumDetailCache.size,
+        songs: songCache.size,
+        lyrics: lyricCache.size,
+    }
 }
