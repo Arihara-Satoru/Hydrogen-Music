@@ -383,6 +383,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("move-lyric-window-by", { dx, dy }),
   setLyricWindowResizable: (resizable) =>
     ipcRenderer.send("set-lyric-window-resizable", { resizable }),
+  setLyricWindowIgnoreMouseEvents: (ignore) =>
+    ipcRenderer.send("set-lyric-window-ignore-mouse-events", { ignore }),
   moveLyricWindowTo: (x, y, width, height) =>
     ipcRenderer.send("move-lyric-window-to", { x, y, width, height }),
   getLyricWindowMinMax: () => ipcRenderer.invoke("get-lyric-window-min-max"),

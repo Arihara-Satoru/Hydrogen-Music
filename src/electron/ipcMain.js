@@ -1502,6 +1502,28 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     }
   });
 
+  ipcMain.on(
+    "set-lyric-window-ignore-mouse-events",
+    (event, { ignore } = {}) => {
+      const lyricWindow = getLyricWindow && getLyricWindow();
+      if (
+        !lyricWindow ||
+        lyricWindow.isDestroyed() ||
+        event.sender !== lyricWindow.webContents
+      ) {
+        return;
+      }
+
+      try {
+        lyricWindow.setIgnoreMouseEvents(Boolean(ignore), {
+          forward: Boolean(ignore),
+        });
+      } catch (_) {
+        // Ignore unsupported window-manager behavior.
+      }
+    },
+  );
+
   // 处理桌面歌词窗口关闭通知
   ipcMain.on("lyric-window-closed", () => {
     // 通知主窗口桌面歌词已关闭

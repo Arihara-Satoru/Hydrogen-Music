@@ -18,6 +18,7 @@
     "check:comment-panel": "node scripts/check-comment-panel.mjs",
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
+    "check:desktop-lyric-window": "node scripts/check-desktop-lyric-window.mjs",
     "check:external-links": "node scripts/check-external-links.cjs",
     "check:foreground-memory": "node scripts/check-foreground-memory.mjs",
     "check:fm-cache-cleanup": "node scripts/check-fm-cache-cleanup.mjs",

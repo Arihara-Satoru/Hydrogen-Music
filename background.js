@@ -748,7 +748,7 @@ const createLyricWindow = () => {
     // 保持可交互，但避免全屏干扰
     focusable: true,
     show: false,
-    backgroundColor: "transparent",
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: path.resolve(__dirname, "./src/electron/preload.js"),
       webSecurity: false,

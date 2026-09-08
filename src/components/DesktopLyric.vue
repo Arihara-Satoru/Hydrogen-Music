@@ -280,7 +280,7 @@
                             type="checkbox"
                             role="switch"
                             :aria-checked="compactMode"
-                            @change="handleCompactModeChange"
+                            @change="handleViewModeChange('compact')"
                         />
                         <span class="mode-switch" aria-hidden="true">
                             <span></span>
@@ -296,6 +296,7 @@
                             type="checkbox"
                             role="switch"
                             :aria-checked="transparentMode"
+                            @change="handleViewModeChange('transparent')"
                         />
                         <span class="mode-switch" aria-hidden="true">
                             <span></span>
@@ -337,7 +338,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { getSongDisplayName } from '../utils/songName';
 import { calculateLyricLineProgress, clampPercentage } from '../utils/desktopLyricTiming.mjs';
 
@@ -350,8 +351,43 @@ const LYRIC_TYPE_OPTIONS = Object.freeze([
 
 const WINDOW_LIMITS = Object.freeze({
     expanded: { minWidth: 520, minHeight: 280, maxWidth: 1200, maxHeight: 640 },
-    compact: { minWidth: 360, minHeight: 180, targetWidth: 500, targetHeight: 220 },
+    compact: { targetWidth: 500, targetHeight: 220 },
+    free: { minWidth: 0, minHeight: 0, maxWidth: 0, maxHeight: 0 },
 });
+
+const DESKTOP_LYRIC_CONFIG_KEY = 'hydrogen:desktop-lyric-config:v1';
+
+const normalizeSavedBounds = value => {
+    const bounds = ['x', 'y', 'width', 'height'].reduce((result, key) => {
+        result[key] = Number(value?.[key]);
+        return result;
+    }, {});
+    return Object.values(bounds).every(Number.isFinite) && bounds.width > 0 && bounds.height > 0
+        ? bounds
+        : null;
+};
+
+const loadDesktopLyricConfig = () => {
+    try {
+        const value = JSON.parse(localStorage.getItem(DESKTOP_LYRIC_CONFIG_KEY) || '{}');
+        const lyricType = LYRIC_TYPE_OPTIONS.some(option => option.value === value.selectedLyricType)
+            ? value.selectedLyricType
+            : 'auto';
+        const fontSize = Number(value.lyricFontSize);
+        return {
+            locked: value.locked === true,
+            lyricFontSize: Number.isFinite(fontSize) ? Math.max(18, Math.min(52, fontSize)) : 28,
+            selectedLyricType: lyricType,
+            compactMode: value.compactMode === true,
+            transparentMode: value.transparentMode === true,
+            bounds: normalizeSavedBounds(value.bounds),
+        };
+    } catch (_) {
+        return {};
+    }
+};
+
+const savedConfig = loadDesktopLyricConfig();
 
 const currentSong = ref(null);
 const lyricsArray = ref([]);
@@ -360,12 +396,12 @@ const trackProgress = ref(0);
 const currentTime = ref(0);
 const duration = ref(0);
 const playing = ref(false);
-const locked = ref(false);
+const locked = ref(savedConfig.locked ?? false);
 const seekPreviewTime = ref(null);
-const lyricFontSize = ref(28);
-const selectedLyricType = ref('auto');
-const compactMode = ref(false);
-const transparentMode = ref(false);
+const lyricFontSize = ref(savedConfig.lyricFontSize ?? 28);
+const selectedLyricType = ref(savedConfig.selectedLyricType ?? 'auto');
+const compactMode = ref(savedConfig.compactMode ?? false);
+const transparentMode = ref(savedConfig.transparentMode ?? false);
 const coverFailed = ref(false);
 const controlDockVisible = ref(false);
 const isClosing = ref(false);
@@ -389,6 +425,33 @@ const originalMinMax = ref(null);
 let removeLyricListener = null;
 let closingTimer = null;
 let expandedWindowSize = null;
+let mouseEventsIgnored = false;
+let savedWindowBounds = savedConfig.bounds || null;
+let boundsSaveTimer = null;
+
+const persistDesktopLyricConfig = bounds => {
+    const normalizedBounds = normalizeSavedBounds(bounds);
+    if (normalizedBounds) savedWindowBounds = normalizedBounds;
+    try {
+        localStorage.setItem(
+            DESKTOP_LYRIC_CONFIG_KEY,
+            JSON.stringify({
+                locked: locked.value,
+                lyricFontSize: lyricFontSize.value,
+                selectedLyricType: selectedLyricType.value,
+                compactMode: compactMode.value,
+                transparentMode: transparentMode.value,
+                bounds: savedWindowBounds,
+            }),
+        );
+    } catch (_) {}
+};
+
+watch(
+    [locked, lyricFontSize, selectedLyricType, compactMode, transparentMode],
+    () => persistDesktopLyricConfig(),
+    { flush: 'sync' },
+);
 
 const qaEnabled =
     import.meta.env.DEV &&
@@ -607,6 +670,7 @@ const openControlDock = async event => {
 
 const hideControlDock = (restoreFocus = false) => {
     controlDockVisible.value = false;
+    nextTick(syncLockedMousePassthrough);
     if (restoreFocus) nextTick(() => settingsButtonRef.value?.focus());
 };
 
@@ -618,8 +682,28 @@ const toggleControlDock = () => {
     openControlDock();
 };
 
-const handleCompactModeChange = async () => {
+const setMouseEventsIgnored = ignored => {
+    if (mouseEventsIgnored === ignored) return;
+    mouseEventsIgnored = ignored;
+    window.electronAPI?.setLyricWindowIgnoreMouseEvents?.(ignored);
+};
+
+const isLockedInteractiveTarget = target =>
+    target instanceof Element && Boolean(target.closest('.current-line__text, .next-line p, .control-dock'));
+
+const syncLockedMousePassthrough = target => {
+    setMouseEventsIgnored(transparentMode.value && locked.value && !isLockedInteractiveTarget(target));
+};
+
+const handleWindowMouseMove = event => {
+    if (!transparentMode.value || !locked.value) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    syncLockedMousePassthrough(target);
+};
+
+const handleViewModeChange = async changedMode => {
     hideControlDock(false);
+    syncLockedMousePassthrough(document.querySelector(':hover'));
 
     const getBounds = window.electronAPI?.getLyricWindowBounds;
     const setLimits = window.electronAPI?.setLyricWindowMinMax;
@@ -630,25 +714,23 @@ const handleCompactModeChange = async () => {
 
     try {
         const bounds = await getBounds();
-        if (compactMode.value) {
-            if (bounds) expandedWindowSize = { width: bounds.width, height: bounds.height };
+        if (compactMode.value || transparentMode.value) {
+            if (!expandedWindowSize && bounds) {
+                expandedWindowSize = { width: bounds.width, height: bounds.height };
+            }
             await setLimits(
-                WINDOW_LIMITS.compact.minWidth,
-                WINDOW_LIMITS.compact.minHeight,
-                WINDOW_LIMITS.expanded.maxWidth,
-                WINDOW_LIMITS.expanded.maxHeight,
+                WINDOW_LIMITS.free.minWidth,
+                WINDOW_LIMITS.free.minHeight,
+                WINDOW_LIMITS.free.maxWidth,
+                WINDOW_LIMITS.free.maxHeight,
             );
-            await nextTick();
-            await resizeWindow(
-                Math.max(
-                    WINDOW_LIMITS.compact.minWidth,
+            if (changedMode === 'compact' && compactMode.value) {
+                await nextTick();
+                await resizeWindow(
                     Math.min(WINDOW_LIMITS.compact.targetWidth, bounds?.width || WINDOW_LIMITS.compact.targetWidth),
-                ),
-                Math.max(
-                    WINDOW_LIMITS.compact.minHeight,
                     Math.min(WINDOW_LIMITS.compact.targetHeight, bounds?.height || WINDOW_LIMITS.compact.targetHeight),
-                ),
-            );
+                );
+            }
             return;
         }
 
@@ -713,6 +795,58 @@ const controlPlayback = action => {
     window.electronAPI?.controlDesktopLyricPlayback?.(action)?.catch?.(() => {});
 };
 
+const saveCurrentWindowBounds = async () => {
+    try {
+        persistDesktopLyricConfig(await window.electronAPI?.getLyricWindowBounds?.());
+    } catch (_) {
+        persistDesktopLyricConfig();
+    }
+};
+
+const scheduleWindowBoundsSave = () => {
+    if (boundsSaveTimer) window.clearTimeout(boundsSaveTimer);
+    boundsSaveTimer = window.setTimeout(saveCurrentWindowBounds, 150);
+};
+
+const persistCurrentBrowserBounds = () => {
+    persistDesktopLyricConfig({
+        x: window.screenX,
+        y: window.screenY,
+        width: window.outerWidth,
+        height: window.outerHeight,
+    });
+};
+
+const restoreDesktopLyricConfig = async () => {
+    window.electronAPI?.setLyricWindowMovable?.(!locked.value);
+    syncLockedMousePassthrough(null);
+
+    const setLimits = window.electronAPI?.setLyricWindowMinMax;
+    const resizeWindow = window.electronAPI?.resizeWindow;
+    if (typeof setLimits !== 'function' || typeof resizeWindow !== 'function') return;
+
+    const limits = compactMode.value || transparentMode.value ? WINDOW_LIMITS.free : WINDOW_LIMITS.expanded;
+    await setLimits(limits.minWidth, limits.minHeight, limits.maxWidth, limits.maxHeight);
+
+    const fallbackBounds = compactMode.value
+        ? { width: WINDOW_LIMITS.compact.targetWidth, height: WINDOW_LIMITS.compact.targetHeight }
+        : null;
+    const bounds = savedWindowBounds || fallbackBounds;
+    if (!bounds) return;
+
+    const freelyResizable = compactMode.value || transparentMode.value;
+    const width = freelyResizable
+        ? Math.max(1, Math.round(bounds.width))
+        : Math.max(limits.minWidth, Math.min(limits.maxWidth, Math.round(bounds.width)));
+    const height = freelyResizable
+        ? Math.max(1, Math.round(bounds.height))
+        : Math.max(limits.minHeight, Math.min(limits.maxHeight, Math.round(bounds.height)));
+    await resizeWindow(width, height);
+    if (Number.isFinite(bounds.x) && Number.isFinite(bounds.y)) {
+        window.electronAPI?.moveLyricWindow?.(Math.round(bounds.x), Math.round(bounds.y));
+    }
+};
+
 const finishDrag = () => {
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', finishDrag);
@@ -728,6 +862,7 @@ const finishDrag = () => {
             ?.catch?.(() => {});
     }
     window.electronAPI?.setLyricWindowResizable?.(true);
+    saveCurrentWindowBounds();
 };
 
 const onDragStart = async event => {
@@ -795,14 +930,15 @@ const onDragMove = event => {
     );
 };
 
-const toggleLock = () => {
+const toggleLock = event => {
     if (isDragging.value) finishDrag();
     seekPreviewTime.value = null;
     locked.value = !locked.value;
+    syncLockedMousePassthrough(event?.target);
     window.electronAPI?.setLyricWindowMovable?.(!locked.value);
 };
 
-const closeLyric = () => {
+const closeLyric = async () => {
     if (qaEnabled) {
         hideControlDock(false);
         return;
@@ -810,6 +946,7 @@ const closeLyric = () => {
     if (isClosing.value) return;
 
     hideControlDock(false);
+    await saveCurrentWindowBounds();
     isClosing.value = true;
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     closingTimer = window.setTimeout(() => {
@@ -828,14 +965,24 @@ onMounted(() => {
     }
 
     document.addEventListener('pointerdown', handleDocumentPointerDown);
+    window.addEventListener('beforeunload', persistCurrentBrowserBounds);
+    window.addEventListener('resize', scheduleWindowBoundsSave);
+    window.addEventListener('mousemove', handleWindowMouseMove);
     window.addEventListener('keydown', handleGlobalKeydown);
+    restoreDesktopLyricConfig().catch(() => {});
 });
 
 onUnmounted(() => {
+    persistCurrentBrowserBounds();
+    setMouseEventsIgnored(false);
     finishDrag();
     removeLyricListener?.();
     document.removeEventListener('pointerdown', handleDocumentPointerDown);
+    window.removeEventListener('beforeunload', persistCurrentBrowserBounds);
+    window.removeEventListener('resize', scheduleWindowBoundsSave);
+    window.removeEventListener('mousemove', handleWindowMouseMove);
     window.removeEventListener('keydown', handleGlobalKeydown);
+    if (boundsSaveTimer) window.clearTimeout(boundsSaveTimer);
     if (closingTimer) window.clearTimeout(closingTimer);
 });
 </script>
@@ -2251,6 +2398,11 @@ onUnmounted(() => {
     border: 0;
     clip-path: none;
     animation: none;
+    transition: background-color 160ms ease;
+}
+
+.endfield-lyric.is-transparent:not(.is-locked):hover .field-shell {
+    background: color-mix(in srgb, var(--ef-surface) 22%, transparent);
 }
 
 .endfield-lyric.is-transparent .field-shell::after,
@@ -2302,6 +2454,12 @@ onUnmounted(() => {
 .endfield-lyric.is-transparent .next-line p {
     color: #fff;
     text-shadow: 0 2px 8px rgb(0 0 0 / 80%);
+}
+
+.endfield-lyric.is-transparent .current-line__text,
+.endfield-lyric.is-transparent .next-line p {
+    width: fit-content;
+    max-width: 100%;
 }
 
 .endfield-lyric.is-transparent .next-line {
