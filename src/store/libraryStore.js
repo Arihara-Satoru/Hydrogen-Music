@@ -96,6 +96,7 @@ const sortCreatedPlaylistsBySort = playlist => {
 export const useLibraryStore = defineStore('libraryStore', {
     state: () => {
         return {
+            playlistCubeBusy: false,
             listType1: 0,
             listType2: 0,
             artistPageType: 0,

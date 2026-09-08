@@ -1,5 +1,5 @@
 <script setup>
-  import { computed, onActivated, ref } from 'vue'
+  import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
   import { onBeforeRouteLeave, useRouter } from 'vue-router'
   import { useLibraryStore } from '../store/libraryStore'
   import { usePlayerStore } from '../store/playerStore';
@@ -22,6 +22,73 @@
     return normalized == 'playlist' || normalized == 'album' || normalized == 'artist'
   }
   
+  const listScroll = ref(null)
+  const cubeViewport = ref(null)
+  let cubeAnimation = null
+  let cubeRun = 0
+
+  function finishCube() {
+    cubeRun++
+    cubeAnimation?.cancel()
+    cubeAnimation = null
+    cubeViewport.value?.replaceChildren()
+    libraryStore.playlistCubeBusy = false
+  }
+
+  // ponytail: temporary DOM snapshots reuse the existing row markup and handlers.
+  // Only the visible viewport is painted; very large DOM lists should use virtualization.
+  function snapshotFace(angle, depth) {
+    const face = document.createElement('div')
+    face.className = 'playlist-cube-face'
+    face.style.transform = `rotateY(${angle}deg) translateZ(${depth}px)`
+    const content = listScroll.value.cloneNode(true)
+    content.removeAttribute('id')
+    content.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'))
+    content.style.cssText = 'height:100%;overflow:hidden;scrollbar-gutter:auto;'
+    face.append(content)
+    return { face, content, scroll: listScroll.value.scrollTop }
+  }
+
+  watch([listType1, listType2], async ([section, tab], [previousSection, previousTab]) => {
+    if (section !== 0 || previousSection !== 0 || tab > 1 || previousTab > 1) {
+      finishCube()
+      return
+    }
+    if (tab === previousTab || !listScroll.value || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    finishCube()
+    const run = cubeRun
+    const width = listScroll.value.clientWidth
+    if (!width || !listScroll.value.clientHeight) return
+    libraryStore.playlistCubeBusy = true
+    const direction = tab > previousTab ? 1 : -1
+    const depth = width / 2
+    const outgoing = snapshotFace(0, depth)
+    try {
+      await nextTick()
+      if (run !== cubeRun) return
+      listScroll.value.scrollTop = 0
+      const incoming = snapshotFace(direction * 90, depth)
+      const cube = document.createElement('div')
+      cube.className = 'playlist-cube'
+      cube.style.width = `${width}px`
+      cube.append(outgoing.face, incoming.face)
+      cubeViewport.value.append(cube)
+      outgoing.content.scrollTop = outgoing.scroll
+      incoming.content.scrollTop = 0
+      cubeAnimation = cube.animate([
+        { transform: `translateZ(${-depth}px) rotateY(0deg)` },
+        { transform: `translateZ(${-depth}px) rotateY(${-direction * 90}deg)` },
+      ], { duration: 500, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' })
+      await cubeAnimation.finished
+    } catch (error) {
+      if (error.name !== 'AbortError') console.error('歌单切换动画失败:', error)
+    } finally {
+      if (run === cubeRun) finishCube()
+    }
+  }, { flush: 'pre' })
+  onDeactivated(finishCube)
+  onBeforeUnmount(finishCube)
+
   const scrollTop = ref()
   const currentSelected = ref(null)
   const router = useRouter()
@@ -157,7 +224,8 @@
 </script>
 
 <template>
-  <div id="libraryListScroll" class="library-list">
+  <div class="playlist-list-frame" :class="{ 'cube-active': libraryStore.playlistCubeBusy }">
+  <div ref="listScroll" id="libraryListScroll" class="library-list" :inert="libraryStore.playlistCubeBusy">
     <div v-if="listType1 == 0 && listType2 == 0" class="create-playlist-entry" @click="openCreatePlaylistDialog()">
       <div class="create-icon">+</div>
       <span class="create-name">创建歌单</span>
@@ -205,10 +273,45 @@
     <div v-if="hasEmptyLibraryList" class="library-empty">{{ emptyLibraryText }}</div>
     <div v-if="isPurchasedList && purchaseLoadError && libraryList?.length" class="library-status library-warning">部分已购内容加载失败</div>
   </div>
+  <div ref="cubeViewport" class="playlist-cube-viewport" aria-hidden="true" inert></div>
+  </div>
 </template>
 
 <style scoped lang="scss">
+  .playlist-list-frame {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .playlist-cube-viewport {
+    position: absolute;
+    inset: 0;
+    perspective: 850px;
+    perspective-origin: 50% 50%;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .cube-active {
+    > .library-list > * { visibility: hidden; }
+    .playlist-cube-viewport { visibility: visible; }
+  }
+  :deep(.playlist-cube) {
+    position: absolute;
+    height: 100%;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+  :deep(.playlist-cube-face) {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    overflow: hidden;
+  }
   .library-list{
+    height: 100%;
+    overflow: auto;
+    scrollbar-gutter: stable;
+    > * { flex-shrink: 0; }
     display: flex;
     flex-direction: column;
     .create-playlist-entry{

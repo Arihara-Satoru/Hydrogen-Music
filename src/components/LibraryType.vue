@@ -312,6 +312,7 @@
   }
   
   function changeTracker(num) {
+    if (libraryStore.playlistCubeBusy) return
     listType1.value = num
     if(num == 0) {
         option.value = num
@@ -325,8 +326,15 @@
   }
 
   function changeType(num) {
+    if (libraryStore.playlistCubeBusy) return
     if (option.value == 0) {
+        if (typeOne.value == num) return
+        const isCubeSwitch = typeOne.value < 2 && num < 2
         typeOne.value = num
+        if (isCubeSwitch) {
+          listType2.value = num
+          changeLibraryList(num)
+        }
     } else if (option.value == 1) {
         typeTwo.value = num
     } else if (option.value == 2) {
@@ -393,8 +401,8 @@
         </div>
         <div class="type-two">
             <div class="type-option">
-                <span v-show="option == 0" class="option" :class="{'option-selected': typeOne == 0}" @click="changeType(0)">我创建的</span>
-                <span v-show="option == 0" class="option" :class="{'option-selected': typeOne == 1}" @click="changeType(1)">我收藏的</span>
+                <span v-show="option == 0" class="option" :class="{'option-selected': typeOne == 0}" role="button" tabindex="0" :aria-pressed="typeOne == 0" :aria-disabled="libraryStore.playlistCubeBusy" @keydown.enter.prevent="changeType(0)" @keydown.space.prevent="changeType(0)" @click="changeType(0)">我创建的</span>
+                <span v-show="option == 0" class="option" :class="{'option-selected': typeOne == 1}" role="button" tabindex="0" :aria-pressed="typeOne == 1" :aria-disabled="libraryStore.playlistCubeBusy" @keydown.enter.prevent="changeType(1)" @keydown.space.prevent="changeType(1)" @click="changeType(1)">我收藏的</span>
                 <span
                   v-show="option == 0"
                   class="option"

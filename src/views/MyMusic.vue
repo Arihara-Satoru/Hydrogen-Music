@@ -31,7 +31,7 @@
   <div class="my-music" :class="{'my-music-full': !playerStore.songList}">
     <div class="music-library" v-if="user">
       <LibraryType class="library-type"></LibraryType>
-      <LibraryList v-show="listType1 != 2 && listType1 != 3" class="library-list"></LibraryList>
+      <LibraryList v-show="listType1 != 2 && listType1 != 3" class="library-list-frame"></LibraryList>
       <DownloadList v-show="listType1 == 2 && listType2 == 0" class="download-list"></DownloadList>
       <LocalMusicList :folderlist="downloadedMusicFolder" type="downloaded" v-if="downloadedMusicFolder" v-show="listType1 == 2 && listType2 == 1" class="local-list"></LocalMusicList>
       <LocalMusicList :folderlist="localMusicFolder" :classifylist="localMusicClassify" type="local" v-if="localMusicFolder" v-show="listType1 == 3" class="local-list"></LocalMusicList>
@@ -78,8 +78,8 @@
       .library-type{
         height: 50Px;
       }
-      .library-list{
-        height: calc(100% - 50Px);
+      .library-list-frame { height: calc(100% - 50Px); }
+      :deep(.library-list){
         overflow: auto;
         &::-webkit-scrollbar {
           width: 5px;
