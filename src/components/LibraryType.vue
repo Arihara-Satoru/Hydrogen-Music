@@ -329,12 +329,10 @@
     if (libraryStore.playlistCubeBusy) return
     if (option.value == 0) {
         if (typeOne.value == num) return
-        const isCubeSwitch = typeOne.value < 2 && num < 2
         typeOne.value = num
-        if (isCubeSwitch) {
-          listType2.value = num
-          changeLibraryList(num)
-        }
+        listType2.value = num
+        if (num < 2) changeLibraryList(num)
+        else libraryList.value = null
     } else if (option.value == 1) {
         typeTwo.value = num
     } else if (option.value == 2) {
@@ -407,6 +405,8 @@
                   v-show="option == 0"
                   class="option"
                   :class="{'option-selected': typeOne == 2}"
+                  :aria-pressed="typeOne == 2"
+                  :aria-disabled="libraryStore.playlistCubeBusy"
                   role="button"
                   tabindex="0"
                   @click="changeType(2)"

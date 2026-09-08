@@ -50,7 +50,7 @@
   }
 
   watch([listType1, listType2], async ([section, tab], [previousSection, previousTab]) => {
-    if (section !== 0 || previousSection !== 0 || tab > 1 || previousTab > 1) {
+    if (section !== 0 || previousSection !== 0 || tab > 2 || previousTab > 2) {
       finishCube()
       return
     }

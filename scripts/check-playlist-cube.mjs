@@ -69,19 +69,35 @@ lifecycle[0]()
 await tick()
 assert.equal(context.libraryStore.playlistCubeBusy, false)
 assert.equal(context.elements.cubeViewport.value.children.length, 0)
+// All six directed switches, including jumping directly across the middle tab.
+for (const tab of [2, 1, 2, 0, 1, 0]) {
+  const previous = context.listType2.value
+  context.listType2.value = tab
+  await tick()
+  const animation = animations.at(-1)
+  assert.equal(context.libraryStore.playlistCubeBusy, true)
+  assert.equal(animation.frames[1].transform, `translateZ(-130px) rotateY(${tab > previous ? -90 : 90}deg)`)
+  animation.complete()
+  await tick()
+  assert.equal(context.elements.cubeViewport.value.children.length, 0)
+  assert.equal(context.libraryStore.playlistCubeBusy, false)
+}
+const animationCount = animations.length
+context.listType1.value = 1
 context.listType2.value = 2
 await tick()
-assert.equal(animations.length, 2, 'purchased tab must not rotate')
+assert.equal(animations.length, animationCount, 'top-level collection navigation must not rotate')
+context.listType1.value = 0
 context.listType2.value = 0
 await tick()
 context.window.matchMedia = () => ({ matches: true })
 context.listType2.value = 1
 await tick()
-assert.equal(animations.length, 2, 'reduced motion must bypass animation')
+assert.equal(animations.length, animationCount, 'reduced motion must bypass animation')
 
 let refreshes = 0
 Object.assign(context, { option: ref(0), typeOne: ref(0), typeTwo: ref(0), typeThree: ref(0), typeFour: ref(0),
-  changeLibraryList: () => {}, refreshCurrentSection: () => { refreshes++ } })
+  libraryList: ref([]), changeLibraryList: () => {}, refreshCurrentSection: () => { refreshes++ } })
 vm.runInContext(typeSource.slice(typeSource.indexOf('  function changeType('), typeSource.indexOf('  const refreshLocal')), context)
 context.changeType(0)
 assert.equal(refreshes, 0, 'selected tab must not refresh')
@@ -92,4 +108,14 @@ context.libraryStore.playlistCubeBusy = false
 context.changeType(1)
 assert.equal(context.typeOne.value, 1)
 assert.equal(refreshes, 1)
+context.changeType(2)
+assert.equal(context.typeOne.value, 2)
+assert.equal(context.listType2.value, 2, 'purchased selection must update before the request completes')
+assert.equal(context.libraryList.value, null, 'purchased face starts with its loading state, not old playlists')
+assert.equal(refreshes, 2)
+context.changeType(2)
+assert.equal(refreshes, 2, 'selected purchased tab must not refresh')
+context.libraryStore.playlistCubeBusy = true
+context.changeType(0)
+assert.equal(context.typeOne.value, 2, 'busy purchased tab must block repeated switches')
 console.log('playlist cube checks passed: direction, geometry, scroll, cleanup, cancellation, reduced motion and click guards')
