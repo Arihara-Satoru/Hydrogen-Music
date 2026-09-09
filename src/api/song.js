@@ -125,9 +125,6 @@ function extractStreamMeta(body = {}, fallback = {}) {
         br: body?.br || body?.bitrate || body?.bitRate || fallback?.br || fallback?.bitrate || fallback?.bitRate,
         bitsPerSample: body?.bitsPerSample || body?.bitDepth || body?.bit_depth || body?.bits_per_sample || fallback?.bitsPerSample || fallback?.bitDepth || fallback?.bit_depth || fallback?.bits_per_sample,
         size: body?.size || body?.fileSize || body?.filesize || fallback?.size || fallback?.fileSize || fallback?.filesize,
-        volume: body?.volume ?? fallback?.volume,
-        volumeGain: body?.volume_gain ?? body?.volumeGain ?? fallback?.volume_gain ?? fallback?.volumeGain,
-        volumePeak: body?.volume_peak ?? body?.volumePeak ?? fallback?.volume_peak ?? fallback?.volumePeak,
     }
 }
 
