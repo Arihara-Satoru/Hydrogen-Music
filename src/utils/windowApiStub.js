@@ -155,6 +155,7 @@
     // ── 杂项 ──
     lyricControl: noop,
     getRequestData: noopResolve(null),
+    getBiliQrLoginCookies: noopResolve([]),
     getBiliVideo: noopResolve(null),
 
     // ── 数据重置 ──

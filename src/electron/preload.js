@@ -304,6 +304,8 @@ contextBridge.exposeInMainWorld("windowApi", {
   saveLastPlaylist,
   saveLastPlaybackProgress,
   getRequestData: (request) => ipcRenderer.invoke("get-request-data", request),
+  getBiliQrLoginCookies: (loginUrl) =>
+    ipcRenderer.invoke("get-bili-qr-login-cookies", loginUrl),
   getBiliVideo: (request) => ipcRenderer.invoke("get-bili-video", request),
   downloadVideoProgress,
   cancelDownloadMusicVideo,

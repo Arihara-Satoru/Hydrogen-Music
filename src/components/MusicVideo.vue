@@ -83,7 +83,7 @@ const applyBiliCookieToHeaders = () => {
     headers.cookie = readStoredBiliCookie() || '';
 };
 
-const storeBiliCookiesFromLoginUrl = urlStr => {
+const storeBiliCookiesFromLoginUrl = async urlStr => {
     if (!urlStr) return null;
     const getParam = key => {
         try {
@@ -99,10 +99,22 @@ const storeBiliCookiesFromLoginUrl = urlStr => {
         }
     };
 
-    const sessdata = getParam('SESSDATA');
+    const getCookie = (cookies, key) => {
+        const prefix = `${key}=`;
+        const cookie = cookies.find(item => typeof item === 'string' && item.startsWith(prefix));
+        return cookie ? cookie.slice(prefix.length).split(';', 1)[0] : null;
+    };
+
+    let sessdata = getParam('SESSDATA');
+    let biliJct = getParam('bili_jct');
+    let dedeUserId = getParam('DedeUserID');
+    if (!sessdata) {
+        const cookies = await windowApi.getBiliQrLoginCookies(urlStr);
+        sessdata = getCookie(cookies, 'SESSDATA');
+        biliJct = getCookie(cookies, 'bili_jct');
+        dedeUserId = getCookie(cookies, 'DedeUserID');
+    }
     if (!sessdata) return null;
-    const biliJct = getParam('bili_jct');
-    const dedeUserId = getParam('DedeUserID');
 
     let cookieStr = `SESSDATA=${sessdata};`;
     if (biliJct) cookieStr += ` bili_jct=${biliJct};`;
@@ -246,7 +258,7 @@ const loginHandle = async data => {
             return;
         }
 
-        const cookieStr = storeBiliCookiesFromLoginUrl(data.url);
+        const cookieStr = await storeBiliCookiesFromLoginUrl(data.url);
         if (!cookieStr) {
             noticeOpen('登录失败：无法获取SESSDATA', 2);
             loginOrLogout();

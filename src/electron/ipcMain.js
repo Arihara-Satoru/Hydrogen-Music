@@ -882,6 +882,45 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     const result = await axios.get(request.url, request.option);
     return result.data;
   });
+  ipcMain.handle("get-bili-qr-login-cookies", async (e, loginUrl) => {
+    let currentUrl;
+    try {
+      currentUrl = new URL(loginUrl);
+    } catch (_) {
+      throw new Error("哔哩哔哩登录回调地址无效");
+    }
+
+    const isBiliLoginUrl = (url) =>
+      url.protocol === "https:" &&
+      (url.hostname.endsWith(".bilibili.com") || url.hostname.endsWith(".biligame.com"));
+    if (!isBiliLoginUrl(currentUrl)) {
+      throw new Error("哔哩哔哩登录回调地址不受信任");
+    }
+
+    const cookies = [];
+    for (let redirects = 0; redirects < 5; redirects += 1) {
+      const response = await axios.get(currentUrl.toString(), {
+        headers: {
+          Referer: "https://www.bilibili.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        maxRedirects: 0,
+        validateStatus: (status) => status >= 200 && status < 400,
+      });
+      cookies.push(...(response.headers["set-cookie"] || []));
+      if (cookies.some((cookie) => cookie.startsWith("SESSDATA="))) break;
+
+      const location = response.headers.location;
+      if (!location) break;
+      currentUrl = new URL(location, currentUrl);
+      if (!isBiliLoginUrl(currentUrl)) {
+        throw new Error("哔哩哔哩登录跳转地址不受信任");
+      }
+    }
+
+    return cookies;
+  });
   async function searchMusicVideo(id) {
     if (musicVideoStore.has("musicVideo")) {
       const result = await musicVideoStore.get("musicVideo");
