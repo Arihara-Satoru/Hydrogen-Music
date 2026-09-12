@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue';
 import QRCode from 'qrcode';
-import axios from 'axios';
 import { songTime2, loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrentMusicVideo } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import { dialogOpen, noticeOpen } from '../utils/dialog';
@@ -15,6 +14,8 @@ const { addMusicVideo, songId, currentMusicVideo } = storeToRefs(playerStore);
 const toLogin = ref(false);
 const qrKey = ref(null);
 const qrcodeImg = ref(null);
+const qrLoading = ref(false);
+const qrError = ref('');
 const checkQRTimer = ref(null);
 const videoUrl = ref(null);
 const currentVideoInfo = ref(null);
@@ -137,35 +138,48 @@ const loginOrLogout = () => {
         qrKey.value = null;
     }
 };
-const getQRCode = () => {
-    windowApi
-        .getRequestData({ url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/generate', option: { headers: headers } })
-        .then(result => {
-            if (result.code === 0) {
-                qrKey.value = result.data.qrcode_key;
-                let opts = {
-                    errorCorrectionLevel: 'Q',
-                    type: 'image/png',
-                    width: 192,
-                    height: 192,
-                    color: {
-                        dark: '#000000',
-                        light: '#FFFFFF',
-                    },
-                };
-                QRCode.toDataURL(result.data.url, opts, (err, url) => {
-                    if (err) throw err;
-                    qrcodeImg.value = url;
-                });
-            } else {
-                console.error('生成二维码失败:', result);
-            }
-        })
-        .catch(error => {
-            console.error('请求二维码失败:', error);
-        });
+const getQRCode = async () => {
+    if (qrLoading.value) return;
+
     clearInterval(checkQRTimer.value);
-    checkInterval();
+    qrLoading.value = true;
+    qrError.value = '';
+    qrKey.value = null;
+    qrcodeImg.value = null;
+
+    try {
+        const result = await windowApi.getRequestData({
+            url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/generate',
+            option: { headers: headers },
+        });
+        const key = result?.data?.qrcode_key;
+        const loginUrl = result?.data?.url;
+        if (result?.code !== 0 || !key || !loginUrl) {
+            throw new Error(result?.message || '未获取到有效二维码');
+        }
+
+        const qrImage = await QRCode.toDataURL(loginUrl, {
+            errorCorrectionLevel: 'Q',
+            type: 'image/png',
+            width: 192,
+            height: 192,
+            color: {
+                dark: '#000000',
+                light: '#FFFFFF',
+            },
+        });
+        if (!qrImage) throw new Error('二维码生成失败');
+
+        qrKey.value = key;
+        qrcodeImg.value = qrImage;
+        checkInterval();
+    } catch (error) {
+        console.error('请求二维码失败:', error);
+        qrError.value = '二维码加载失败，点击重试';
+        noticeOpen(qrError.value, 2);
+    } finally {
+        qrLoading.value = false;
+    }
 };
 const checkQRCode = async () => {
     try {
@@ -180,7 +194,7 @@ const checkQRCode = async () => {
             },
         });
         console.log('QR Code Check Result:', result);
-        if (result.code === 0) {
+        if (result?.code === 0) {
             return result.data;
         }
         return null;
@@ -939,7 +953,10 @@ const reopenVideo = () => {
                     <div class="login-mask" @click.stop="closeLogin()"></div>
                     <div class="login">
                         <span class="login-title">BILIBILI ACCOUNT LOGIN</span>
-                        <img :src="qrcodeImg" alt="" />
+                        <img v-if="qrcodeImg" :src="qrcodeImg" alt="哔哩哔哩登录二维码" />
+                        <button v-else class="qr-retry" type="button" :disabled="qrLoading" @click="getQRCode">
+                            {{ qrLoading ? '二维码加载中...' : qrError || '二维码加载失败，点击重试' }}
+                        </button>
                         <span class="qr-tip">使用哔哩哔哩手机客户端扫描登录</span>
                     </div>
                 </div>
@@ -1579,6 +1596,24 @@ const reopenVideo = () => {
             margin-top: 16px;
             width: 150px;
             height: 150px;
+        }
+        .qr-retry {
+            margin-top: 16px;
+            width: 150px;
+            height: 150px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            background: transparent;
+            color: rgba(255, 255, 255, 0.8);
+            font: 11px SourceHanSansCN-Bold;
+            &:enabled {
+                cursor: pointer;
+                &:hover {
+                    background-color: rgba(255, 255, 255, 0.08);
+                }
+            }
+            &:disabled {
+                color: rgba(255, 255, 255, 0.5);
+            }
         }
         .qr-tip {
             margin-top: 10px;
