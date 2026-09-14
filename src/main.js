@@ -1,7 +1,7 @@
 // 非 Electron 环境下提供 windowApi 降级，必须最先加载
 import './utils/windowApiStub.js'
 
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import App from './App.vue'
 import router from './router/router.js'
 import pinia from './store/pinia'
@@ -21,6 +21,12 @@ app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
 app.mount('#app')
+router.isReady().then(async () => {
+  await nextTick()
+  if (router.currentRoute.value.name !== 'homepage') {
+    window.windowApi?.notifyStartupReady?.()
+  }
+})
 if (import.meta.env.DEV) {
   void import('./utils/performanceDiagnostics').then(({ initPerformanceDiagnostics }) => {
     initPerformanceDiagnostics()

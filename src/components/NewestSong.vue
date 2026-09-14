@@ -1,5 +1,5 @@
 <script setup>
-  import { onActivated, ref } from 'vue'
+  import { onActivated, ref, inject } from 'vue'
   import { useRouter } from 'vue-router';
   import { getNewestSong } from '../api/song';
   import { addToNext, startMusic, pauseMusic } from '../utils/player';
@@ -9,6 +9,7 @@
   import { resolveImageUrl } from '../utils/imageUtils';
   import SkeletonBox from './base/SkeletonBox.vue';
 
+  const homeSectionReady = inject('homeSectionReady', () => {})
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { songId, playing, showSongTranslation } = storeToRefs(playerStore)
@@ -19,6 +20,8 @@
       if (newestSongLoaded && Array.isArray(newestSongList.value) && newestSongList.value.length > 0) return
       //参数:limit限制数量，默认为10
       loadData(10)
+      .catch(error => console.error('加载首页数据失败:', error))
+      .finally(() => homeSectionReady('songs'))
   })
   async function loadData(limit) {
     const listData = await getNewestSong(limit)

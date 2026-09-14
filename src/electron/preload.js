@@ -249,6 +249,7 @@ async function getPerformanceSnapshot() {
 }
 
 contextBridge.exposeInMainWorld("windowApi", {
+  notifyStartupReady: () => ipcRenderer.send("startup-ready"),
   windowMin,
   windowMax,
   windowClose,

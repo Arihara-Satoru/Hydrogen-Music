@@ -1,8 +1,9 @@
 <script setup>
-  import { ref, computed, onActivated } from 'vue'
+  import { ref, computed, onActivated, inject } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router';
   import { getBanner } from '../api/other';
   import SkeletonBox from './base/SkeletonBox.vue';
+  const homeSectionReady = inject('homeSectionReady', () => {})
   const bannerLoaded = ref(false)
   const bannerSessionCache = new Map()
   const emit = defineEmits(['open-breaking-news'])
@@ -39,8 +40,15 @@
   }
 
   onActivated(async () => {
-      await loadData(3)
-      bannerStart()
+      try {
+          await loadData(3)
+          bannerStart()
+      } catch (error) {
+          console.error('加载首页轮播失败:', error)
+      } finally {
+          bannerLoaded.value = true
+          homeSectionReady('banner')
+      }
   })
 
     onBeforeRouteLeave(() => {

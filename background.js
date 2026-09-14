@@ -493,11 +493,11 @@ const createWindow = (winstate = createMainWindowState()) => {
     if (mainWindowFallbackTimer) clearTimeout(mainWindowFallbackTimer);
     mainWindowFallbackTimer = setTimeout(() => {
       if (!hasShownMainWindow) {
-        console.warn("主窗口未触发 ready-to-show，使用超时兜底显示");
+        console.warn("首页加载超时，使用兜底显示");
         showMainWindow();
         initPostShowFeatures();
       }
-    }, 2500);
+    }, 30000);
   };
 
   let hasShownMainWindow = false;
@@ -506,6 +506,8 @@ const createWindow = (winstate = createMainWindowState()) => {
   const showMainWindow = async () => {
     if (!win || win.isDestroyed() || hasShownMainWindow) return;
     hasShownMainWindow = true;
+    clearTimeout(mainWindowFallbackTimer);
+    ipcMain.removeListener("startup-ready", onStartupReady);
     setSplashStatus("准备就绪", 100);
     if (splashWindow && !splashWindow.isDestroyed()) {
       try {
@@ -617,13 +619,18 @@ const createWindow = (winstate = createMainWindowState()) => {
     }
   };
 
-  win.once("ready-to-show", () => {
+  const onStartupReady = (event) => {
+    if (event.sender !== win.webContents) return;
     showMainWindow();
     initPostShowFeatures();
+  };
+  ipcMain.on("startup-ready", onStartupReady);
+  win.once("closed", () => {
+    clearTimeout(mainWindowFallbackTimer);
+    ipcMain.removeListener("startup-ready", onStartupReady);
   });
-  win.webContents.once("did-finish-load", () => {
-    showMainWindow();
-    initPostShowFeatures();
+  win.once("ready-to-show", () => {
+    setSplashStatus("正在加载首页", 90);
   });
   win.webContents.on("render-process-gone", (_event, details) => {
     console.error("主窗口渲染进程异常退出:", details);

@@ -1,5 +1,5 @@
 <script setup>
-  import { onActivated, ref } from 'vue'
+  import { onActivated, ref, inject } from 'vue'
   import { useRouter } from 'vue-router';
   import { getNewAlbum } from '../api/album';
   import { getRecommendedArtists } from '../api/artist';
@@ -12,6 +12,7 @@
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
   const playerStore = usePlayerStore()
+  const homeSectionReady = inject('homeSectionReady', () => {})
   const router = useRouter()
   //0为歌单,1为歌手,2为专辑,3为排行榜
   const props = defineProps(['recType'])
@@ -28,6 +29,8 @@
      * 最后为当前列表的类型
      */
     loadData(1, 10, 'all', recType.value)
+      .catch(error => console.error('加载首页数据失败:', error))
+      .finally(() => homeSectionReady(String(recType.value)))
   })
   //设置标题
   const setTitle = (cn, en) => {
