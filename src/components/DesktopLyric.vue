@@ -98,6 +98,7 @@
                 class="lyric-stage"
                 :class="{ 'native-drag': nativeDragEnabled && (compactMode || transparentMode) }"
                 @mousedown="onCompactDragStart"
+                @dblclick.stop.prevent="currentSong && controlPlayback('playpause')"
             >
                 <div class="stage-guides" aria-hidden="true"></div>
 
@@ -907,6 +908,7 @@ const onDragStart = async event => {
 };
 
 const onCompactDragStart = event => {
+    if (event.detail > 1) return;
     if (compactMode.value || transparentMode.value) onDragStart(event);
 };
 
@@ -1179,6 +1181,11 @@ onUnmounted(() => {
 
 .native-drag {
     -webkit-app-region: drag;
+}
+
+.lyric-stage.native-drag .current-line__text,
+.lyric-stage.native-drag .next-line p {
+    -webkit-app-region: no-drag;
 }
 
 .header-kicker {
