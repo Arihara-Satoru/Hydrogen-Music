@@ -45,6 +45,9 @@ const handleAuthOptionClick = () => {
 }
 const onAfterEnter = () => (isActive.value = true)
 const onAfterLeave = () => (isActive.value = false)
+const handleOnboardingAccountMenu = event => {
+    userStore.appOptionShow = event.detail === true
+}
 
 const toDom = maybeComp => {
     if (!maybeComp) return null
@@ -110,12 +113,14 @@ onMounted(() => {
     scheduleTrackerRealign()
     window.addEventListener('resize', updateTracker)
     window.addEventListener('focus', updateTracker)
+    window.addEventListener('hydrogen:onboarding-account-menu', handleOnboardingAccountMenu)
     // 字体加载完成后再次校准，避免字体替换引起的偏移
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', updateTracker)
     window.removeEventListener('focus', updateTracker)
+    window.removeEventListener('hydrogen:onboarding-account-menu', handleOnboardingAccountMenu)
     clearTrackerTimers()
 })
 
@@ -142,6 +147,7 @@ watch(
             <div class="home-header">
                 <div
                     class="header-router"
+                    data-tour="navigation"
                     :class="{ 'router-closed': !userStore.homePage && !userStore.cloudDiskPage && !userStore.personalFMPage && !userStore.sirenPage }"
                     ref="routerContainer"
                 >
@@ -189,7 +195,7 @@ watch(
                         </router-link>
                         <div class="user">
                             <div class="user-container">
-                                <div class="user-head" @click="userStore.appOptionShow = true">
+                                <div class="user-head" data-tour="account-trigger" @click="userStore.appOptionShow = !userStore.appOptionShow">
                                     <img v-if="isLogin() && userStore.user" :src="userStore.user.avatarUrl + '?param=100y100'" alt="" />
                                     <svg v-else t="1672136404205" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5403" width="200" height="200">
                                         <path
@@ -203,7 +209,7 @@ watch(
                                     <div class="img-mask"></div>
                                 </div>
                                 <transition name="app-option" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
-                                    <div class="app-option" :class="{ 'app-option-active': isActive }" v-show="userStore.appOptionShow">
+                                    <div class="app-option" data-tour="account-menu" :class="{ 'app-option-active': isActive }" v-show="userStore.appOptionShow">
                                         <div class="option" @click="toSettings()">设置</div>
                                         <div class="option" @click="handleAuthOptionClick()">{{ isLogin() ? '退出登录' : '账号登录' }}</div>
 

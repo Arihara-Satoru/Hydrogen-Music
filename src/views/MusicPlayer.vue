@@ -179,6 +179,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
             ></div>
         </Transition>
         <Player
+            data-tour="player-cover"
             class="player-container"
             :class="{
                 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow,
@@ -190,7 +191,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         ></Player>
 
         <!-- 右侧面板 -->
-        <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
+        <div class="right-panel" data-tour="player-lyrics" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
             <Transition name="panel-switch" mode="out-in" :duration="{ enter: 400, leave: 300 }">
                 <div class="right-panel-content" :key="rightPanelMode">
                     <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />

@@ -152,7 +152,7 @@
         <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(sliderDuration)}}</div>
     </div>
     <div class="music-info">
-        <div class="music-img" @click="showPlayer()" v-delayed-tooltip="'打开播放页'">
+        <div class="music-img" data-tour="widget-cover" @click="showPlayer()" v-delayed-tooltip="'打开播放页'">
             <img v-if="currentSong && !isCurrentLocalSong && currentSongCoverUrl" :src="currentSongCoverUrl" alt="">
             <img v-else-if="currentSong && isCurrentLocalSong && localBase64Img" :src="localBase64Img" alt="">
             <img v-else-if="currentSong && isCurrentLocalSong" :src="resolveImageUrl('https://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg')" alt="">
@@ -174,7 +174,7 @@
             </div>
         </div>
     </div>
-    <div class="music-right">
+    <div class="music-right" data-tour="widget-controls">
         <div class="music-control">
             <svg @click="playLast({ userInitiated: true })" v-delayed-tooltip="'上一首'" class="control-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="200" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 100 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="arrow" style="fill:#CCCCCC" transform="translate(35.21963688171376 44.356081611360985)  rotate(-90 66.78036311828623 52.999999999999986)" opacity="0" d=""/><path id="arrow" style="stroke: currentColor; stroke-width:8; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(35.21963688171376 44.356081611360985)  rotate(-90 66.78036311828623 52.999999999999986)" d="M133.56,105.98L66.78,0L0,106 "/></g></g></svg>
             <svg v-show="playing" @click="pauseMusic()" v-delayed-tooltip="'暂停'" class="control-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="200" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 100 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="line2" style="fill:#000000" transform="translate(152 24)  rotate(0 0.0005 76)" opacity="1" d=""/><path id="line2" style="stroke: currentColor; stroke-width:8; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(152 24)  rotate(0 0.0005 76)" d="M0,0L0,152 "/><path id="line1" style="fill:#000000" transform="translate(48 24)  rotate(0 0.0005 76)" opacity="1" d=""/><path id="line1" style="stroke: currentColor; stroke-width:8; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(48 24)  rotate(0 0.0005 76)" d="M0,0L0,152 "/></g></g></svg>

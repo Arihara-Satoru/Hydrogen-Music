@@ -1,6 +1,7 @@
 <template>
     <div
         class="endfield-lyric"
+        data-tour="desktop-overview"
         data-ark-theme="endfield"
         data-ark-depth="maximal"
         :class="rootClasses"
@@ -12,6 +13,7 @@
         <div class="field-shell">
             <aside
                 class="field-rail drag-zone"
+                data-tour="desktop-rail"
                 :class="{ 'native-drag': nativeDragEnabled }"
                 aria-label="歌词窗口状态"
                 @mousedown="onDragStart"
@@ -51,7 +53,7 @@
                     </div>
                 </div>
 
-                <div class="header-actions" @mousedown.stop>
+                <div class="header-actions" data-tour="desktop-actions" @mousedown.stop>
                     <button
                         type="button"
                         class="header-action"
@@ -96,6 +98,7 @@
 
             <main
                 class="lyric-stage"
+                data-tour="desktop-lyrics"
                 :class="{ 'native-drag': nativeDragEnabled && (compactMode || transparentMode) }"
                 @mousedown="onCompactDragStart"
                 @dblclick.stop.prevent="currentSong && controlPlayback('playpause')"
@@ -139,7 +142,7 @@
                 </div>
             </main>
 
-            <aside class="media-field" :class="{ 'has-media': coverUrl }" aria-label="当前音轨封面">
+            <aside class="media-field" data-tour="desktop-media" :class="{ 'has-media': coverUrl }" aria-label="当前音轨封面">
                 <Transition name="cover-wipe" mode="out-in">
                     <img
                         v-if="coverUrl"
@@ -190,7 +193,7 @@
                 </div>
             </aside>
 
-            <footer class="timeline-dock">
+            <footer class="timeline-dock" data-tour="desktop-timeline">
                 <div class="time-readout">
                     <span>ELAPSED</span>
                     <strong>{{ formattedCurrentTime }}</strong>
@@ -335,6 +338,7 @@
                 </div>
             </section>
         </Transition>
+        <OnboardingTour scope="desktop-lyric"></OnboardingTour>
     </div>
 </template>
 
@@ -342,6 +346,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { getSongDisplayName } from '../utils/songName';
 import { calculateLyricLineProgress, clampPercentage } from '../utils/desktopLyricTiming.mjs';
+import OnboardingTour from './OnboardingTour.vue';
 
 const LYRIC_TYPE_OPTIONS = Object.freeze([
     { value: 'auto', label: '自动选择', code: 'AUTO SELECT', glyph: 'A' },

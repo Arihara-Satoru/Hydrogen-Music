@@ -38,6 +38,7 @@ import {
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const restartOnboarding = () => window.dispatchEvent(new Event("hydrogen:restart-onboarding"));
 const currentUser = computed(() => userStore.user || {});
 const listenGradeLoading = ref(false);
 const listenGradeText = computed(() => {
@@ -1158,7 +1159,7 @@ const clearFmRecent = () => {
         </div>
       </section>
       <div class="settings">
-        <div class="settings-item">
+        <div class="settings-item" data-tour="settings-music">
           <h2 class="item-title">音乐</h2>
           <div class="line"></div>
           <div class="item-options">
@@ -1418,7 +1419,7 @@ const clearFmRecent = () => {
             </div>
           </div>
         </div>
-        <div class="settings-item">
+        <div class="settings-item" data-tour="settings-local">
           <h2 class="item-title">本地</h2>
           <div class="line"></div>
           <div class="item-options">
@@ -1566,7 +1567,7 @@ const clearFmRecent = () => {
             </div>
           </div>
         </div>
-        <div class="settings-item">
+        <div class="settings-item" data-tour="settings-shortcuts">
           <h2 class="item-title">快捷键</h2>
           <div class="line"></div>
           <div
@@ -1634,7 +1635,7 @@ const clearFmRecent = () => {
           </div>
         </div>
         <div class="settings-item">
-          <h2 class="item-title">其他</h2>
+          <h2 class="item-title" data-tour="other-settings">其他</h2>
           <div class="line"></div>
           <div class="item-options">
             <div class="option">
@@ -1768,6 +1769,12 @@ const clearFmRecent = () => {
               <div class="option-name">清除所有缓存数据</div>
               <div class="option-operation">
                 <div class="button" @click="confirmClearAllCacheData">清除</div>
+              </div>
+            </div>
+            <div class="option" data-tour="restart-onboarding">
+              <div class="option-name">新手引导</div>
+              <div class="option-operation">
+                <div class="button" role="button" tabindex="0" @click="restartOnboarding" @keydown.enter="restartOnboarding">重新开始</div>
               </div>
             </div>
             <div class="option">

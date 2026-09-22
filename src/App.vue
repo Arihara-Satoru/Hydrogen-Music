@@ -23,6 +23,7 @@ const ContextMenu = defineAsyncComponent(() => import('./components/ContextMenu.
 const GlobalDialog = defineAsyncComponent(() => import('./components/GlobalDialog.vue'));
 const GlobalNotice = defineAsyncComponent(() => import('./components/GlobalNotice.vue'));
 const Update = defineAsyncComponent(() => import('./components/Update.vue'));
+const OnboardingTour = defineAsyncComponent(() => import('./components/OnboardingTour.vue'));
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
@@ -39,6 +40,7 @@ const currentCoverUrl = computed(() => {
     const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url;
     return url ? resolveImageUrl(url) : '';
 });
+const onboardingScope = computed(() => playerStore.widgetState ? '' : 'player');
 let disposeCheckUpdate = null;
 
 watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
@@ -46,6 +48,10 @@ watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, curre
     else if (enabled && coverUrl) applyDynamicTheme(coverUrl);
     else clearDynamicTheme();
 }, { immediate: true });
+
+watch(() => playerStore.currentMusic, currentMusic => {
+    if (currentMusic) window.dispatchEvent(new Event('hydrogen:refresh-onboarding'));
+});
 
 onMounted(() => {
     initLyricRuntime();
@@ -94,7 +100,7 @@ const handleTitleBarDoubleClick = () => {
     <div class="globalWidget" :class="{ 'visualizer-active': visualizerActive }">
         <Title class="widget-title"></Title>
         <AudioVisualizer class="widget-visualizer"></AudioVisualizer>
-        <div class="widget-search">
+        <div class="widget-search" data-tour="search">
             <SearchInput></SearchInput>
         </div>
     </div>
@@ -130,6 +136,7 @@ const handleTitleBarDoubleClick = () => {
             <Update></Update>
         </div>
     </Transition>
+    <OnboardingTour :scope="onboardingScope"></OnboardingTour>
 </template>
 
 <style lang="scss">

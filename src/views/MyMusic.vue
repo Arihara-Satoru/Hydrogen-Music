@@ -29,7 +29,7 @@
 
 <template>
   <div class="my-music" :class="{'my-music-full': !playerStore.songList}">
-    <div class="music-library" v-if="user">
+    <div class="music-library" data-tour="library-sidebar" v-if="user">
       <LibraryType class="library-type"></LibraryType>
       <LibraryList v-show="listType1 != 2 && listType1 != 3" class="library-list-frame"></LibraryList>
       <DownloadList v-show="listType1 == 2 && listType2 == 0" class="download-list"></DownloadList>
@@ -38,7 +38,7 @@
       <div class="no-folder" @click="router.push('/settings')" v-if="!downloadedFolderSettings && listType1 == 2 && listType2 == 1">去设置下载地址</div>
       <div class="no-folder" @click="router.push('/settings')" v-if="localFolderSettings.length == 0 && listType1 == 3">去设置扫描地址</div>
     </div>
-      <div class="library-view" :class="{'library-view-nologin': !user}">
+      <div class="library-view" data-tour="library-content" :class="{'library-view-nologin': !user}">
         <router-view v-slot="{ Component }">
           <keep-alive :include="['LibraryDetail','LibrarySongList','LibraryAlbumList','LibraryMVList']">
             <Transition name="fade">

@@ -523,7 +523,7 @@ const addToPlaylist = () => {
                 </div>
             </div>
 
-            <div class="song-control">
+            <div class="song-control" data-tour="player-tools">
                 <svg
                     v-if="currentSong"
                     @click="songInfoShow = true"
@@ -545,6 +545,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     t="1673355036226"
+                    data-tour="player-video"
                     v-if="musicVideo && playerStore.musicVideoMode !== 'pool'"
                     @click="toAddMusicVideo()"
                     v-delayed-tooltip="'添加视频'"
@@ -565,6 +566,7 @@ const addToPlaylist = () => {
                 <!-- 罗马音歌词图标 - 只有在当前歌曲有罗马音歌词时才显示 -->
                 <svg
                     t="1673182533775"
+                    data-tour="player-roma"
                     v-show="hasRomaLyric && lyricType.indexOf('roma') != -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.splice(lyricType.indexOf('roma'), 1)"
                     v-delayed-tooltip="'隐藏罗马音'"
@@ -584,6 +586,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     t="1673182533775"
+                    data-tour="player-roma"
                     v-show="hasRomaLyric && lyricType.indexOf('roma') == -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.push('roma')"
                     v-delayed-tooltip="'显示罗马音'"
@@ -604,6 +607,7 @@ const addToPlaylist = () => {
                 <!-- 翻译歌词图标 - 只有在当前歌曲有翻译歌词时才显示 -->
                 <svg
                     t="1673182625534"
+                    data-tour="player-translation"
                     v-show="hasTransLyric && lyricType.indexOf('trans') != -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.splice(lyricType.indexOf('trans'), 1)"
                     v-delayed-tooltip="'隐藏翻译'"
@@ -623,6 +627,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     t="1673182625534"
+                    data-tour="player-translation"
                     v-show="hasTransLyric && lyricType.indexOf('trans') == -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.push('trans')"
                     v-delayed-tooltip="'显示翻译'"
@@ -643,6 +648,7 @@ const addToPlaylist = () => {
                 <!-- 原歌词图标 - 只有在当前歌曲有原歌词时才显示 -->
                 <svg
                     t="1673182198291"
+                    data-tour="player-original"
                     v-show="hasOriginalLyric && lyricType.indexOf('original') != -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.splice(lyricType.indexOf('original'), 1)"
                     v-delayed-tooltip="'隐藏原文歌词'"
@@ -672,6 +678,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     t="1673182198291"
+                    data-tour="player-original"
                     v-show="hasOriginalLyric && lyricType.indexOf('original') == -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.push('original')"
                     v-delayed-tooltip="'显示原文歌词'"
@@ -703,6 +710,7 @@ const addToPlaylist = () => {
                 <!-- 下载：本地歌曲不显示 -->
                 <svg
                     v-if="songList?.[currentIndex]?.type !== 'local'"
+                    data-tour="player-download"
                     t="1669445939818"
                     @click="download()"
                     v-delayed-tooltip="'下载'"
@@ -718,6 +726,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     v-if="!isDjMode && currentSong && currentSong.type !== 'local' && !isCurrentSirenSong"
+                    data-tour="player-add-playlist"
                     @click="addToPlaylist()"
                     v-delayed-tooltip="'添加歌单'"
                     class="icon"
@@ -759,6 +768,7 @@ const addToPlaylist = () => {
                 </svg>
                 <svg
                     t="1670376314067"
+                    data-tour="player-mode"
                     @click="changePlayMode()"
                     v-delayed-tooltip="'顺序播放'"
                     v-show="playMode == 0"
@@ -779,6 +789,7 @@ const addToPlaylist = () => {
 
                 <svg
                     t="1668787163705"
+                    data-tour="player-mode"
                     @click="changePlayMode()"
                     v-delayed-tooltip="'列表循环'"
                     v-show="playMode == 1"
@@ -798,6 +809,7 @@ const addToPlaylist = () => {
 
                 <svg
                     t="1668787191526"
+                    data-tour="player-mode"
                     @click="changePlayMode()"
                     v-delayed-tooltip="'单曲循环'"
                     v-show="playMode == 2"
@@ -818,6 +830,7 @@ const addToPlaylist = () => {
 
                 <svg
                     t="1668787213634"
+                    data-tour="player-mode"
                     @click="changePlayMode()"
                     v-delayed-tooltip="'随机播放'"
                     v-show="playMode == 3"
@@ -1696,5 +1709,12 @@ const addToPlaylist = () => {
 @keyframes song-info-corner-in {
     0%, 20%, 40%, 60%, 80%, 90% { opacity: 0; }
     10%, 30%, 50%, 70%, 100% { opacity: 1; }
+}
+</style>
+
+<style lang="scss">
+body.onboarding-player-tools-visible .player-container .player .song-control {
+    opacity: 1 !important;
+    animation: none !important;
 }
 </style>
