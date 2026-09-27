@@ -162,12 +162,16 @@
     otherStore.addPlaylistShow = true
   }
 
+  const selectedTracks = () => Array.isArray(otherStore.selectedItems) && otherStore.selectedItems.length
+    ? otherStore.selectedItems
+    : [otherStore.selectedItem].filter(Boolean)
+
   const deleteFromPlaylist = async () => {
     const playlistListId = otherStore.selectedPlaylist?.list_create_listid || otherStore.selectedPlaylist?.listid || otherStore.selectedPlaylist?.id
-    const targetTrack = otherStore.selectedItem
-    const targetFileId = targetTrack?.fileid || targetTrack?.file_id || targetTrack?.audio_id || targetTrack?.id
+    const tracks = selectedTracks()
+    const fileids = tracks.map(track => track?.fileid || track?.file_id || track?.audio_id || track?.id)
 
-    if (!playlistListId || !targetFileId) {
+    if (!playlistListId || !tracks.length || fileids.some(id => !id)) {
       noticeOpen('当前歌曲或歌单信息不完整，暂时无法删除', 2)
       return
     }
@@ -175,8 +179,8 @@
     let params = {
       op: 'del',
       listid: playlistListId,
-      tracks: [targetTrack],
-      fileids: String(targetFileId)
+      tracks,
+      fileids: fileids.join(',')
     }
     
     try {
@@ -186,14 +190,10 @@
       const isSuccess = isPlaylistUpdateSuccess(result)
       
       if(isSuccess) {
-        libraryStore.applyPlaylistTrackChange({
-          playlist: otherStore.selectedPlaylist,
-          op: 'del',
-          song: targetTrack,
-        })
+        tracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist: otherStore.selectedPlaylist, op: 'del', song }))
         
         // 检查是否从"我喜欢的音乐"歌单删除，如果是则同步更新喜欢列表
-        await updateLikelistIfFromFavorite()
+        await updateLikelistIfFromFavorite(tracks)
 
         updatePlaylistCache()
         const isFavoritePlaylist = userStore.favoritePlaylistId && otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
@@ -225,7 +225,7 @@
   }
 
   // 检查是否从"我喜欢的音乐"删除歌曲，如果是则同步更新喜欢列表
-  const updateLikelistIfFromFavorite = async () => {
+  const updateLikelistIfFromFavorite = async (tracks = selectedTracks()) => {
     try {
       // 检查被删除的歌单是否是"我喜欢的音乐"歌单
       const isFromFavoritePlaylist = userStore.favoritePlaylistId && 
@@ -235,10 +235,10 @@
         console.log('从我喜欢的音乐删除歌曲，同步更新喜欢列表...')
         
         // 从本地喜欢列表中移除该歌曲
-        if (Array.isArray(userStore.likelist) && userStore.likelist.includes(otherStore.selectedItem.id)) {
-          const likeIndex = userStore.likelist.indexOf(otherStore.selectedItem.id)
-          userStore.likelist.splice(likeIndex, 1)
-        }
+        if (Array.isArray(userStore.likelist)) tracks.forEach(track => {
+          const likeIndex = userStore.likelist.indexOf(track.id)
+          if (likeIndex !== -1) userStore.likelist.splice(likeIndex, 1)
+        })
         
         // 异步获取最新的喜欢列表以确保数据最终一致
         try {
@@ -300,9 +300,16 @@
   }
 
   const menuOpt = (id) => {
+    if (otherStore.selectedItems?.length && (id == 1 || id == 2)) {
+      // ponytail: addToNext inserts after the current track; reverse order keeps the selected order without a new queue API.
+      const playable = selectedTracks().filter(song => song?.playable !== false)
+      for (let index = playable.length - 1; index >= 0; index--) addToNext(playable[index], id == 1 && index == 0)
+      otherStore.contextMenuShow = false
+      return
+    }
     if(id == 1) { addToNext(otherStore.selectedItem, true); return; }
     if(id == 2) { addToNext(otherStore.selectedItem, false); return; }
-    if(id == 3) { localStore.updateDownloadList(otherStore.selectedItem); return; }
+    if(id == 3) { localStore.updateDownloadList(otherStore.selectedItems?.length ? selectedTracks() : otherStore.selectedItem); return; }
     if(id == 11) {
       const song = otherStore.selectedItem
       const albumId = song?.al?.id
@@ -317,7 +324,11 @@
       return
     }
     if(id == 4) { addToPlaylist(); return; }
-    if(id == 5) { deleteFromPlaylist(); return; }
+    if(id == 5) {
+      if (selectedTracks().length > 1) dialogOpen('确认删除', `确定从当前歌单移除选中的 ${selectedTracks().length} 首歌曲吗？`, deleteFromPlaylist)
+      else void deleteFromPlaylist()
+      return
+    }
     if(id == 6) { newPlaylist(); return; }
     if(id == 7) { deleteMyPlaylist(); return; }
     if(id == 8) { addToNextLocal(otherStore.selectedItem, true); return; }
@@ -366,29 +377,27 @@
     }
     createActive.value = false
   }
-  const addToMyPlaylist = playlistTarget => {
+  const addToMyPlaylist = async playlistTarget => {
       const playlist = normalizePlaylistTarget(playlistTarget)
-      const selectedSong = otherStore.selectedItem?.value && typeof otherStore.selectedItem.value == 'object'
-        ? otherStore.selectedItem.value
-        : otherStore.selectedItem
+      const tracks = selectedTracks().map(song => song?.value && typeof song.value == 'object' ? song.value : song)
       let params = {
         op: 'add',
         pid: playlist.id,
-        tracks: selectedSong
+        tracks
       }
-      updatePlaylist(params).then(result => {
+      try {
+        const result = await updatePlaylist(params)
         if(isPlaylistUpdateSuccess(result)) {
-          libraryStore.applyPlaylistTrackChange({
-            playlist,
-            op: 'add',
-            song: toLibrarySong(selectedSong),
-          })
+          tracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist, op: 'add', song: toLibrarySong(song) }))
           updatePlaylistCache()
           noticeOpen(`已添加到${playlist.name}`, 2)
         }else {
           noticeOpen(result?.error == 'missing playlist track payload' ? '当前歌曲信息不完整，暂时无法添加到歌单' : '添加至歌单错误', 2)
         }
-      })
+      } catch (error) {
+        console.error('添加至歌单失败:', error)
+        noticeOpen('添加至歌单错误', 2)
+      }
   }
 </script>
 
@@ -396,7 +405,7 @@
   <div id="menu" class="context-menu">
     <div class="menu-container" v-show="otherStore.contextMenuShow">
       <div class="menu-item">
-        <div class="item" @click="menuOpt(item.id)" v-for="(item, index) in otherStore.menuTree">{{item.name}}</div>
+        <div class="item" @click="menuOpt(item.id)" v-for="(item, index) in otherStore.menuTree">{{ otherStore.selectedItems?.length > 1 ? `${item.name}（${otherStore.selectedItems.length}首）` : item.name }}</div>
       </div>
       <div class="menu-style menu-style1">+</div>
       <div class="menu-style menu-style2">+</div>

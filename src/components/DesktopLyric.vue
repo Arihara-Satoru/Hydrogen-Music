@@ -995,6 +995,15 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+button:focus-visible {
+    opacity: 0.7;
+}
+
 .endfield-lyric[data-ark-theme='endfield'] {
     --ef-paper: #ecece6;
     --ef-surface: #f6f6f1;
@@ -2043,14 +2052,6 @@ onUnmounted(() => {
 .dock-action--danger > span:first-child,
 .dock-action--danger small {
     color: inherit;
-}
-
-.header-action:focus-visible,
-.panel-close:focus-visible,
-.font-stepper button:focus-visible,
-.dock-action:focus-visible {
-    outline: 2px solid var(--ef-signal);
-    outline-offset: 2px;
 }
 
 .line-wipe-enter-active,

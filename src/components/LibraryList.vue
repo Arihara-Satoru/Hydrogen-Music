@@ -193,6 +193,7 @@
     if(listType1.value != 0 || listType2.value != 0) return
     otherStore.contextMenuShow = true
     otherStore.selectedItem = item
+    otherStore.selectedItems = null
     otherStore.menuTree = otherStore.tree3
     
     const { clientX, clientY } = e

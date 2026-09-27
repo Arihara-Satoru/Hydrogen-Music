@@ -106,6 +106,7 @@ export const useOtherStore = defineStore('otherStore', {
           ],
           selectedPlaylist: null,
           selectedItem: null,
+          selectedItems: null,
           addPlaylistShow: false,
           justNewPlaylist: false,
           dialogShow: false,

@@ -121,6 +121,7 @@
   const addToPlaylist = () => {
     if (currentSong.value && currentSong.value.type !== 'local' && currentSong.value.source !== 'siren') {
         otherStore.selectedItem = currentSong.value;
+        otherStore.selectedItems = null;
         otherStore.addPlaylistShow = true;
     }
   }

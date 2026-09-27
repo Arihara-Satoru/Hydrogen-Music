@@ -59,9 +59,13 @@ button {
   transition: border-color 0.25s, background-color 0.2s, color 0.2s;
 }
 
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+:is(button, [role="button"]):focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+:is(button, [role="button"]):focus-visible {
+  opacity: 0.7;
 }
 
 .card {

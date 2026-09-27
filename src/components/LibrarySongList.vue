@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { RecycleScroller } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { songTime } from '../utils/player'
@@ -12,6 +12,7 @@ import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import { noticeOpen } from '../utils/dialog'
 import { getSongDisplayName } from '../utils/songName'
+import { selectSongRange } from '../utils/songSelection.mjs'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -66,9 +67,17 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    multiSelect: {
+        type: Boolean,
+        default: false,
+    },
 })
 const emit = defineEmits(['list-scroll', 'dislike'])
 const hoverRowKey = ref(null)
+const selectedRowKeys = ref(new Set())
+let selectionAnchor = null
+let drag = null
+let scrollFrame = null
 const rowKeyBySong = new WeakMap()
 let rowKeySeed = 0
 
@@ -97,6 +106,88 @@ const scrollerItems = computed(() => {
     }))
 })
 const queueSongs = computed(() => (Array.isArray(props.queueSonglist) ? props.queueSonglist : props.songlist))
+const selectedSongs = computed(() => scrollerItems.value.filter(item => selectedRowKeys.value.has(item.rowKey)).map(item => item.song))
+const clearSelection = () => {
+    selectedRowKeys.value = new Set()
+    selectionAnchor = null
+    otherStore.selectedItems = null
+}
+watch(() => props.multiSelect, enabled => { if (!enabled) { finishDrag(); clearSelection() } })
+watch(() => props.queueMeta?.id, () => { finishDrag(); clearSelection() })
+watch(scrollerItems, items => {
+    const keys = new Set(items.map(item => item.rowKey))
+    selectedRowKeys.value = new Set([...selectedRowKeys.value].filter(key => keys.has(key)))
+})
+
+const applyDragRange = clientY => {
+    if (!drag) return
+    const bounds = drag.scroller.getBoundingClientRect()
+    const y = Math.max(bounds.top, Math.min(clientY, bounds.bottom - 1))
+    // ponytail: the virtual list uses fixed 42px rows; if row heights become dynamic, resolve the index from the scroller's measured items.
+    const index = Math.max(0, Math.min(scrollerItems.value.length - 1, Math.floor((y - bounds.top + drag.scroller.scrollTop) / 42)))
+    selectedRowKeys.value = selectSongRange(scrollerItems.value, drag.index, index, drag.previous)
+}
+const autoScroll = () => {
+    if (!drag || !drag.moved) return
+    const bounds = drag.scroller.getBoundingClientRect()
+    if (drag.y < bounds.top + 28) drag.scroller.scrollTop -= 12
+    else if (drag.y > bounds.bottom - 28) drag.scroller.scrollTop += 12
+    applyDragRange(drag.y)
+    scrollFrame = requestAnimationFrame(autoScroll)
+}
+const moveDrag = event => {
+    if (!drag || event.pointerId !== drag.pointerId) return
+    drag.y = event.clientY
+    if (!drag.moved && Math.abs(event.clientY - drag.startY) < 4) return
+    if (!drag.moved) {
+        drag.moved = true
+        scrollFrame = requestAnimationFrame(autoScroll)
+    }
+    applyDragRange(event.clientY)
+}
+const finishDrag = (event = null) => {
+    if (!drag || (event && event.pointerId !== drag.pointerId)) return
+    if (!drag.moved && event) {
+        if (event.shiftKey && selectionAnchor !== null) {
+            selectedRowKeys.value = selectSongRange(scrollerItems.value, selectionAnchor, drag.index, selectedRowKeys.value)
+        } else {
+            const next = new Set(selectedRowKeys.value)
+            if (next.has(drag.key)) next.delete(drag.key)
+            else next.add(drag.key)
+            selectedRowKeys.value = next
+            selectionAnchor = drag.index
+        }
+    } else if (drag.moved) selectionAnchor = drag.index
+    drag = null
+    if (scrollFrame) cancelAnimationFrame(scrollFrame)
+    scrollFrame = null
+    window.removeEventListener('pointermove', moveDrag)
+    window.removeEventListener('pointerup', finishDrag)
+    window.removeEventListener('pointercancel', finishDrag)
+}
+const startSelection = (event, item) => {
+    if (!props.multiSelect || event.button !== 0) return
+    event.preventDefault()
+    drag = {
+        index: item.songIndex, key: item.rowKey, pointerId: event.pointerId,
+        startY: event.clientY, y: event.clientY, moved: false,
+        previous: new Set(selectedRowKeys.value),
+        scroller: event.currentTarget.closest('.library-song-list'),
+    }
+    window.addEventListener('pointermove', moveDrag)
+    window.addEventListener('pointerup', finishDrag)
+    window.addEventListener('pointercancel', finishDrag)
+}
+const selectWithKeyboard = (event, item) => {
+    if (!props.multiSelect || ![' ', 'Enter'].includes(event.key)) return
+    event.preventDefault()
+    const next = new Set(selectedRowKeys.value)
+    if (next.has(item.rowKey)) next.delete(item.rowKey)
+    else next.add(item.rowKey)
+    selectedRowKeys.value = next
+    selectionAnchor = item.songIndex
+}
+onBeforeUnmount(() => { finishDrag(); clearSelection() })
 const normalizeRouteName = routeName => {
     const normalized = String(routeName || '')
     return normalized.startsWith('~') ? normalized.slice(1) : normalized
@@ -150,6 +241,14 @@ const openMenu = (e, item) => {
     e.stopPropagation()
     otherStore.contextMenuShow = true
     otherStore.selectedItem = item
+    if (props.multiSelect) {
+        const row = scrollerItems.value.find(entry => entry.song === item)
+        if (row && !selectedRowKeys.value.has(row.rowKey)) {
+            selectedRowKeys.value = new Set([row.rowKey])
+            selectionAnchor = row.songIndex
+        }
+        otherStore.selectedItems = selectedSongs.value
+    } else otherStore.selectedItems = null
     otherStore.selectedPlaylist = libraryInfo.value
 
     if (props.contextMenuMode === 'siren' || item?.source === 'siren') {
@@ -160,14 +259,16 @@ const openMenu = (e, item) => {
     } else {
         otherStore.menuTree = otherStore.tree2
     }
+    if (props.multiSelect) otherStore.menuTree = otherStore.menuTree.filter(option => option.id !== 11)
 
     const { clientX, clientY } = e
     const menuList = document.getElementById('menu')
     if (!menuList) return
     const screenWidth = document.body.clientWidth
     const screenHeight = document.body.clientHeight
-    if (screenWidth - clientX < 120) {
-        menuList.style.left = screenWidth - 120 + 'Px'
+    const menuWidth = props.multiSelect ? 210 : 120
+    if (screenWidth - clientX < menuWidth) {
+        menuList.style.left = screenWidth - menuWidth + 'Px'
         menuList.style.right = null
     } else {
         menuList.style.right = null
@@ -189,15 +290,22 @@ const openMenu = (e, item) => {
         <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" :prerender="Math.min(scrollerItems.length, 12)" key-field="rowKey" @scroll.passive="emit('list-scroll')" v-slot="{ item }">
             <div
                 class="list-item"
-                :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"
+                :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly, 'list-item-selected': props.multiSelect && selectedRowKeys.has(item.rowKey), 'list-item-selecting': props.multiSelect }"
+                :tabindex="props.multiSelect ? 0 : undefined"
+                :role="props.multiSelect ? 'checkbox' : undefined"
+                :aria-checked="props.multiSelect ? selectedRowKeys.has(item.rowKey) : undefined"
+                :aria-label="props.multiSelect ? getSongDisplayName(item.song, '', showSongTranslation) : undefined"
+                @pointerdown="startSelection($event, item)"
+                @keydown="selectWithKeyboard($event, item)"
                 @mouseenter="hoverRowKey = item.rowKey"
                 @mouseleave="hoverRowKey = null"
-                @dblclick="play(item.song, item.sourceIndex)"
+                @dblclick="!props.multiSelect && play(item.song, item.sourceIndex)"
                 @contextmenu.prevent="openMenu($event, item.song)"
             >
                 <div class="item-title">
                     <div class="item-state">
-                        <button
+                        <input v-if="props.multiSelect" class="item-checkbox" type="checkbox" :checked="selectedRowKeys.has(item.rowKey)" aria-hidden="true" tabindex="-1" @click.prevent />
+                        <button v-if="!props.multiSelect"
                             class="item-play-btn"
                             :class="{ 'state-visible': hoverRowKey === item.rowKey }"
                             @click.stop="togglePlay(item.song, item.sourceIndex)"
@@ -215,13 +323,13 @@ const openMenu = (e, item) => {
                                 ></path>
                             </svg>
                         </button>
-                        <div class="playing-eq" :class="{ 'is-paused': !playing, 'state-visible': hoverRowKey !== item.rowKey && songId == item.song.id }" aria-hidden="true">
+                        <div v-if="!props.multiSelect" class="playing-eq" :class="{ 'is-paused': !playing, 'state-visible': hoverRowKey !== item.rowKey && songId == item.song.id }" aria-hidden="true">
                             <span class="bar"></span>
                             <span class="bar"></span>
                             <span class="bar"></span>
                             <span class="bar"></span>
                         </div>
-                        <div class="item-num" :class="{ 'state-visible': hoverRowKey !== item.rowKey && songId != item.song.id }">{{ item.sourceIndex + 1 }}</div>
+                        <div v-if="!props.multiSelect" class="item-num" :class="{ 'state-visible': hoverRowKey !== item.rowKey && songId != item.song.id }">{{ item.sourceIndex + 1 }}</div>
                     </div>
                     <span class="item-name">
                         <span class="item-name-text">{{ getSongDisplayName(item.song, '', showSongTranslation) }}</span>
@@ -230,7 +338,7 @@ const openMenu = (e, item) => {
                 </div>
                 <div class="item-other" :class="{ 'item-other-with-dislike': props.dislikeEnabled }">
                     <div class="item-author" v-if="item.song.ar">
-                        <span class="item-singer" @click="checkArtist(singer.id)" v-for="(singer, index) in item.song.ar">{{ singer.name }}{{ index == item.song.ar.length - 1 ? '' : '/' }}</span>
+                        <span class="item-singer" @click="!props.multiSelect && checkArtist(singer.id)" v-for="(singer, index) in item.song.ar">{{ singer.name }}{{ index == item.song.ar.length - 1 ? '' : '/' }}</span>
                     </div>
                     <span class="item-time">{{ songTime(item.song.dt || item.song.duration) || '--:--' }}</span>
                     <button
@@ -280,6 +388,13 @@ const openMenu = (e, item) => {
             align-items: center;
             transition: 0.2s;
             user-select: text;
+            &.list-item-selecting {
+                user-select: none;
+                cursor: default;
+                &:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
+            }
+            &.list-item-selected { background-color: rgba(0, 0, 0, 0.12); }
+            &.list-item-selected:hover { background-color: rgba(0, 0, 0, 0.16); }
             &:hover {
                 cursor: default;
                 background-color: rgba(0, 0, 0, 0.045);
@@ -302,6 +417,17 @@ const openMenu = (e, item) => {
                     height: 22px;
                     position: relative;
                     flex: 0 0 26px;
+                    .item-checkbox {
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        width: 16px;
+                        height: 16px;
+                        margin: 0;
+                        accent-color: #222;
+                        pointer-events: none;
+                    }
                     .item-play-btn,
                     .playing-eq,
                     .item-num {

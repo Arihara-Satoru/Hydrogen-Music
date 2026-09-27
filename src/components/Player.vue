@@ -344,6 +344,7 @@ const toggleChorus = () => {
 const addToPlaylist = () => {
     if (currentSong.value && currentSong.value.type !== 'local' && !isDjMode.value && !isCurrentSirenSong.value) {
         otherStore.selectedItem = currentSong.value;
+        otherStore.selectedItems = null;
         otherStore.addPlaylistShow = true;
     }
 };

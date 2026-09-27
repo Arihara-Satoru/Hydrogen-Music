@@ -59,6 +59,7 @@
   const openMenu = (e, item) => {
     otherStore.contextMenuShow = true
     otherStore.selectedItem = item
+    otherStore.selectedItems = null
     otherStore.menuTree = otherStore.tree4
     
     const { clientX, clientY } = e

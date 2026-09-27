@@ -37,6 +37,7 @@ const songSearchKeyword = ref('');
 const deletePlaylistPromptVisible = ref(false);
 const deletePlaylistPromptText = ref('');
 const librarySubPending = ref(false);
+const songMultiSelect = ref(false);
 
 const canGoBack = ref(false);
 const canGoForward = ref(false);
@@ -391,6 +392,7 @@ const applyPendingScrollPolicy = async () => {
 libraryTypeCheck(router.currentRoute.value.name);
 
 onBeforeRouteLeave((to, from) => {
+    songMultiSelect.value = false;
     saveCurrentDetailScroll(from);
     resetSongSearch();
     const toRouteName = normalizeRouteName(to.name);
@@ -407,6 +409,7 @@ onBeforeRouteLeave((to, from) => {
 });
 
 onBeforeRouteUpdate(async (to, from) => {
+    songMultiSelect.value = false;
     saveCurrentDetailScroll(from);
     resetSongSearch();
     setPendingScrollPolicyForRoute(to);
@@ -807,6 +810,7 @@ onMounted(async () => {
     await applyPendingScrollPolicy();
 });
 onDeactivated(() => {
+    songMultiSelect.value = false;
     saveCurrentDetailScroll(router.currentRoute.value);
 });
 onBeforeUnmount(() => {
@@ -939,6 +943,10 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                     </svg>
                                     <span @click="downloadAll()">下载</span>
                                 </div>
+                                <button v-if="isPlaylistRoute" class="operation-item operation-multiselect" type="button" :aria-pressed="songMultiSelect" @click="songMultiSelect = !songMultiSelect">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M5 10l3.5 3.5L15 7" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+                                    <span>{{ songMultiSelect ? '完成多选' : '多选' }}</span>
+                                </button>
                                 <div class="operation-download operation-item" v-if="isCreatedPlaylist && !isSinger" @click="openDeleteCreatedPlaylistPrompt()">
                                     <svg
                                         t="1669033713486"
@@ -1042,6 +1050,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         :queue-songlist="hasSongSearchKeyword ? librarySongs : null"
                         :queue-meta="playbackQueueMeta"
                         :source-indexes="visibleLibrarySourceIndexes"
+                        :multi-select="songMultiSelect && isPlaylistRoute"
                         @list-scroll="handleArtistListScroll"
                         class="library-content"
                     ></LibrarySongList>
@@ -1228,6 +1237,15 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                 font-size: 15px;
                                 color: var(--ld-text);
                             }
+                        }
+                        .operation-multiselect {
+                            padding: 0;
+                            border: 0;
+                            background: transparent;
+                            color: var(--ld-text);
+                            font-family: inherit;
+                            cursor: pointer;
+                            &[aria-pressed='true'] span { text-decoration: underline; text-underline-offset: 4px; }
                         }
                         .operation-search {
                             position: absolute;

@@ -250,10 +250,8 @@ html.dark.dynamic-theme .title-container .title-player {
 .dark .shortcut-selected,
 .dark .default-shortcuts:hover,
 .dark .check-update-btn:hover,
-.dark .check-update-btn:focus,
 .dark .check-update-btn:active,
 .dark .settings-page .button:hover,
-.dark .settings-page .button:focus,
 .dark .settings-page .button:active,
 .dark .select-download-folder .select-option:hover,
 .dark .local-folder .add-option:hover {
@@ -974,10 +972,6 @@ html.dark.dynamic-theme .title-container .title-player {
   color: #000 !important;
 }
 
-.dark .arknights-comments .filter-chip:focus-visible,
-.dark .arknights-comments .sort-button:focus-visible {
-  outline-color: var(--text) !important;
-}
 
 .dark .arknights-comments .section-title {
   color: var(--text) !important;
@@ -1030,9 +1024,6 @@ html.dark.dynamic-theme .title-container .title-player {
   border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
-.dark .arknights-comments .comment-image-button:focus-visible {
-  outline-color: var(--text) !important;
-}
 
 .dark .arknights-comments .comment-controls .control-item {
   background: rgba(255, 255, 255, 0.05) !important;
@@ -1146,13 +1137,6 @@ html.dark.dynamic-theme .title-container .title-player {
   color: var(--text) !important;
 }
 
-.dark .arknights-comments .floor-replies .floor-toggle:focus-visible,
-.dark .arknights-comments .floor-replies .floor-thread-toggle:focus-visible,
-.dark .arknights-comments .floor-replies .floor-more:focus-visible {
-  outline: 2px solid var(--text) !important;
-  outline-offset: 2px !important;
-  box-shadow: none !important;
-}
 
 .dark .arknights-comments .floor-replies .floor-error {
   color: #ff7b7b !important;
