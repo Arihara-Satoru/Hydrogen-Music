@@ -282,8 +282,8 @@ async function precheckClaimed(claimDay) {
 /**
  * 自动领取当天 VIP。
  * - 只对登录用户生效
- * - 同一用户同一天只会尝试一次
- * - 领取失败也会记录，避免频繁重试
+ * - 同一用户当天领取成功后不再重复请求
+ * - 领取失败保留记录，下次登录或启动时可重试
  * @param {string} source - 触发来源，便于调试和状态展示
  * @returns {Promise<object|null>}
  */
@@ -308,7 +308,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
         scheduleNextDailyVipClaim(serverTime)
         const storedRecord = readStoredRecord(userId)
 
-        if (storedRecord?.claimDay === claimDay && storedRecord?.status) {
+        if (storedRecord?.claimDay === claimDay && ['success', 'already'].includes(storedRecord?.status)) {
             updateState({
                 running: false,
                 ...storedRecord,
