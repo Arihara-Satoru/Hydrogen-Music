@@ -77,7 +77,7 @@ function ensureAccountFeatureResponse(result) {
     const failed = Number(result?.status) === 0
         || (result?.error_code !== undefined && Number(result.error_code) !== 0)
         || (result?.errcode !== undefined && Number(result.errcode) !== 0)
-    if (failed) throw new Error(result?.msg || result?.message || result?.data || 'account-feature-request-failed')
+    if (failed) throw new Error(result?.msg || result?.message || result?.errmsg || (typeof result?.data === 'string' ? result.data : 'account-feature-request-failed'))
     return result
 }
 

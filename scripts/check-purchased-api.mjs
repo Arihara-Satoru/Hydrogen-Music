@@ -72,4 +72,39 @@ assert.equal(requests[0].params.pagesize, 1)
 responder = async () => ({ status: 0, error_code: 20010, message: 'param error' })
 await assert.rejects(() => getPurchasedAlbums(), /param error/)
 
+responder = async () => ({ status: 0, error_code: 20010, errmsg: 'error appid', data: {} })
+await assert.rejects(() => userModule.namespace.getListeningPreference(), /error appid/)
+await assert.rejects(() => userModule.namespace.updateListeningPreference({ mode: '1' }), /error appid/)
+
+// 执行共享拦截器，确保 HTTP 502 的 errmsg 能被所有调用方读取。
+let rejectResponse
+const notices = []
+const mock = exports => new SyntheticModule(Object.keys(exports), function () {
+  for (const [name, value] of Object.entries(exports)) this.setExport(name, value)
+}, { context })
+const axios = mock({ default: { create: () => ({ interceptors: {
+  request: { use() {} }, response: { use(success, failure) { rejectResponse = failure } },
+} }) } })
+const auth = mock({ getCookie() {}, isLogin: () => false, updateStoredAuthCookies: () => ({}) })
+const dependencies = {
+  axios,
+  '../utils/authority': auth,
+  '../store/pinia': mock({ default: {} }),
+  '../store/libraryStore': mock({ useLibraryStore: () => ({ needTimestamp: [] }) }),
+  '../store/userStore': mock({ useUserStore: () => ({}) }),
+  './accountState': mock({ clearAccountScopedState: async () => {} }),
+  './loginDevices': mock({ buildKugouDeviceCookieString: () => '' }),
+  './dialog': mock({ noticeOpen: text => notices.push(text) }),
+}
+const realRequestModule = new SourceTextModule(await readFile('src/utils/request.js', 'utf8'), { context })
+await realRequestModule.link(name => {
+  assert.ok(dependencies[name], `Unexpected import: ${name}`)
+  return dependencies[name]
+})
+await realRequestModule.evaluate()
+const httpError = Object.assign(new Error('Request failed with status code 502'), { config: { url: '/user/preference' },
+  response: { status: 502, data: { error_code: 20010, errmsg: 'error appid', data: {}, status: 0 } } })
+await assert.rejects(rejectResponse(httpError), /error appid/)
+assert.equal(notices.at(-1), '请求错误：error appid')
+
 console.log('purchased API check passed')

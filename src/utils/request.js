@@ -137,7 +137,8 @@ request.interceptors.response.use(function (response) {
   }, function (error) {
     const url = error?.config?.url || ''
     const status = error?.response?.status
-    const msg = error?.response?.data?.message || error?.response?.data?.msg
+    const msg = error?.response?.data?.message || error?.response?.data?.msg || error?.response?.data?.errmsg
+    if (msg) error.message = String(msg)
     const code = error?.response?.data?.code
 
     if (status === 401 || status === 403) {
