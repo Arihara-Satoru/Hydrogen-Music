@@ -147,6 +147,19 @@ function normalizeMusicSettings(music = {}) {
 
 function normalizeStoredSettings(settings = {}, appVersion = "") {
   const normalized = { ...settings };
+  // ponytail: migrate exact old defaults once; users can still choose Alt combinations later.
+  if (normalized.other?.shortcutDefaultsShiftV1 !== true && Array.isArray(normalized.shortcuts)) {
+    const oldDefaults = {
+      play: "P", last: "Left", next: "Right", volumeUp: "Up",
+      volumeDown: "Down", processForward: "]", processBack: "[",
+    };
+    normalized.shortcuts = normalized.shortcuts.map((shortcut) => {
+      const oldDefault = `CommandOrControl+Alt+${oldDefaults[shortcut.id]}`;
+      return shortcut.globalShortcut === oldDefault
+        ? { ...shortcut, globalShortcut: oldDefault.replace("+Alt+", "+Shift+") }
+        : shortcut;
+    });
+  }
   normalized.music = normalizeMusicSettings(normalized.music || {});
   normalized.local = {
     ...(normalized.local || {}),
@@ -156,6 +169,7 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   };
   normalized.other = {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
+    shortcutDefaultsShiftV1: true,
     enableUpdate: normalized.other?.enableUpdate !== false,
     startupAnimation: [
       "exa",
@@ -586,6 +600,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     if (settings) {
       const normalizedSettings = normalizeStoredSettings(settings, app.getVersion());
       settingsStore.set("settings", normalizedSettings);
+      if (settings.other?.shortcutDefaultsShiftV1 !== true) registerShortcuts(win, app);
       return normalizedSettings;
     } else {
       let initSettings = {
@@ -615,43 +630,43 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
             id: "play",
             name: "播放/暂停",
             shortcut: "CommandOrControl+P",
-            globalShortcut: "CommandOrControl+Alt+P",
+            globalShortcut: "CommandOrControl+Shift+P",
           },
           {
             id: "last",
             name: "上一首",
             shortcut: "CommandOrControl+Left",
-            globalShortcut: "CommandOrControl+Alt+Left",
+            globalShortcut: "CommandOrControl+Shift+Left",
           },
           {
             id: "next",
             name: "下一首",
             shortcut: "CommandOrControl+Right",
-            globalShortcut: "CommandOrControl+Alt+Right",
+            globalShortcut: "CommandOrControl+Shift+Right",
           },
           {
             id: "volumeUp",
             name: "增加音量",
             shortcut: "CommandOrControl+Up",
-            globalShortcut: "CommandOrControl+Alt+Up",
+            globalShortcut: "CommandOrControl+Shift+Up",
           },
           {
             id: "volumeDown",
             name: "减少音量",
             shortcut: "CommandOrControl+Down",
-            globalShortcut: "CommandOrControl+Alt+Down",
+            globalShortcut: "CommandOrControl+Shift+Down",
           },
           {
             id: "processForward",
             name: "快进(3s)",
             shortcut: "CommandOrControl+]",
-            globalShortcut: "CommandOrControl+Alt+]",
+            globalShortcut: "CommandOrControl+Shift+]",
           },
           {
             id: "processBack",
             name: "后退(3s)",
             shortcut: "CommandOrControl+[",
-            globalShortcut: "CommandOrControl+Alt+[",
+            globalShortcut: "CommandOrControl+Shift+[",
           },
         ],
         other: {
@@ -751,9 +766,9 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   ipcMain.on("register-shortcuts", () => {
     registerShortcuts(win, app);
   });
-  ipcMain.on("unregister-shortcuts", () => {
+  ipcMain.on("unregister-shortcuts", (_event, includeGlobal = false) => {
     Menu.setApplicationMenu(null);
-    globalShortcut.unregisterAll();
+    if (includeGlobal) globalShortcut.unregisterAll();
   });
   ipcMain.on("save-last-playlist", (e, playlist) => {
     saveStoredPlaylistPayload(playlist);

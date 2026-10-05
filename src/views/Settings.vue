@@ -233,7 +233,12 @@ const availableLocalMusicVideoCount = computed(
 const localFolder = ref([]);
 const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
-const newShortcut = ref([]);
+const shortcutCapture = ref(null);
+const shortcutRegistrationFailures = ref([]);
+const disposeShortcutRegistrationFailures = windowApi.onShortcutRegistrationFailures?.((failures) => {
+  shortcutRegistrationFailures.value = failures;
+  if (failures.length) noticeOpen("部分全局快捷键注册失败，请查看快捷键设置", 5);
+});
 const shortcutCharacter = [
   "=",
   "-",
@@ -361,6 +366,7 @@ const confirmKickDevice = (device) => {
 };
 
 onActivated(() => {
+  windowApi.registerShortcuts();
   void refreshLocalMusicVideoPool();
   windowApi.getSettings().then((settings) => {
     if (!settings) return;
@@ -451,7 +457,10 @@ const setupUpdateListeners = () => {
   });
 };
 
-onUnmounted(() => disposeManualUpdateAvailable?.());
+onUnmounted(() => {
+  disposeManualUpdateAvailable?.();
+  disposeShortcutRegistrationFailures?.();
+});
 
 watch(
   () => userStore.user?.userId ?? null,
@@ -496,6 +505,7 @@ const setAppSettings = () => {
     shortcuts: shortcutsList.value,
     other: {
       globalShortcuts: globalShortcuts.value,
+      shortcutDefaultsShiftV1: true,
       // 关闭后会同时禁用启动自动检查和手动检查更新入口。
       enableUpdate: appUpdateEnabled.value,
       startupAnimation: startupAnimation.value,
@@ -610,72 +620,35 @@ const changeShortcut = (id, type) => {
     id: id,
     type: type,
   };
-  windowApi.unregisterShortcuts();
+  windowApi.unregisterShortcuts(true);
+  shortcutCapture.value?.focus();
 };
-/**
- * author: yesplaymusic
- */
-const updateShortcut = () => {
-  let shortcut = [];
-  newShortcut.value.map((e) => {
-    if (e.keyCode >= 65 && e.keyCode <= 90) {
-      shortcut.push(e.code.replace("Key", ""));
-    } else if (["Control", "Shift", "Alt"].includes(e.key)) {
-      shortcut.push(e.key);
-    } else if (e.keyCode >= 48 && e.keyCode <= 57) {
-      shortcut.push(e.code.replace("Digit", ""));
-    } else if (e.keyCode >= 96 && e.keyCode <= 105) {
-      shortcut.push(e.code.replace("Numpad", "num"));
-    } else if (e.keyCode >= 112 && e.keyCode <= 123) {
-      shortcut.push(e.code);
-    } else if (
-      ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)
-    ) {
-      shortcut.push(e.code.replace("Arrow", ""));
-    } else if (shortcutCharacter.includes(e.key)) {
-      shortcut.push(e.key);
-    }
-  });
-  const sortTable = {
-    Control: 1,
-    Shift: 2,
-    Alt: 3,
-  };
-  shortcut = shortcut.sort((a, b) => {
-    if (!sortTable[a] || !sortTable[b]) return 0;
-    if (sortTable[a] - sortTable[b] <= -1) {
-      return -1;
-    } else if (sortTable[a] - sortTable[b] >= 1) {
-      return 1;
-    } else {
-      return 0;
-    }
-  });
-  shortcut = shortcut.join("+");
-  return shortcut;
+const cancelShortcutSelection = () => {
+  if (!selectedShortcut.value) return;
+  selectedShortcut.value = null;
+  windowApi.registerShortcuts();
 };
 const inputShortcut = (k) => {
   if (!selectedShortcut.value) return;
-  if (newShortcut.value.find((nk) => nk.keyCode === k.keyCode)) return;
-  else newShortcut.value.push(k);
-  if (
-    (k.keyCode >= 65 && k.keyCode <= 90) ||
-    (k.keyCode >= 48 && k.keyCode <= 57) ||
-    (k.keyCode >= 96 && k.keyCode <= 105) ||
-    (k.keyCode >= 112 && k.keyCode <= 123) ||
-    ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(k.key) ||
-    shortcutCharacter.includes(k.key)
-  ) {
-    if (selectedShortcut.value.type)
-      shortcutsList.value.find(
-        (sc) => sc.id == selectedShortcut.value.id,
-      ).globalShortcut = updateShortcut();
-    else
-      shortcutsList.value.find(
-        (sc) => sc.id == selectedShortcut.value.id,
-      ).shortcut = updateShortcut();
-    newShortcut.value = [];
-  }
+  k.preventDefault();
+  const code = k.code;
+  const key = /^Key[A-Z]$/.test(code) ? code.slice(3)
+    : /^Digit[0-9]$/.test(code) ? code.slice(5)
+    : /^Numpad[0-9]$/.test(code) ? `num${code.slice(6)}`
+    : /^F(?:[1-9]|1[0-2])$/.test(code) ? code
+    : /^Arrow(?:Right|Left|Up|Down)$/.test(code) ? code.slice(5)
+    : shortcutCharacter.includes(k.key) ? k.key : null;
+  if (!key || k.repeat) return;
+  const shortcut = [
+    k.ctrlKey && "Control",
+    k.metaKey && "Meta",
+    k.shiftKey && "Shift",
+    k.altKey && "Alt",
+    key,
+  ].filter(Boolean).join("+");
+  const target = shortcutsList.value.find((sc) => sc.id == selectedShortcut.value.id);
+  if (selectedShortcut.value.type) target.globalShortcut = shortcut;
+  else target.shortcut = shortcut;
 };
 const setDefaultShortcuts = () => {
   shortcutsList.value = [
@@ -683,43 +656,43 @@ const setDefaultShortcuts = () => {
       id: "play",
       name: "播放/暂停",
       shortcut: "CommandOrControl+P",
-      globalShortcut: "CommandOrControl+Alt+P",
+      globalShortcut: "CommandOrControl+Shift+P",
     },
     {
       id: "last",
       name: "上一首",
       shortcut: "CommandOrControl+Left",
-      globalShortcut: "CommandOrControl+Alt+Left",
+      globalShortcut: "CommandOrControl+Shift+Left",
     },
     {
       id: "next",
       name: "下一首",
       shortcut: "CommandOrControl+Right",
-      globalShortcut: "CommandOrControl+Alt+Right",
+      globalShortcut: "CommandOrControl+Shift+Right",
     },
     {
       id: "volumeUp",
       name: "增加音量",
       shortcut: "CommandOrControl+Up",
-      globalShortcut: "CommandOrControl+Alt+Up",
+      globalShortcut: "CommandOrControl+Shift+Up",
     },
     {
       id: "volumeDown",
       name: "减少音量",
       shortcut: "CommandOrControl+Down",
-      globalShortcut: "CommandOrControl+Alt+Down",
+      globalShortcut: "CommandOrControl+Shift+Down",
     },
     {
       id: "processForward",
       name: "快进(3s)",
       shortcut: "CommandOrControl+]",
-      globalShortcut: "CommandOrControl+Alt+]",
+      globalShortcut: "CommandOrControl+Shift+]",
     },
     {
       id: "processBack",
       name: "后退(3s)",
       shortcut: "CommandOrControl+[",
-      globalShortcut: "CommandOrControl+Alt+[",
+      globalShortcut: "CommandOrControl+Shift+[",
     },
   ];
 };
@@ -1026,7 +999,7 @@ const clearFmRecent = () => {
 </script>
 
 <template>
-  <div class="settings-page" @click="selectedShortcut = null">
+  <div class="settings-page" @click="cancelShortcutSelection">
     <div class="view-control">
       <svg
         t="1669039513804"
@@ -1575,6 +1548,7 @@ const clearFmRecent = () => {
           <div class="line"></div>
           <div
             class="item-options"
+            ref="shortcutCapture"
             tabindex="0"
             @keydown="inputShortcut($event)"
           >
@@ -1634,6 +1608,10 @@ const clearFmRecent = () => {
             </div>
             <div class="default-shortcuts" @click="setDefaultShortcuts()">
               恢复默认快捷键
+            </div>
+            <div v-if="shortcutRegistrationFailures.length" class="shortcut-registration-warning">
+              以下全局快捷键注册失败，可能与其他快捷键重复、被系统或其他程序占用，或组合键不受支持：
+              {{ shortcutRegistrationFailures.map((item) => formatShortcutName(item.accelerator || item.id)).join("、") }}
             </div>
           </div>
         </div>
@@ -2524,6 +2502,14 @@ const clearFmRecent = () => {
               cursor: pointer;
               box-shadow: 0 0 0 1px black;
             }
+          }
+          .shortcut-registration-warning {
+            margin-top: 12px;
+            max-width: 600px;
+            padding: 8px;
+            background: #fff0ee;
+            color: #8f1d13;
+            line-height: 1.5;
           }
         }
       }

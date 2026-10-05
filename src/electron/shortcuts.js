@@ -16,13 +16,13 @@ async function createApplicationMenu(win, app, songInfo) {
                 id: 'processForward',
                 name: '快进(3s)',
             shortcut: 'CommandOrControl+]',
-            globalShortcut: 'CommandOrControl+Alt+]',
+            globalShortcut: 'CommandOrControl+Shift+]',
         },
         {
             id: 'processBack',
             name: '后退(3s)',
             shortcut: 'CommandOrControl+[',
-            globalShortcut: 'CommandOrControl+Alt+[',
+            globalShortcut: 'CommandOrControl+Shift+[',
         })
         settingsStore.set('settings.shortcuts', shortcuts);
     }
@@ -180,6 +180,7 @@ module.exports = async function registerShortcuts(win, app) {
         
         const settingsStore = new Store({name: 'settings'});
         const shortcuts = await settingsStore.get('settings.shortcuts');
+        globalShortcut.unregisterAll();
         if(!shortcuts) return;
     
     const openDevTools = () => {
@@ -192,28 +193,34 @@ module.exports = async function registerShortcuts(win, app) {
     globalShortcut.register('CommandOrControl+Shift+F12', openDevTools)
     globalShortcut.register('F12', openDevTools)
     
-    if(!settingsStore.get('settings.other.globalShortcuts')) return
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'play').globalShortcut, () => {
-        win.webContents.send('music-playing-control')
-    })
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'last').globalShortcut, () => {
-        win.webContents.send('music-song-control', 'last')
-    })
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'next').globalShortcut, () => {
-        win.webContents.send('music-song-control', 'next')
-    })
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'volumeUp').globalShortcut, () => {
-        win.webContents.send('music-volume-up', 'volumeUp')
-    })
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'volumeDown').globalShortcut, () => {
-        win.webContents.send('music-volume-down', 'volumeDown')
-    })
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'processForward').globalShortcut, () => {
-        win.webContents.send('music-process-control', 'forward')
-    })
-    globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'processBack').globalShortcut, () => {
-        win.webContents.send('music-process-control', 'back')
-    })
+    const failures = [];
+    if(settingsStore.get('settings.other.globalShortcuts')) {
+        const commands = [
+            ['play', 'music-playing-control'],
+            ['last', 'music-song-control', 'last'],
+            ['next', 'music-song-control', 'next'],
+            ['volumeUp', 'music-volume-up', 'volumeUp'],
+            ['volumeDown', 'music-volume-down', 'volumeDown'],
+            ['processForward', 'music-process-control', 'forward'],
+            ['processBack', 'music-process-control', 'back'],
+        ];
+        for (const [id, channel, arg] of commands) {
+            const accelerator = shortcuts.find(shortcut => shortcut.id == id)?.globalShortcut;
+            try {
+                if (!accelerator || !globalShortcut.register(accelerator, () => {
+                    if (arg === undefined) win.webContents.send(channel);
+                    else win.webContents.send(channel, arg);
+                })) {
+                    failures.push({ id, accelerator });
+                }
+            } catch (error) {
+                failures.push({ id, accelerator });
+                console.warn(`Global shortcut registration failed: ${id} (${accelerator})`, error);
+            }
+        }
+    }
+    if (failures.length) console.warn('Global shortcuts unavailable:', failures);
+    win.webContents.send('shortcut-registration-failures', failures);
     } catch (error) {
         console.error('Failed to register shortcuts:', error);
     }

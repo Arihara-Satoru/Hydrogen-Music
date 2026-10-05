@@ -110,8 +110,13 @@ function clearLocalMusicData(type) {
 function registerShortcuts() {
   ipcRenderer.send("register-shortcuts");
 }
-function unregisterShortcuts() {
-  ipcRenderer.send("unregister-shortcuts");
+function unregisterShortcuts(includeGlobal = false) {
+  ipcRenderer.send("unregister-shortcuts", includeGlobal);
+}
+function onShortcutRegistrationFailures(callback) {
+  const listener = (_event, failures) => callback(failures);
+  ipcRenderer.on("shortcut-registration-failures", listener);
+  return () => ipcRenderer.removeListener("shortcut-registration-failures", listener);
 }
 function openLocalFolder(path) {
   ipcRenderer.send("open-local-folder", path);
@@ -300,6 +305,7 @@ contextBridge.exposeInMainWorld("windowApi", {
   clearLocalMusicData,
   registerShortcuts,
   unregisterShortcuts,
+  onShortcutRegistrationFailures,
   getLastPlaylist: () => ipcRenderer.invoke("get-last-playlist"),
   openLocalFolder,
   saveLastPlaylist,
