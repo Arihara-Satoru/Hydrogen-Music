@@ -1568,53 +1568,59 @@ const clearFmRecent = () => {
                 </div>
               </div>
             </div>
-            <div class="shortcuts-title">
-              <div class="title-function">功能说明</div>
-              <div class="title-shortcuts">快捷键</div>
-              <div
-                class="title-globalShortcuts"
-                :class="{ 'forbid-shortcuts': !globalShortcuts }"
-              >
-                全局快捷键
+            <div class="shortcut-layout">
+              <div class="shortcut-list">
+                <div class="shortcuts-title">
+                  <div class="title-function">功能说明</div>
+                  <div class="title-shortcuts">快捷键</div>
+                  <div
+                    class="title-globalShortcuts"
+                    :class="{ 'forbid-shortcuts': !globalShortcuts }"
+                  >
+                    全局快捷键
+                  </div>
+                </div>
+                <div class="shortcuts" v-for="(item, index) in shortcutsList">
+                  <div class="shortcut-name">{{ item.name }}</div>
+                  <div
+                    class="shortcut"
+                    :class="{
+                      'shortcut-selected':
+                        selectedShortcut &&
+                        selectedShortcut.id == item.id &&
+                        !selectedShortcut.type,
+                    }"
+                    @click.stop="changeShortcut(item.id, false)"
+                  >
+                    {{ formatShortcutName(item.shortcut) }}
+                  </div>
+                  <div
+                    class="globalShortcut"
+                    :class="{
+                      'shortcut-selected':
+                        selectedShortcut &&
+                        selectedShortcut.id == item.id &&
+                        selectedShortcut.type,
+                      'forbid-shortcuts': !globalShortcuts,
+                    }"
+                    @click.stop="changeShortcut(item.id, true)"
+                  >
+                    {{ formatShortcutName(item.globalShortcut) }}
+                  </div>
+                </div>
+                <div class="default-shortcuts" @click="setDefaultShortcuts()">
+                  恢复默认快捷键
+                </div>
               </div>
-            </div>
-            <div class="shortcuts" v-for="(item, index) in shortcutsList">
-              <div class="shortcut-name">{{ item.name }}</div>
-              <div
-                class="shortcut"
-                :class="{
-                  'shortcut-selected':
-                    selectedShortcut &&
-                    selectedShortcut.id == item.id &&
-                    !selectedShortcut.type,
-                }"
-                @click.stop="changeShortcut(item.id, false)"
-              >
-                {{ formatShortcutName(item.shortcut) }}
+              <div v-if="selectedShortcut || shortcutRegistrationFailures.length" class="shortcut-hints">
+                <div v-if="selectedShortcut" class="shortcut-capture-hint">
+                  按住修饰键后再按主键。如果组合键没有显示出来，可能已被系统或其他程序拦截，请换一个组合键。
+                </div>
+                <div v-if="shortcutRegistrationFailures.length" class="shortcut-registration-warning">
+                  以下全局快捷键注册失败，可能与其他快捷键重复、被系统或其他程序占用，或组合键不受支持：
+                  {{ shortcutRegistrationFailures.map((item) => formatShortcutName(item.accelerator || item.id)).join("、") }}
+                </div>
               </div>
-              <div
-                class="globalShortcut"
-                :class="{
-                  'shortcut-selected':
-                    selectedShortcut &&
-                    selectedShortcut.id == item.id &&
-                    selectedShortcut.type,
-                  'forbid-shortcuts': !globalShortcuts,
-                }"
-                @click.stop="changeShortcut(item.id, true)"
-              >
-                {{ formatShortcutName(item.globalShortcut) }}
-              </div>
-            </div>
-            <div class="default-shortcuts" @click="setDefaultShortcuts()">
-              恢复默认快捷键
-            </div>
-            <div v-if="selectedShortcut" class="shortcut-capture-hint">
-              按住修饰键后再按主键。如果组合键没有显示出来，可能已被系统或其他程序拦截，请换一个组合键。
-            </div>
-            <div v-if="shortcutRegistrationFailures.length" class="shortcut-registration-warning">
-              以下全局快捷键注册失败，可能与其他快捷键重复、被系统或其他程序占用，或组合键不受支持：
-              {{ shortcutRegistrationFailures.map((item) => formatShortcutName(item.accelerator || item.id)).join("、") }}
             </div>
           </div>
         </div>
@@ -2443,6 +2449,17 @@ const clearFmRecent = () => {
             opacity: 0.5;
             pointer-events: none;
           }
+          .shortcut-layout {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 32px;
+          }
+          .shortcut-hints {
+            flex: 1 1 240px;
+            max-width: 360px;
+            line-height: 1.5;
+          }
           .shortcuts-title {
             font: 14px SourceHanSansCN-Bold;
             color: black;
@@ -2507,17 +2524,13 @@ const clearFmRecent = () => {
             }
           }
           .shortcut-capture-hint {
-            margin-top: 12px;
-            max-width: 600px;
-            line-height: 1.5;
+            font: 14px SourceHanSansCN-Bold;
           }
           .shortcut-registration-warning {
             margin-top: 12px;
-            max-width: 600px;
             padding: 8px;
             background: #fff0ee;
             color: #8f1d13;
-            line-height: 1.5;
           }
         }
       }
