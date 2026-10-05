@@ -31,7 +31,7 @@ export const ONBOARDING_STEPS = [
   step('settings-local', 'settings', '[data-tour="settings-local"]', '本地与下载', '设置下载目录、本地扫描目录和音乐视频缓存。'),
   step('settings-shortcuts', 'settings', '[data-tour="settings-shortcuts"]', '快捷键', '查看和修改应用快捷键及全局快捷键。'),
   step('settings-other', 'settings', '[data-tour="other-settings"]', '应用设置', '调整主题、字体、页面入口、缓存、更新和退出行为。'),
-  step('settings-restart', 'settings', '[data-tour="restart-onboarding"]', '重新查看引导', '点击“重新开始”会清除所有引导进度；之后进入各页面时会重新介绍。'),
+  step('settings-restart', 'settings', '[data-tour="restart-onboarding"]', '重新查看引导', '点击“重新查看新手引导”会清除所有引导进度；之后进入各页面时会重新介绍。'),
 
   step('player-cover', 'player', '[data-tour="player-cover"]', '当前歌曲', '封面、歌曲名、歌手、播放进度和基础播放控制集中在这里。'),
   step('player-lyrics', 'player', '[data-tour="player-lyrics"]', '歌词与内容面板', '右侧默认显示滚动歌词，也会切换为评论、电台简介或歌词候选。'),

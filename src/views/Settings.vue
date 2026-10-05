@@ -1049,6 +1049,9 @@ const clearFmRecent = () => {
         <span class="save" @click="save()">点击</span>
         保存)
       </span>
+      <button class="restart-onboarding" data-tour="restart-onboarding" type="button" @click="restartOnboarding">
+        重新查看新手引导
+      </button>
     </div>
     <div class="settings-container">
       <h1 class="settings-title">设置</h1>
@@ -1771,12 +1774,6 @@ const clearFmRecent = () => {
                 <div class="button" @click="confirmClearAllCacheData">清除</div>
               </div>
             </div>
-            <div class="option" data-tour="restart-onboarding">
-              <div class="option-name">新手引导</div>
-              <div class="option-operation">
-                <div class="button" role="button" tabindex="0" @click="restartOnboarding" @keydown.enter="restartOnboarding">重新开始</div>
-              </div>
-            </div>
             <div class="option">
               <div class="option-name">开启应用更新</div>
               <div class="option-operation">
@@ -1889,6 +1886,20 @@ const clearFmRecent = () => {
         &:active {
           opacity: 0.5;
         }
+      }
+    }
+    .restart-onboarding {
+      margin-left: auto;
+      padding: 6px 12px;
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      background: var(--layer);
+      color: var(--text);
+      font: 13px SourceHanSansCN-Bold;
+      cursor: pointer;
+      &:focus-visible {
+        outline: 2px solid var(--text);
+        outline-offset: 2px;
       }
     }
   }

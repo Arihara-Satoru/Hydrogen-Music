@@ -5,10 +5,12 @@ import {
   completeOnboardingSteps,
   getPendingOnboardingSteps,
   ONBOARDING_STEPS,
+  ONBOARDING_STORAGE_KEY,
   resetOnboarding,
 } from '../utils/onboarding.mjs'
 
 const props = defineProps({ scope: { type: String, default: '' } })
+const emit = defineEmits(['active-change'])
 const router = inject(routerKey, null)
 const routeScopes = {
   homepage: 'home', mymusic: 'mymusic', playlist: 'mymusic', album: 'mymusic', artist: 'mymusic',
@@ -26,6 +28,7 @@ const currentScope = computed(() => props.scope || routeScope.value)
 const steps = ref([])
 const index = ref(0)
 const active = ref(false)
+watch(active, (value) => emit('active-change', value), { flush: 'sync' })
 const locating = ref(false)
 const rect = ref(null)
 const shownStepIds = new Set()
@@ -89,12 +92,12 @@ const updateRect = () => {
   rect.value = { left, top, right, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
 }
 
-const finish = (skipAll = false) => {
+const finish = (skipAll = false, saveProgress = true) => {
   locateRun += 1
   cleanupPreparedAction()
   showPlayerTools(false)
   const completed = skipAll ? steps.value.map(({ id }) => id) : [...shownStepIds]
-  if (completed.length) completeOnboardingSteps(localStorage, completed)
+  if (saveProgress && completed.length) completeOnboardingSteps(localStorage, completed)
   active.value = false
   locating.value = false
   rect.value = null
@@ -160,6 +163,11 @@ const scheduleStart = (delay = 450) => {
 }
 const restart = () => startScope(true)
 const refresh = () => { if (!active.value) scheduleStart(250) }
+const handleStorage = (event) => {
+  if (event.key !== ONBOARDING_STORAGE_KEY || event.newValue !== null) return
+  if (active.value) finish(false, false)
+  scheduleStart(250)
+}
 
 watch(index, () => void locateStep())
 watch(currentScope, (scope) => {
@@ -176,6 +184,7 @@ onMounted(() => {
   window.addEventListener('scroll', updateRect, true)
   window.addEventListener('hydrogen:restart-onboarding', restart)
   window.addEventListener('hydrogen:refresh-onboarding', refresh)
+  window.addEventListener('storage', handleStorage)
   scheduleStart(700)
 })
 onBeforeUnmount(() => {
@@ -183,10 +192,12 @@ onBeforeUnmount(() => {
   locateRun += 1
   cleanupPreparedAction()
   showPlayerTools(false)
+  if (active.value) emit('active-change', false)
   window.removeEventListener('resize', updateRect)
   window.removeEventListener('scroll', updateRect, true)
   window.removeEventListener('hydrogen:restart-onboarding', restart)
   window.removeEventListener('hydrogen:refresh-onboarding', refresh)
+  window.removeEventListener('storage', handleStorage)
 })
 </script>
 
@@ -214,7 +225,7 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .onboarding-tour { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
 .onboarding-highlight { position: fixed; border: 2px solid rgba(255,255,255,.96); border-radius: 10px; box-shadow: 0 0 0 9999px rgba(10,14,20,.68), 0 0 0 5px rgba(0,0,0,.28); transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease; }
-.onboarding-card { position: fixed; box-sizing: border-box; padding: 20px; color: #f7f7f7; background: rgba(20,20,20,.97) url('../assets/img/halftone.png'); background-size: 160px; box-shadow: 0 16px 50px rgba(0,0,0,.36); pointer-events: auto; transition: left .22s ease, top .22s ease, bottom .22s ease; font-family: SourceHanSansCN-Bold,sans-serif; }
+.onboarding-card { position: fixed; box-sizing: border-box; max-height: calc(100vh - 16px); overflow-y: auto; padding: 20px; color: #f7f7f7; background: rgba(20,20,20,.97) url('../assets/img/halftone.png'); background-size: 160px; box-shadow: 0 16px 50px rgba(0,0,0,.36); pointer-events: auto; transition: left .22s ease, top .22s ease, bottom .22s ease; font-family: SourceHanSansCN-Bold,sans-serif; }
 .onboarding-meta,.onboarding-actions,.onboarding-actions>div { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .onboarding-meta { color:rgba(255,255,255,.6); font:12px Bender-Bold; letter-spacing:1px; }
 h2 { margin:13px 0 8px; font-size:20px; }

@@ -338,7 +338,7 @@
                 </div>
             </section>
         </Transition>
-        <OnboardingTour scope="desktop-lyric"></OnboardingTour>
+        <OnboardingTour scope="desktop-lyric" @active-change="setOnboardingActive"></OnboardingTour>
     </div>
 </template>
 
@@ -410,6 +410,7 @@ const compactMode = ref(savedConfig.compactMode ?? false);
 const transparentMode = ref(savedConfig.transparentMode ?? false);
 const coverFailed = ref(false);
 const controlDockVisible = ref(false);
+const onboardingActive = ref(false);
 const isClosing = ref(false);
 const settingsButtonRef = ref(null);
 const controlDockRef = ref(null);
@@ -434,6 +435,8 @@ let expandedWindowSize = null;
 let mouseEventsIgnored = false;
 let savedWindowBounds = savedConfig.bounds || null;
 let boundsSaveTimer = null;
+let onboardingOriginalBounds = null;
+let onboardingResizeTask = Promise.resolve();
 
 const persistDesktopLyricConfig = bounds => {
     const normalizedBounds = normalizeSavedBounds(bounds);
@@ -698,7 +701,54 @@ const isLockedInteractiveTarget = target =>
     target instanceof Element && Boolean(target.closest('.current-line__text, .next-line p, .control-dock'));
 
 const syncLockedMousePassthrough = target => {
-    setMouseEventsIgnored(transparentMode.value && locked.value && !isLockedInteractiveTarget(target));
+    setMouseEventsIgnored(transparentMode.value && locked.value && !onboardingActive.value && !isLockedInteractiveTarget(target));
+};
+
+const setOnboardingActive = active => {
+    onboardingActive.value = active;
+    syncLockedMousePassthrough();
+    onboardingResizeTask = onboardingResizeTask.then(async () => {
+        if (active !== onboardingActive.value) return;
+        const resizeWindow = window.electronAPI?.resizeWindow;
+        if (typeof resizeWindow !== 'function') return;
+
+        if (!active) {
+            if (!onboardingOriginalBounds) return;
+            const bounds = onboardingOriginalBounds;
+            const result = await resizeWindow(bounds.width, bounds.height);
+            if (!result?.success) return;
+            window.electronAPI?.moveLyricWindow?.(bounds.x, bounds.y);
+            persistDesktopLyricConfig(bounds);
+            onboardingOriginalBounds = null;
+            return;
+        }
+
+        if (onboardingOriginalBounds) return;
+        const bounds = normalizeSavedBounds(await window.electronAPI?.getLyricWindowBounds?.());
+        if (!bounds || !onboardingActive.value) return;
+        const screen = window.screen;
+        const availableWidth = screen.availWidth || 520;
+        const availableHeight = screen.availHeight || 280;
+        const width = Math.max(bounds.width, Math.min(520, availableWidth));
+        const height = Math.max(bounds.height, Math.min(280, availableHeight));
+        if (width === bounds.width && height === bounds.height) return;
+
+        // ponytail: keep the user's compact bounds while the tour borrows room; a
+        // scrollable card remains the fallback when the display itself is smaller.
+        onboardingOriginalBounds = bounds;
+        if (boundsSaveTimer) window.clearTimeout(boundsSaveTimer);
+        const result = await resizeWindow(width, height);
+        if (!result?.success) {
+            onboardingOriginalBounds = null;
+            return;
+        }
+        const left = Number.isFinite(screen.availLeft) ? screen.availLeft : bounds.x;
+        const top = Number.isFinite(screen.availTop) ? screen.availTop : bounds.y;
+        window.electronAPI?.moveLyricWindow?.(
+            Math.max(left, Math.min(bounds.x, left + availableWidth - width)),
+            Math.max(top, Math.min(bounds.y, top + availableHeight - height)),
+        );
+    }).catch(() => {});
 };
 
 const handleWindowMouseMove = event => {
@@ -803,19 +853,21 @@ const controlPlayback = action => {
 
 const saveCurrentWindowBounds = async () => {
     try {
-        persistDesktopLyricConfig(await window.electronAPI?.getLyricWindowBounds?.());
+        const bounds = await window.electronAPI?.getLyricWindowBounds?.();
+        if (!onboardingOriginalBounds) persistDesktopLyricConfig(bounds);
     } catch (_) {
-        persistDesktopLyricConfig();
+        if (!onboardingOriginalBounds) persistDesktopLyricConfig();
     }
 };
 
 const scheduleWindowBoundsSave = () => {
+    if (onboardingOriginalBounds) return;
     if (boundsSaveTimer) window.clearTimeout(boundsSaveTimer);
     boundsSaveTimer = window.setTimeout(saveCurrentWindowBounds, 150);
 };
 
 const persistCurrentBrowserBounds = () => {
-    persistDesktopLyricConfig({
+    persistDesktopLyricConfig(onboardingOriginalBounds || {
         x: window.screenX,
         y: window.screenY,
         width: window.outerWidth,
