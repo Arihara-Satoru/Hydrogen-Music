@@ -8,7 +8,8 @@ const requests = []
 let responder = async () => ({})
 const plain = value => JSON.parse(JSON.stringify(value))
 
-const baseModule = new SyntheticModule(['get', 'getById', 'getWithPagination', 'operationRequest'], function setBaseExports() {
+const baseModule = new SyntheticModule(['post', 'get', 'getById', 'getWithPagination', 'operationRequest'], function setBaseExports() {
+  this.setExport('post', (url, data) => { requests.push({ url, data }); return responder(url, data) })
   this.setExport('get', (url, params) => {
     requests.push({ url, params })
     return responder(url, params)
@@ -134,3 +135,175 @@ assert.equal(floorResult.data.totalCount, 24)
 assert.equal(floorResult.data.hasMore, true)
 assert.equal(floorResult.data.nextPage, 3)
 console.log('comment API check passed')
+
+responder = async () => ({ status: 1 })
+await songModule.namespace.postMusicComment({ id: 123, content: ' hello ' })
+assert.deepEqual(plain(requests.at(-1)), { url: '/comment/music/send', data: { mixsongid: 123, content: 'hello' } })
+await songModule.namespace.postMusicComment({ id: 123, content: 'reply', commentId: 9, special_id: 12, tid: 8, pid: 9 })
+assert.equal(requests.at(-1).url, '/comment/floor/send')
+assert.equal(requests.at(-1).data.tid, 8)
+assert.equal(requests.at(-1).data.pid, 9)
+assert.throws(() => songModule.namespace.postMusicComment({ id: 123, content: 'reply', commentId: 9 }), /回复需要/)
+await songModule.namespace.deleteMusicComment({ mixsongid: 123, cid: 9, tid: 8 })
+assert.deepEqual(plain(requests.at(-1)), { url: '/comment/music/del', data: { mixsongid: 123, cid: 9, tid: 8 } })
+console.log('comment mutations check passed')
+
+const challenge = { eventid: 'test-event', sid: 'test-sid', edt: 'test-edt' }
+assert.deepEqual(plain(songModule.namespace.getCommentSecurityChallenge({ response: { data: {
+  status: 0, err_code: 60045, ssaCode: challenge.eventid, sid: challenge.sid, edt: challenge.edt,
+} } })), challenge)
+assert.deepEqual(plain(songModule.namespace.getCommentSecurityChallenge({ data: { event_id: 'test-event' }, sid: 'test-sid', edt: 'test-edt' })), challenge)
+assert.equal(songModule.namespace.getCommentSecurityChallenge({ status: 0, err_code: 60045, msg: '发布失败' }), null)
+await songModule.namespace.getCommentVerificationInfo(challenge.eventid)
+assert.equal(requests.at(-1).url, '/get/verify/info')
+await songModule.namespace.verifyCommentSecurity({ ...challenge, v_type: 23, verifycode: 'ticket' })
+assert.deepEqual(plain(requests.at(-1)), { url: '/verify/user/info', data: { ...challenge, v_type: 23, verifycode: 'ticket' } })
+assert.throws(() => songModule.namespace.verifyCommentSecurity({ ...challenge, v_type: 1, verifycode: 'ticket' }), /安全验证/)
+assert.throws(() => songModule.namespace.verifyCommentSecurity({ ...challenge, v_type: 23 }), /安全验证/)
+console.log('comment verification API check passed')
+
+// 执行真实 Vue 组件脚本，模拟验证码和后端；不发布真实评论。
+const verificationSource = (await readFile('src/components/CommentVerification.vue', 'utf8')).match(/<script setup>([\s\S]*?)<\/script>/)[1]
+assert.doesNotMatch(await readFile('src/components/CommentVerification.vue', 'utf8'), /<style|Teleport|verification-overlay/)
+async function mountVerification({ type = 23, sdk = true } = {}) {
+  let dispose, callback
+  const events = []
+  const calls = []
+  const prompts = []
+  let verificationResult = { status: 1 }
+  let destroyed = 0
+  const verificationContext = createContext({
+    console, setTimeout, clearTimeout,
+    defineProps: () => ({ challenge }),
+    defineEmits: () => event => events.push(event),
+    window: sdk ? { TencentCaptcha: class {
+      constructor(appid, cb) { assert.equal(appid, '123'); callback = cb }
+      show() {}
+      destroy() { destroyed++ }
+    } } : {},
+    document: { createElement: () => ({ remove() {} }), head: { appendChild: script => script.onerror() } },
+  })
+  const vue = new SyntheticModule(['ref', 'onBeforeUnmount'], function () {
+    this.setExport('ref', value => ({ value }))
+    this.setExport('onBeforeUnmount', handler => { dispose = handler })
+  }, { context: verificationContext })
+  const dialogs = new SyntheticModule(['dialogOpen'], function () {
+    this.setExport('dialogOpen', (title, text, handler, input) => {
+      const prompt = { title, text, handler, input, closed: false }
+      prompts.push(prompt)
+      return () => { prompt.closed = true }
+    })
+  }, { context: verificationContext })
+  const api = new SyntheticModule(['getCommentVerificationInfo', 'verifyCommentSecurity'], function () {
+    this.setExport('getCommentVerificationInfo', async eventid => {
+      assert.equal(eventid, challenge.eventid)
+      return { status: 1, data: { v_type: type, txappid: 123 } }
+    })
+    this.setExport('verifyCommentSecurity', async params => { calls.push(plain(params)); return verificationResult })
+  }, { context: verificationContext })
+  const component = new SourceTextModule(verificationSource + '\nexport { startVerification, submitVerification, busy, error, info };', { context: verificationContext })
+  await component.link(name => name === 'vue' ? vue : name === '../utils/dialog' ? dialogs : api)
+  await component.evaluate()
+  return { state: component.namespace, events, calls, prompts, dispose: () => dispose(),
+    callback: async value => { callback(value); await new Promise(resolve => setTimeout(resolve, 0)) },
+    setResult: value => { verificationResult = value }, destroyed: () => destroyed }
+}
+
+const verification = await mountVerification()
+assert.equal(verification.prompts[0].title, '安全验证')
+assert.match(verification.prompts[0].text, /草稿已保留/)
+const cancelled = await mountVerification()
+cancelled.prompts[0].handler(false)
+assert.deepEqual(cancelled.events, ['retry'])
+assert.equal(cancelled.calls.length, 0)
+cancelled.dispose()
+await verification.state.startVerification()
+assert.equal(verification.state.busy.value, true)
+await verification.callback({ ret: 2 })
+assert.match(verification.state.error.value, /取消/)
+assert.equal(verification.calls.length, 0)
+assert.equal(verification.state.busy.value, false)
+await verification.state.startVerification()
+await verification.callback({ ret: 0, errorCode: 1001, ticket: 'trerror_test', randstr: 'test' })
+assert.equal(verification.calls.length, 0)
+verification.setResult({ status: 0, msg: '验证已过期' })
+await verification.state.startVerification()
+await verification.callback({ ret: 0, ticket: 'test-ticket', randstr: 'test-randstr' })
+assert.equal(verification.events.length, 0)
+assert.equal(verification.state.error.value, '验证已过期')
+verification.setResult({ status: 1 })
+await verification.state.startVerification()
+await verification.callback({ ret: 0, ticket: 'test-ticket', randstr: 'test-randstr' })
+assert.deepEqual(verification.events, ['verified'])
+assert.deepEqual(verification.calls.at(-1), { ...challenge, v_type: 23,
+  verifycode: 'KGCodeTX|{"ticket":"test-ticket","randstr":"test-randstr","txappid":"123"}' })
+verification.dispose()
+const previousCalls = verification.calls.length
+await verification.callback({ ret: 0, ticket: 'stale-ticket', randstr: 'test' })
+assert.equal(verification.calls.length, previousCalls)
+assert.ok(verification.destroyed() > 0)
+assert.equal(verification.prompts.at(-1).closed, true)
+const sms = await mountVerification({ type: 32 })
+await sms.state.startVerification()
+assert.equal(sms.state.busy.value, false)
+assert.equal(sms.calls.length, 0)
+assert.equal(sms.prompts.at(-1).input.label, '手机验证码')
+sms.prompts.at(-1).handler(true, '123456')
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.deepEqual(sms.calls[0], { ...challenge, v_type: 32, verifycode: '123456' })
+assert.deepEqual(sms.events, ['verified'])
+const pending = await mountVerification({ type: 32 })
+await pending.state.startVerification()
+let finishPending
+pending.setResult(new Promise(resolve => { finishPending = resolve }))
+const pendingRequest = pending.state.submitVerification('123456')
+pending.dispose()
+finishPending({ status: 1 })
+await pendingRequest
+assert.equal(pending.events.length, 0)
+const unsupported = await mountVerification({ type: 99 })
+await unsupported.state.startVerification()
+assert.match(unsupported.state.error.value, /暂不支持/)
+assert.equal(unsupported.state.busy.value, false)
+const unavailable = await mountVerification({ sdk: false })
+await unavailable.state.startVerification()
+assert.match(unavailable.state.error.value, /加载失败/)
+assert.equal(unavailable.state.busy.value, false)
+assert.equal(unavailable.events.length, 0)
+console.log('comment verification flow check passed')
+
+const dialogState = Object.fromEntries(['dialogShow', 'dialogHeader', 'dialogText', 'dialogInput'].map(key => [key, { value: null }]))
+const otherStore = new SyntheticModule(['useOtherStore'], function () {
+  this.setExport('useOtherStore', () => dialogState)
+}, { context })
+const piniaMock = new SyntheticModule(['storeToRefs'], function () {
+  this.setExport('storeToRefs', value => value)
+}, { context })
+const dialogModule = new SourceTextModule(await readFile('src/utils/dialog.js', 'utf8'), { context })
+await dialogModule.link(name => name === 'pinia' ? piniaMock : otherStore)
+await dialogModule.evaluate()
+const dialogs = dialogModule.namespace
+dialogs.dialogOpen('first', 'first', confirmed => {
+  if (confirmed) dialogs.dialogOpen('second', 'second', () => {})
+})
+dialogs.dialogConfirm()
+assert.equal(dialogState.dialogShow.value, true)
+assert.equal(dialogState.dialogHeader.value, 'second')
+const closeOld = dialogs.dialogOpen('old', 'old', () => {})
+dialogs.dialogOpen('current', 'current', () => {})
+closeOld()
+assert.equal(dialogState.dialogShow.value, true)
+let smsResult = null
+dialogs.dialogOpen('SMS', 'code', (confirmed, code) => { smsResult = [confirmed, code] }, { label: '手机验证码' })
+dialogs.dialogConfirm()
+assert.equal(smsResult, null)
+dialogState.dialogInput.value.value = ' 123456 '
+dialogs.dialogConfirm()
+assert.deepEqual(smsResult, [true, '123456'])
+assert.equal(dialogState.dialogShow.value, false)
+assert.equal(dialogState.dialogInput.value, null)
+dialogs.dialogOpen('cancel', 'cancel', confirmed => { assert.equal(confirmed, false) })
+dialogs.dialogCancel()
+assert.equal(dialogState.dialogShow.value, false)
+dialogs.dialogConfirm() // 已关闭的弹窗不再次触发回调。
+console.log('shared dialog check passed')

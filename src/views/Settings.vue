@@ -16,6 +16,7 @@ import { useUserStore } from "@/store/userStore";
 import { usePlayerStore } from "@/store/playerStore";
 import Selector from "../components/Selector.vue";
 import FontSelector from "../components/FontSelector.vue";
+import ListeningSettings from "../components/ListeningSettings.vue";
 import UpdateDialog from "../components/UpdateDialog.vue";
 import { setTheme, getSavedTheme } from "@/utils/theme";
 import { getDynamicThemeColor } from "@/utils/dynamicTheme";
@@ -1076,6 +1077,7 @@ const clearFmRecent = () => {
           </div>
         </div>
       </div>
+      <ListeningSettings />
       <section
         class="settings-device-management"
         v-if="isLogin()"

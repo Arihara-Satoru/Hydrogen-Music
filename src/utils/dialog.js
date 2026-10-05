@@ -13,15 +13,19 @@ function ensureStoreRefs() {
 
 let currentCallback = null
 
-export function dialogOpen(header, text, callback) {
-    const { dialogShow } = ensureStoreRefs();
+export function dialogOpen(header, text, callback, input = null) {
+    const { dialogShow, dialogInput } = ensureStoreRefs();
     dialogShow.value = true
+    dialogInput.value = input ? { ...input, value: '' } : null
     currentCallback = callback
     dialogSetter(header, text)
+    return () => { if (currentCallback === callback) dialogClose() }
 }
 export function dialogClose() {
-    const { dialogShow } = ensureStoreRefs();
+    const { dialogShow, dialogInput } = ensureStoreRefs();
     dialogShow.value = false
+    dialogInput.value = null
+    currentCallback = null
 }
 export function dialogSetter(header, text) {
     const { dialogHeader, dialogText } = ensureStoreRefs();
@@ -34,12 +38,17 @@ export function dialogClear() {
     dialogText.value = null
 }
 export function dialogCancel() {
-    currentCallback(false)
+    const callback = currentCallback
     dialogClose()
+    callback?.(false)
 }
 export function dialogConfirm() {
-    currentCallback(true)
+    const input = ensureStoreRefs().dialogInput.value
+    if (input && !input.value.trim()) return
+    const callback = currentCallback
+    const value = input?.value.trim()
     dialogClose()
+    callback?.(true, value)
 }
 
 let noticeTimer1 = null

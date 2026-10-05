@@ -112,6 +112,7 @@ export const useOtherStore = defineStore('otherStore', {
           dialogShow: false,
           dialogHeader: null,
           dialogText: null,
+          dialogInput: null,
           noticeShow: false,
           noticeText: null,
           niticeOutAnimation: false,

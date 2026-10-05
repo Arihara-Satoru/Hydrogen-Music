@@ -17,6 +17,7 @@ const baseModule = syntheticModule('mock:base', {
     assert.ok(['/song/url', '/song/url/new'].includes(url))
     return apiResponse
   },
+  post: () => null,
   getById: () => null,
   getWithPagination: () => null,
   operationRequest: () => null,

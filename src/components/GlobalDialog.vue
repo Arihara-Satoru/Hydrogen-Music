@@ -5,7 +5,7 @@
   import { storeToRefs } from 'pinia';
 
   const otherStore =  useOtherStore()
-  const { dialogShow, dialogHeader, dialogText } = storeToRefs(otherStore)
+  const { dialogShow, dialogHeader, dialogText, dialogInput } = storeToRefs(otherStore)
 
   const isActive = ref(false)
   const onAfterEnter = () => isActive.value = true
@@ -22,6 +22,10 @@
               </div>
               <div class="dialog-content">
                   <span class="content-text">{{dialogText}}</span>
+                  <label v-if="dialogInput" class="dialog-input">
+                      {{ dialogInput.label }}
+                      <input v-model="dialogInput.value" :inputmode="dialogInput.inputmode" :autocomplete="dialogInput.autocomplete" @keydown.enter.prevent="dialogConfirm()" />
+                  </label>
               </div>
               <div class="dialog-option">
                   <div class="option-cancel" @click="dialogCancel()">取消</div>
@@ -77,6 +81,21 @@
                 }
             }
             .dialog-content{
+                .dialog-input {
+                    display: block;
+                    margin-top: 8Px;
+                    font: 14Px SourceHanSansCN-Bold;
+                    color: rgba(255, 255, 255, 0.9);
+                    input {
+                        width: 100Px;
+                        margin-left: 8Px;
+                        padding: 3Px;
+                        border: 0.5Px solid rgba(255, 255, 255, 0.9);
+                        background: transparent;
+                        color: inherit;
+                        font: inherit;
+                    }
+                }
                 .content-text{
                     font: 14Px SourceHanSansCN-Bold;
                     color: rgba(255, 255, 255, 0.9);

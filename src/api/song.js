@@ -1,4 +1,4 @@
-import { get, getById, getWithPagination, operationRequest } from "./base";
+import { get, post, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
 import { normalizeKugouKrcLyric } from "../utils/kugouLyric";
 import { findRememberedLyricCandidate, rememberLyricCandidate as saveRememberedLyricCandidate } from "../utils/lyricPreference";
@@ -742,7 +742,40 @@ export function getMusicCommentFloor({ id, parentCommentId, limit = 20, page = 1
  * @param {object} extraParams - 额外参数
  */
 export function postMusicComment(id, content, commentId = null, extraParams = {}) {
-    return buildUnsupportedCommentActionResponse(commentId ? '回复' : '发送')
+    const params = typeof id === 'object' ? { ...id } : { mixsongid: id, content, commentId, ...extraParams }
+    params.mixsongid ||= params.id
+    delete params.id
+    params.content = String(params.content || '').trim()
+    if (!params.content || !params.mixsongid) throw new TypeError('发送评论需要歌曲 ID 和内容')
+    if (params.commentId) {
+        if (!params.special_id || !params.tid) throw new TypeError('回复需要评论资源 ID 和顶层评论 ID')
+        return post('/comment/floor/send', params, { timestamp: Date.now() })
+    }
+    return post('/comment/music/send', params, { timestamp: Date.now() })
+}
+
+export function deleteMusicComment(params) {
+    if (!params?.cid || !params?.mixsongid) throw new TypeError('删除评论需要歌曲 ID 和评论 ID')
+    return post('/comment/music/del', params, { timestamp: Date.now() })
+}
+
+// SSA 事件表示服务端要求二次验证，不依赖某个业务错误码。
+export function getCommentSecurityChallenge(result) {
+    const body = result?.response?.data || result
+    const eventid = body?.ssaCode || body?.data?.event_id
+    return eventid ? { eventid, sid: body.sid, edt: body.edt } : null
+}
+
+export function getCommentVerificationInfo(eventid) {
+    if (!eventid) throw new TypeError('安全验证需要事件 ID')
+    return get('/get/verify/info', { eventid }, true)
+}
+
+export function verifyCommentSecurity(params) {
+    if (!params?.eventid || !params?.sid || !params?.edt || !params?.verifycode || ![23, 32].includes(Number(params?.v_type))) {
+        throw new TypeError('安全验证参数不完整')
+    }
+    return post('/verify/user/info', params, { timestamp: Date.now() })
 }
 
 /**

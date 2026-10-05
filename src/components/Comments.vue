@@ -1,14 +1,15 @@
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { getMusicCommentsNew, getMusicCommentFloor, postMusicComment, likeMusicComment } from '../api/song'
+import { getMusicCommentsNew, getMusicCommentFloor, postMusicComment, deleteMusicComment, likeMusicComment, getCommentSecurityChallenge } from '../api/song'
 import { getDjProgramCommentsNew, getDjProgramCommentFloor, postDjProgramComment, likeDjProgramComment } from '../api/dj'
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
 import { storeToRefs } from 'pinia'
-import { noticeOpen } from '../utils/dialog'
+import { noticeOpen, dialogOpen } from '../utils/dialog'
 import { getCommentScrollPosition, setCommentScrollPosition, getLastCommentTargetKey, setLastCommentTargetKey } from '../utils/commentScrollMemory'
 import { buildCommentReplyTree } from '../utils/commentReplies'
 import CommentText from './CommentText.vue'
+import CommentVerification from './CommentVerification.vue'
 
 const emit = defineEmits(['total-change'])
 
@@ -21,7 +22,7 @@ const currentTrack = computed(() => {
     return list[idx] || null
 })
 const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj')
-const songCommentMutationSupported = computed(() => isDj.value)
+const songCommentMutationSupported = computed(() => isDj.value || !!musicCommentId.value)
 const programId = computed(() => {
     const cur = currentTrack.value
     return cur && (cur.programId || cur.programID || cur.programid)
@@ -29,7 +30,7 @@ const programId = computed(() => {
 const musicCommentId = computed(() => {
     if (isDj.value) return null
     const cur = currentTrack.value
-    if (cur?.source === 'siren') return null
+    if (cur?.source === 'siren' || cur?.type === 'local' || cur?.dirPath) return null
     const curId = cur && (cur.mixsongid || cur.mixsong_id || cur.album_audio_id || cur.MixSongID || cur.id || cur.songId || cur.musicId)
     return curId || songId.value || null
 })
@@ -50,6 +51,7 @@ const limit = ref(20)
 const newComment = ref('')
 const replyingTo = ref(null)
 const submitting = ref(false)
+const securityChallenge = ref(null)
 const floorReplies = ref({})
 const imagePreview = ref(null)
 const imagePreviewCloseRef = ref(null)
@@ -545,7 +547,7 @@ const retryComments = () => fetchComments(comments.value.length === 0)
 
 // 发送评论
 const submitComment = async () => {
-    if (!newComment.value.trim() || submitting.value) return
+    if (!newComment.value.trim() || submitting.value || securityChallenge.value) return
 
     if (!userStore.user) {
         noticeOpen('请先登录', 2)
@@ -557,6 +559,8 @@ const submitComment = async () => {
         return
     }
 
+    const targetKey = commentTargetKey.value
+    const accountId = userStore.user?.userId || userStore.user?.userid
     submitting.value = true
 
     try {
@@ -568,25 +572,57 @@ const submitComment = async () => {
                 id: musicCommentId.value,
                 content: newComment.value.trim(),
             }
-            if (replyingTo.value) params.commentId = replyingTo.value.commentId
+            if (replyingTo.value) {
+                const reply = replyingTo.value
+                params.commentId = reply.commentId
+                params.special_id = reply.special_child_id || reply.specialChildId
+                params.tid = resolveReplyRootCommentId(reply, reply.__rootCommentId)
+                params.pid = params.tid === reply.commentId ? 0 : reply.commentId
+                params.reply_user_name = getUserName(reply.user)
+                params.reply_content = reply.content
+            }
             response = await postMusicComment(params)
         }
 
-        if (response && response.code === 200) {
+        if (targetKey !== commentTargetKey.value || accountId !== (userStore.user?.userId || userStore.user?.userid)) return
+        if (isDj.value ? response?.code === 200 : Number(response?.status) === 1 && Number(response?.error_code ?? response?.err_code ?? 0) === 0) {
             noticeOpen('评论发送成功', 2)
             newComment.value = ''
             replyingTo.value = null
             // 重新获取评论
             await fetchComments(true)
         } else {
-            noticeOpen('评论发送失败', 2)
+            securityChallenge.value = getCommentSecurityChallenge(response)
+            if (!securityChallenge.value) noticeOpen(response?.msg || response?.message || '评论发送失败', 2)
         }
     } catch (error) {
-        console.error('发送评论失败:', error)
-        noticeOpen('评论发送失败', 2)
+        if (targetKey !== commentTargetKey.value || accountId !== (userStore.user?.userId || userStore.user?.userid)) return
+        securityChallenge.value = getCommentSecurityChallenge(error)
+        if (!securityChallenge.value) noticeOpen(error?.response?.data?.msg || error.message || '评论发送失败', 2)
     } finally {
         submitting.value = false
     }
+}
+
+const deleting = ref(false)
+const canDeleteComment = comment => !isDj.value && !!userStore.user && !!comment?.user?.userId &&
+    String(comment.user.userId) === String(userStore.user.userId || userStore.user.userid)
+const removeComment = (comment, rootId = null) => {
+    if (!canDeleteComment(comment) || deleting.value) return
+    const targetKey = commentTargetKey.value
+    const accountId = userStore.user?.userId || userStore.user?.userid
+    const params = { mixsongid: musicCommentId.value, cid: comment.commentId, ...(rootId ? { tid: rootId } : {}) }
+    dialogOpen('删除评论', '确定删除这条评论？删除后无法恢复。', async confirmed => {
+        if (!confirmed || targetKey !== commentTargetKey.value || !canDeleteComment(comment) || deleting.value) return
+        deleting.value = true
+        try {
+            const response = await deleteMusicComment(params)
+            if (Number(response?.status) !== 1 || Number(response?.error_code ?? response?.err_code ?? 0) !== 0) throw new Error(response?.msg || '删除失败')
+            noticeOpen('评论已删除', 2)
+            if (targetKey === commentTargetKey.value && accountId === (userStore.user?.userId || userStore.user?.userid)) await fetchComments(true)
+        } catch (error) { noticeOpen(error?.response?.data?.msg || error.message || '删除失败', 2) }
+        finally { deleting.value = false }
+    })
 }
 
 // 点赞评论
@@ -596,7 +632,7 @@ const toggleLikeComment = async comment => {
         return
     }
 
-    if (!songCommentMutationSupported.value) {
+    if (!isDj.value) {
         noticeOpen('当前酷狗后端暂不支持歌曲评论点赞', 2)
         return
     }
@@ -636,11 +672,12 @@ const toggleReply = (comment, rootCommentId = null) => {
         cancelReply()
     } else {
         // 否则开始回复这个评论
+        securityChallenge.value = null
         replyingTo.value = {
             ...comment,
             __rootCommentId: rootId,
         }
-        newComment.value = `@${getUserName(comment.user)} `
+        newComment.value = ''
         // 使用nextTick确保DOM更新后再聚焦
         nextTick(() => {
             // 聚焦到回复输入框
@@ -655,6 +692,7 @@ const toggleReply = (comment, rootCommentId = null) => {
 
 // 取消回复
 const cancelReply = () => {
+    securityChallenge.value = null
     replyingTo.value = null
     newComment.value = ''
 }
@@ -703,6 +741,7 @@ const formatTime = timestamp => {
 watch(
     commentTargetKey,
     (target, previousTarget) => {
+        cancelReply()
         if (!target) {
             comments.value = []
             hotComments.value = []
@@ -749,6 +788,8 @@ watch(
     { immediate: true }
 )
 
+watch(() => userStore.user?.userId || userStore.user?.userid, cancelReply)
+
 watch(isCommentsVisible, visible => {
     if (!visible) {
         clearScrollCheckRaf()
@@ -789,7 +830,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 发表评论区域 -->
-        <div class="comment-input-section" v-if="isDj && userStore.user && !replyingTo">
+        <div class="comment-input-section" v-if="userStore.user && !replyingTo">
             <div class="input-frame">
                 <div class="frame-corner frame-tl"></div>
                 <div class="frame-corner frame-tr"></div>
@@ -804,7 +845,7 @@ onUnmounted(() => {
 
                     <div class="input-actions">
                         <span class="shortcut-hint">CTRL+ENTER</span>
-                        <button class="submit-button" @click="submitComment" :disabled="!songCommentMutationSupported || !newComment.trim() || submitting">
+                        <button class="submit-button" @click="submitComment" :disabled="!songCommentMutationSupported || !newComment.trim() || submitting || !!securityChallenge">
                             <span>{{ submitting ? 'SENDING...' : 'SEND' }}</span>
                         </button>
                     </div>
@@ -813,7 +854,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 未登录提示 -->
-        <div class="login-prompt" v-else-if="isDj && !userStore.user">
+        <div class="login-prompt" v-else-if="!userStore.user">
             <div class="prompt-frame">
                 <div class="frame-corner frame-tl"></div>
                 <div class="frame-corner frame-tr"></div>
@@ -823,10 +864,9 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <div class="read-only-note" v-if="!isDj" role="note">
-            <span class="read-only-code">READ ONLY</span>
-            <span>酷狗开放接口当前支持评论浏览、筛选与楼层回复查看</span>
-        </div>
+        <CommentVerification v-if="securityChallenge" :challenge="securityChallenge"
+            @verified="securityChallenge = null; noticeOpen('安全验证已通过，请再次点击发送评论', 3)"
+            @retry="securityChallenge = null" />
 
         <section class="comment-filter-panel" v-if="!isDj && (classifyOptions.length > 0 || hotwordOptions.length > 0)" aria-label="评论筛选">
             <div class="filter-row" v-if="classifyOptions.length > 0">
@@ -938,7 +978,15 @@ onUnmounted(() => {
                         </div>
 
                         <div class="comment-controls">
-                            <button type="button" class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(comment)">
+                            <button v-if="canDeleteComment(comment)" type="button" class="control-item" :class="{ 'control-item-disabled': deleting }" aria-label="删除" :disabled="deleting" @click="removeComment(comment)">
+                                <div class="control-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" width="14" height="14">
+                                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                                    </svg>
+                                </div>
+                                <span class="control-text">DELETE</span>
+                            </button>
+                            <button type="button" class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !isDj }" :disabled="!isDj" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -1002,7 +1050,15 @@ onUnmounted(() => {
                                                 @copy-error="handleCopyError"
                                             />
                                             <div class="floor-controls" v-if="!node.comment.referenceOnly">
-                                                <button type="button" class="floor-control-item floor-like" :class="{ active: node.comment.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(node.comment)">
+                                                <button v-if="canDeleteComment(node.comment)" type="button" class="floor-control-item" :class="{ 'floor-control-item-disabled': deleting }" aria-label="删除" :disabled="deleting" @click="removeComment(node.comment, comment.commentId)">
+                                                    <div class="floor-control-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" width="12" height="12">
+                                                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="floor-control-text">DELETE</span>
+                                                </button>
+                                                <button type="button" class="floor-control-item floor-like" :class="{ active: node.comment.liked, 'floor-control-item-disabled': !isDj }" :disabled="!isDj" @click="toggleLikeComment(node.comment)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -1076,7 +1132,7 @@ onUnmounted(() => {
                                     <span class="reply-shortcut-hint">CTRL+ENTER</span>
                                     <div class="reply-buttons">
                                         <button class="cancel-reply-btn" @click="cancelReply()">CANCEL</button>
-                                        <button class="send-reply-btn" @click="submitComment" :disabled="!songCommentMutationSupported || !newComment.trim() || submitting">
+                                        <button class="send-reply-btn" @click="submitComment" :disabled="!songCommentMutationSupported || !newComment.trim() || submitting || !!securityChallenge">
                                             {{ submitting ? 'SENDING...' : 'SEND' }}
                                         </button>
                                     </div>
@@ -1141,7 +1197,15 @@ onUnmounted(() => {
                         </div>
 
                         <div class="comment-controls">
-                            <button type="button" class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(comment)">
+                            <button v-if="canDeleteComment(comment)" type="button" class="control-item" :class="{ 'control-item-disabled': deleting }" aria-label="删除" :disabled="deleting" @click="removeComment(comment)">
+                                <div class="control-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" width="14" height="14">
+                                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                                    </svg>
+                                </div>
+                                <span class="control-text">DELETE</span>
+                            </button>
+                            <button type="button" class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !isDj }" :disabled="!isDj" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -1205,7 +1269,15 @@ onUnmounted(() => {
                                                 @copy-error="handleCopyError"
                                             />
                                             <div class="floor-controls" v-if="!node.comment.referenceOnly">
-                                                <button type="button" class="floor-control-item floor-like" :class="{ active: node.comment.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" :disabled="!songCommentMutationSupported" @click="toggleLikeComment(node.comment)">
+                                                <button v-if="canDeleteComment(node.comment)" type="button" class="floor-control-item" :class="{ 'floor-control-item-disabled': deleting }" aria-label="删除" :disabled="deleting" @click="removeComment(node.comment, comment.commentId)">
+                                                    <div class="floor-control-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" width="12" height="12">
+                                                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="floor-control-text">DELETE</span>
+                                                </button>
+                                                <button type="button" class="floor-control-item floor-like" :class="{ active: node.comment.liked, 'floor-control-item-disabled': !isDj }" :disabled="!isDj" @click="toggleLikeComment(node.comment)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -1279,7 +1351,7 @@ onUnmounted(() => {
                                     <span class="reply-shortcut-hint">CTRL+ENTER</span>
                                     <div class="reply-buttons">
                                         <button class="cancel-reply-btn" @click="cancelReply()">CANCEL</button>
-                                        <button class="send-reply-btn" @click="submitComment" :disabled="!newComment.trim() || submitting">
+                                        <button class="send-reply-btn" @click="submitComment" :disabled="!newComment.trim() || submitting || !!securityChallenge">
                                             {{ submitting ? 'SENDING...' : 'SEND' }}
                                         </button>
                                     </div>

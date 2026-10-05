@@ -1,24 +1,23 @@
 import { watch } from 'vue'
-import { getUserGradeInfo } from '../api/user'
+import { getUserGradeInfo, reportSongListen } from '../api/user'
 import pinia from '../store/pinia'
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
-import { isLogin } from './authority'
-import {
-    calculateListenedSeconds,
-    LISTEN_REPORT_STEP_SECONDS,
-    takeReportableSeconds,
-} from './listenTimeMath.mjs'
+import { isLogin, getCookie } from './authority'
+import { getKugouApiDeviceIdentity } from './request'
+import { calculatePlaybackMilliseconds } from './listenTimeMath.mjs'
 
 const playerStore = usePlayerStore(pinia)
 const userStore = useUserStore(pinia)
 
 let tickTimer = null
 let unwatchAccount = null
-let lastTickAt = 0
-let pendingSeconds = 0
-let reporting = false
+let unwatchPlayback = null
+let detachPlayback = null
+let session = null
+let reportQueue = Promise.resolve()
 let gradeRequestPromise = null
+let gradeRequestUserId = null
 
 function nowMilliseconds() {
     return globalThis.performance?.now?.() ?? Date.now()
@@ -67,7 +66,8 @@ export function normalizeGradeInfo(result) {
 export function refreshListenGradeInfo() {
     const requestUserId = currentUserId()
     if (!requestUserId || !isLogin()) return Promise.resolve(null)
-    if (gradeRequestPromise) return gradeRequestPromise
+    if (gradeRequestPromise && gradeRequestUserId === requestUserId) return gradeRequestPromise
+    gradeRequestUserId = requestUserId
 
     gradeRequestPromise = getUserGradeInfo()
         .then(result => {
@@ -81,94 +81,111 @@ export function refreshListenGradeInfo() {
             return null
         })
         .finally(() => {
-            gradeRequestPromise = null
+            if (gradeRequestUserId === requestUserId) gradeRequestPromise = null
         })
 
     return gradeRequestPromise
 }
 
-async function reportPendingListenTime() {
-    if (reporting || !isLogin()) return
-
-    const diffSeconds = takeReportableSeconds(pendingSeconds)
-    const requestUserId = currentUserId()
-    if (!requestUserId || diffSeconds < LISTEN_REPORT_STEP_SECONDS) return
-
-    let reportedTotal = null
-    reporting = true
-    try {
-        let gradeInfo = userStore.gradeInfo
-        if (!Number.isFinite(Number(gradeInfo?.d_sec))) {
-            gradeInfo = await refreshListenGradeInfo()
+// ponytail: serialize events in memory; do not retry ambiguous failures or persist public playback events.
+function enqueueReport(data, accountId) {
+    reportQueue = reportQueue.then(async () => {
+        if (currentUserId() !== accountId || !isLogin()) return
+        try {
+            if (data.event === 'end' && Number.isFinite(Number(userStore.gradeInfo?.d_sec))) {
+                data.d_sec = Math.max(0, Number(userStore.gradeInfo.d_sec))
+                data.diff_sec = Math.floor(data.duration / 1000)
+            }
+            const result = await reportSongListen(data)
+            if (currentUserId() !== accountId) return
+            const grade = normalizeGradeInfo(result?.data?.grade)
+            if (grade) userStore.updateGradeInfo(grade)
+        } catch (error) {
+            // Do not print request configs: they can contain authentication credentials.
+            console.warn('听歌上报失败:', error?.response?.data?.msg || error?.message || 'request-failed')
         }
-        if (currentUserId() !== requestUserId || !gradeInfo) return
-
-        reportedTotal = Math.max(0, Number(gradeInfo.d_sec) || 0) + diffSeconds
-        const result = await getUserGradeInfo({
-            d_sec: reportedTotal,
-            diff_sec: diffSeconds,
-        })
-        if (currentUserId() !== requestUserId) return
-
-        const nextGradeInfo = normalizeGradeInfo(result)
-        if (!nextGradeInfo) throw new Error(result?.msg || result?.message || 'listen-time-report-failed')
-
-        pendingSeconds = Math.max(0, pendingSeconds - diffSeconds)
-        userStore.updateGradeInfo({
-            ...nextGradeInfo,
-            d_sec: Math.max(reportedTotal, Number(nextGradeInfo.d_sec) || 0),
-        })
-    } catch (error) {
-        console.error('上报听歌时长失败:', error)
-        const reconciledGradeInfo = await refreshListenGradeInfo()
-        // 请求可能已被服务端接收、但响应在途中丢失；对账成功时不重复累计。
-        if (
-            currentUserId() === requestUserId
-            && reportedTotal !== null
-            && Number(reconciledGradeInfo?.d_sec) >= reportedTotal
-        ) {
-            pendingSeconds = Math.max(0, pendingSeconds - diffSeconds)
-        }
-    } finally {
-        reporting = false
-    }
+    })
 }
 
-function tickListenTime() {
+function sampleSession() {
+    if (!session) return
     const now = nowMilliseconds()
-    const active = !!playerStore.playing && !!currentUserId() && isLogin()
-    pendingSeconds += calculateListenedSeconds(lastTickAt, now, active)
-    lastTickAt = now
+    const seek = Number(session.playback.seek?.())
+    const rate = Number(session.playback.rate?.()) || 1
+    session.duration += calculatePlaybackMilliseconds(session.lastAt, now, session.lastSeek, seek, rate)
+    session.lastAt = now
+    session.lastSeek = seek
+}
 
-    if (pendingSeconds >= LISTEN_REPORT_STEP_SECONDS) {
-        void reportPendingListenTime()
+function endSession(state) {
+    if (!session) return
+    sampleSession()
+    const ended = session
+    session = null
+    const duration = Math.floor(ended.duration)
+    enqueueReport({
+        ...ended.identity, event: 'end', mixsongid: ended.mixsongid, duration, state,
+    }, ended.accountId)
+}
+
+function startSession(playback, mixsongid) {
+    if (session?.playback === playback) return
+    endSession('切歌')
+    const accountId = currentUserId()
+    if (!accountId || !isLogin() || !/^[1-9]\d*$/.test(String(mixsongid || ''))) return
+    const device = getKugouApiDeviceIdentity()
+    const identity = { userid: accountId, token: getCookie('token'), ...(device ? { uuid: device.guid, mid: device.mid, device_model: device.dev } : {}) }
+    session = { playback, mixsongid, accountId, identity, duration: 0, lastAt: nowMilliseconds(), lastSeek: Number(playback.seek?.()) }
+    enqueueReport({ ...identity, event: 'start', mixsongid }, accountId)
+}
+
+function bindPlayback(playback) {
+    endSession('切歌')
+    detachPlayback?.()
+    detachPlayback = null
+    if (!playback?.on) return
+    const track = playerStore.songList?.[playerStore.currentIndex]
+    if (!track || track.type === 'local' || track.dirPath || track.source === 'siren' || playerStore.listInfo?.type === 'dj') return
+    const mixsongid = track.mixsongid || track.mixsong_id || track.album_audio_id || track.id
+    const start = () => { if (playerStore.currentMusic === playback) startSession(playback, mixsongid) }
+    const pause = () => { if (session?.playback === playback) endSession('暂停') }
+    const end = () => { if (session?.playback === playback) endSession('完整播放'); if (playback.playing?.()) start() }
+    const stop = () => { if (session?.playback === playback) endSession('停止') }
+    playback.on('play', start)
+    playback.on('pause', pause)
+    playback.on('end', end)
+    playback.on('stop', stop)
+    detachPlayback = () => {
+        playback.off?.('play', start); playback.off?.('pause', pause)
+        playback.off?.('end', end); playback.off?.('stop', stop)
     }
+    if (playback.playing?.()) start()
 }
 
 export function initListenTimeReporter() {
     if (tickTimer) return
-
-    lastTickAt = nowMilliseconds()
-    tickTimer = setInterval(tickListenTime, 1000)
-    unwatchAccount = watch(
-        () => currentUserId(),
-        (nextUserId, previousUserId) => {
-            if (nextUserId === previousUserId) return
-            pendingSeconds = 0
-            lastTickAt = nowMilliseconds()
-            userStore.updateGradeInfo(null)
-            if (nextUserId && isLogin()) void refreshListenGradeInfo()
-        },
-        { immediate: true },
-    )
+    tickTimer = setInterval(() => {
+        sampleSession()
+        // A preloaded player can emit play before it becomes the current playback.
+        if (!session && playerStore.playing && playerStore.currentMusic?.playing?.()) bindPlayback(playerStore.currentMusic)
+    }, 1000)
+    unwatchAccount = watch(() => currentUserId(), (nextUserId, previousUserId) => {
+        if (nextUserId === previousUserId) return
+        session = null
+        userStore.updateGradeInfo(null)
+        if (nextUserId && isLogin()) {
+            void refreshListenGradeInfo()
+            bindPlayback(playerStore.currentMusic)
+        }
+    }, { immediate: true, flush: 'sync' })
+    unwatchPlayback = watch(() => playerStore.currentMusic, bindPlayback, { flush: 'sync' })
 }
 
 export function destroyListenTimeReporter() {
+    endSession('关闭播放器')
     if (tickTimer) clearInterval(tickTimer)
     tickTimer = null
-    if (unwatchAccount) unwatchAccount()
-    unwatchAccount = null
-    lastTickAt = 0
-    pendingSeconds = 0
-    reporting = false
+    unwatchAccount?.(); unwatchAccount = null
+    unwatchPlayback?.(); unwatchPlayback = null
+    detachPlayback?.(); detachPlayback = null
 }

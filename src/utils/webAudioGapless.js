@@ -53,6 +53,10 @@ class WebAudioBufferPlayer {
         return this._state
     }
 
+    playing() {
+        return this._playing && this._state !== 'unloaded'
+    }
+
     duration() {
         return this._buffer?.duration || 0
     }

@@ -1,5 +1,3 @@
-// ponytail: 60 秒批量上报匹配后端实测节奏；若接口支持可靠退出同步，再补不足一分钟的尾数。
-export const LISTEN_REPORT_STEP_SECONDS = 60
 export const LISTEN_TICK_MAX_GAP_SECONDS = 10
 
 export function calculateListenedSeconds(previousMs, nowMs, active, maxGapSeconds = LISTEN_TICK_MAX_GAP_SECONDS) {
@@ -10,9 +8,10 @@ export function calculateListenedSeconds(previousMs, nowMs, active, maxGapSecond
     return elapsed
 }
 
-export function takeReportableSeconds(pendingSeconds, stepSeconds = LISTEN_REPORT_STEP_SECONDS) {
-    const pending = Number(pendingSeconds)
-    const step = Number(stepSeconds)
-    if (!Number.isFinite(pending) || !Number.isFinite(step) || pending < step || step <= 0) return 0
-    return Math.floor(pending / step) * step
+export function calculatePlaybackMilliseconds(previousMs, nowMs, previousSeek, seek, rate = 1) {
+    const elapsed = calculateListenedSeconds(previousMs, nowMs, true)
+    const advance = Number(seek) - Number(previousSeek)
+    // ponytail: discard seek jumps and sleep gaps; use media events if playback gains variable rate ramps.
+    if (!elapsed || !Number.isFinite(advance) || advance <= 0 || advance > elapsed * rate + 0.5) return 0
+    return Math.min(elapsed, advance / rate) * 1000
 }

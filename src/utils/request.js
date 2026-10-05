@@ -149,7 +149,11 @@ request.interceptors.response.use(function (response) {
       }
     }
 
-    const suppressGlobalNotice = url === '/like'
+    const suppressGlobalNotice = url === '/comment/music/send'
+      || url === '/comment/floor/send'
+      || url === '/get/verify/info'
+      || url === '/verify/user/info'
+      || url === '/like'
       || url === '/playlist/tracks'
       || url === '/playlist/tracks/add'
       || url === '/playlist/tracks/del'
@@ -159,6 +163,7 @@ request.interceptors.response.use(function (response) {
       || url === '/youth/day/vip'
       || url === '/youth/day/vip/upgrade'
       || url === '/user/grade/info'
+      || url === '/user/listen/report'
       || url === '/user/purchased/songs'
       || url === '/user/purchased/albums'
       || url === '/login/device'

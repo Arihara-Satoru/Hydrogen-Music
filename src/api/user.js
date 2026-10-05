@@ -76,8 +76,30 @@ function withTimestamp(params = {}) {
 function ensureAccountFeatureResponse(result) {
     const failed = Number(result?.status) === 0
         || (result?.error_code !== undefined && Number(result.error_code) !== 0)
+        || (result?.errcode !== undefined && Number(result.errcode) !== 0)
     if (failed) throw new Error(result?.msg || result?.message || result?.data || 'account-feature-request-failed')
     return result
+}
+
+export function getListeningPreference() {
+    return request({ url: '/user/preference', method: 'get', params: withTimestamp() }).then(ensureAccountFeatureResponse)
+}
+
+export function updateListeningPreference(data) {
+    return request({ url: '/user/preference/update', method: 'post', params: withTimestamp(), data }).then(ensureAccountFeatureResponse)
+}
+
+export function getContentBlacklist(label, page = 1) {
+    return request({ url: '/blacklist/list', method: 'get', params: withTimestamp({ label, page, pagesize: 30 }) }).then(ensureAccountFeatureResponse)
+}
+
+export function editContentBlacklist(data) {
+    if (!['song', 'singer'].includes(data?.label) || !(data.label === 'song' ? data.hash : data.singerid)) throw new TypeError('屏蔽内容缺少歌曲 hash 或歌手 ID')
+    return request({ url: '/blacklist', method: 'post', params: withTimestamp(), data }).then(ensureAccountFeatureResponse)
+}
+
+export function reportSongListen(data) {
+    return request({ url: '/user/listen/report', method: 'post', params: withTimestamp(), data }).then(ensureAccountFeatureResponse)
 }
 
 const PURCHASE_PAGE_SIZE = 50
