@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('node:child_process');
 
 const projectDir = path.resolve(__dirname, '..');
 const apiCandidates = [
@@ -96,7 +97,16 @@ runEsbuild({
 });
 
 buildDirectory(path.join(apiRoot, 'util'), path.join(outRoot, 'util'));
+// 未合并的 API 模块也直接读取此配置，必须保留运行时的相对路径。
+fs.copyFileSync(path.join(apiRoot, 'util', 'config.json'), path.join(outRoot, 'util', 'config.json'));
 buildApiModules(path.join(apiRoot, 'module'), path.join(outRoot, 'module'));
+
+// 加载入口会扫描所有 API 模块；缺少运行时文件时在构建阶段失败。
+execFileSync(process.execPath, ['-e', "require(process.argv[1]); console.log('[build-kugou-api] runtime load check passed');", path.join(outRoot, 'main.js')], {
+  cwd: outRoot,
+  env: { ...process.env, platform: 'lite' },
+  stdio: 'inherit',
+});
 
 const moduleFiles = getJavaScriptFiles(path.join(outRoot, 'module'));
 const moduleBytes = moduleFiles.reduce(
