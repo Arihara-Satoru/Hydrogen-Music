@@ -1609,6 +1609,9 @@ const clearFmRecent = () => {
             <div class="default-shortcuts" @click="setDefaultShortcuts()">
               恢复默认快捷键
             </div>
+            <div v-if="selectedShortcut" class="shortcut-capture-hint">
+              按住修饰键后再按主键。如果组合键没有显示出来，可能已被系统或其他程序拦截，请换一个组合键。
+            </div>
             <div v-if="shortcutRegistrationFailures.length" class="shortcut-registration-warning">
               以下全局快捷键注册失败，可能与其他快捷键重复、被系统或其他程序占用，或组合键不受支持：
               {{ shortcutRegistrationFailures.map((item) => formatShortcutName(item.accelerator || item.id)).join("、") }}
@@ -2502,6 +2505,11 @@ const clearFmRecent = () => {
               cursor: pointer;
               box-shadow: 0 0 0 1px black;
             }
+          }
+          .shortcut-capture-hint {
+            margin-top: 12px;
+            max-width: 600px;
+            line-height: 1.5;
           }
           .shortcut-registration-warning {
             margin-top: 12px;
