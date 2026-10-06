@@ -546,7 +546,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 this.indexLibrarySongs(firstBatchSongs)
 
 
-                if (totalTracks <= loadedTracks) {
+                if (playlistTrackResult.complete || totalTracks <= loadedTracks) {
                     this.playlistHydration = createPlaylistHydrationState({
                         id: resolvedPlaylistId,
                         total: totalTracks,

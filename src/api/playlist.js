@@ -273,7 +273,14 @@ async function fetchPlaylistPageByListId(id, page, pagesize, rest) {
         method: 'get',
         params: { listid: id, page, pagesize, ...rest },
     })
-    return applyLocalHashTrackFallback(normalizePlaylistSongs(result?.data?.info || result?.info || [], { filterShield: false }))
+    const rawSongs = result?.data?.info || result?.info
+    if (Number(result?.status) === 0 || Number(result?.error_code || 0) !== 0 || !Array.isArray(rawSongs)) {
+        throw new Error(result?.errmsg || result?.msg || result?.message || '歌单响应格式异常')
+    }
+    return {
+        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(rawSongs, { filterShield: false })),
+        rawCount: rawSongs.length,
+    }
 }
 
 async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
@@ -282,9 +289,14 @@ async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
         method: 'get',
         params: { id, page, pagesize, ...rest },
     })
+    const rawSongs = result?.songs || result?.data?.songs || result?.data?.info || result?.info
+    if (Number(result?.status) === 0 || Number(result?.error_code || 0) !== 0 || !Array.isArray(rawSongs)) {
+        throw new Error(result?.errmsg || result?.msg || result?.message || '歌单响应格式异常')
+    }
     return {
         raw: result,
-        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(result?.songs || result?.data?.songs || result?.data?.info || result?.info || [], { filterShield: false })),
+        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(rawSongs, { filterShield: false })),
+        rawCount: rawSongs.length,
         privileges: Array.isArray(result?.privileges) ? result.privileges : [],
     }
 }
@@ -308,36 +320,34 @@ export async function getPlaylistAll(params) {
             privileges = Array.isArray(pageResult?.privileges) ? pageResult.privileges : privileges
             const songs = pageResult?.songs || []
             allSongs.push(...songs)
-            if (songs.length < pagesize) break
+            if (pageResult.rawCount < pagesize) break
             page++
         }
         return {
             ...(rawResult || {}),
             songs: allSongs,
             privileges,
+            complete: true,
         }
     }
 
+    let page = startPage
     try {
         const allSongs = []
-        let page = startPage
         while (true) {
-            const songs = await fetchPlaylistPageByListId(id, page, pagesize, rest)
-            allSongs.push(...songs)
-            if (songs.length < pagesize) break
+            const pageResult = await fetchPlaylistPageByListId(id, page, pagesize, rest)
+            allSongs.push(...pageResult.songs)
+            if (pageResult.rawCount < pagesize) break
             page++
         }
-        return { songs: allSongs.reverse(), privileges: [] }
-    } catch {
+        // ponytail: retain the existing listid order until an authenticated upstream sample establishes its sort direction.
+        return { songs: allSongs.reverse(), privileges: [], complete: true }
+    } catch (error) {
+        if (page !== startPage) throw error
         if (!id) {
-            return { songs: [], privileges: [] }
+            return { songs: [], privileges: [], complete: true }
         }
-        const fallback = await fetchPlaylistPageByCollectionId(id, startPage, pagesize, rest)
-        return {
-            ...(fallback?.raw || {}),
-            songs: fallback?.songs || [],
-            privileges: fallback?.privileges || [],
-        }
+        return getPlaylistAll({ ...params, gid: id })
     }
 }
 

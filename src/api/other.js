@@ -136,16 +136,18 @@ function normalizeSearchType(type) {
 }
 
 function extractSearchList(result) {
-    return toArray(
-        result?.data?.lists ||
-        result?.data?.list ||
-        result?.data?.info ||
-        result?.data?.items ||
-        result?.data?.data?.lists ||
-        result?.data?.data ||
-        result?.list ||
-        result?.items
-    )
+    const list = [
+        result?.data?.lists,
+        result?.data?.list,
+        result?.data?.info,
+        result?.data?.items,
+        result?.data?.data?.lists,
+        result?.data?.data,
+        result?.list,
+        result?.items,
+    ].find(Array.isArray)
+    if (!list) throw new Error('搜索响应格式异常，请稍后重试')
+    return list
 }
 
 function normalizeSearchAlbum(item = {}) {
@@ -289,21 +291,37 @@ export function getBanner() {
  * @param {*} params
  * @returns 
  */
-export function search(params) {
+export async function search(params) {
     const normalizedType = normalizeSearchType(params?.type)
     const pagesize = Number(params?.limit || params?.pagesize || 30)
 
-    return request({
-        url: '/search',
-        method: 'get',
-        params: {
-            keywords: params?.keywords || '',
-            type: normalizedType,
-            page: params?.page || 1,
-            pagesize,
-        },
-    })
-        .then(result => buildSearchResult(normalizedType, extractSearchList(result)))
+    try {
+        const result = await request({
+            url: '/search',
+            method: 'get',
+            params: {
+                keywords: params?.keywords || '',
+                type: normalizedType,
+                page: params?.page || 1,
+                pagesize,
+            },
+        })
+        if (Number(result?.status) === 0 || Number(result?.error_code || 0) !== 0) {
+            throw Object.assign(new Error('搜索失败'), { response: { data: result } })
+        }
+        return buildSearchResult(normalizedType, extractSearchList(result))
+    } catch (error) {
+        const data = error?.response?.data
+        const code = Number(data?.error_code ?? data?.code)
+        if (code === 152 || code === 301 || [401, 403].includes(error?.response?.status)) {
+            throw new Error('该搜索需要酷狗账号认证，请登录或重新登录后重试')
+        }
+        const message = data?.error_msg || data?.errmsg || data?.msg || data?.message
+        if (message) throw new Error(String(message))
+        if (error?.code === 'ECONNABORTED') throw new Error('搜索请求超时，请重试')
+        if (error?.isAxiosError && !error.response) throw new Error('网络连接失败，请检查网络后重试')
+        throw error
+    }
 }
 
 /**

@@ -9,10 +9,11 @@
   
   const otherStore = useOtherStore()
   const { getSearchInfo } = otherStore
-  const { searchResult } = storeToRefs(otherStore)
+  const { searchResult, searchLoading, searchErrors } = storeToRefs(otherStore)
   const router = useRouter()
   const scrollTop = ref(null)
   const searchScroll = ref()
+  const searchStatus = (key) => searchLoading.value ? '正在搜索…' : searchErrors.value[key] || (searchResult.value[key]?.length ? '' : '没有找到相关结果')
 
   const routerChange = (operation) => {
     if(operation) router.forward()
@@ -35,19 +36,22 @@
       <svg t="1669039513804" @click="routerChange(0)" class="router-last" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200"><path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" p-id="1054"></path></svg>
       <svg t="1669039531646" @click="routerChange(1)" class="router-next" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1207" width="200" height="200"><path d="M264.896 1010.112l497.728-497.728L264.128 13.888 218.88 59.136l453.248 453.248-452.48 452.48z" p-id="1208"></path></svg>
       <span class="search-title">搜索内容：{{router.currentRoute.value.query.keywords}}</span>
+      <button v-if="Object.keys(searchErrors).length" class="search-retry" :disabled="searchLoading" @click="getSearchInfo(router.currentRoute.value.query.keywords)">重新搜索</button>
     </div>
     <div class="search-container" ref="searchScroll">
       <div class="search-classify">
         <div class="classify-item">
           <div class="classify-title">歌曲</div>
           <div class="classify-content">
-            <LibrarySongList :songlist="searchResult.searchSongs" type="search"></LibrarySongList>
+            <p v-if="searchStatus('searchSongs')" class="search-status" role="status">{{ searchStatus('searchSongs') }}</p>
+            <LibrarySongList v-else :songlist="searchResult.searchSongs" type="search"></LibrarySongList>
           </div>
         </div>
         <div class="classify-item">
           <div class="classify-title">专辑</div>
           <div class="classify-content">
-            <LibraryAlbumList :albumlist="searchResult.searchAlbums" type="search"></LibraryAlbumList>
+            <p v-if="searchStatus('searchAlbums')" class="search-status" role="status">{{ searchStatus('searchAlbums') }}</p>
+            <LibraryAlbumList v-else :albumlist="searchResult.searchAlbums" type="search"></LibraryAlbumList>
           </div>
         </div>
       </div>
@@ -55,19 +59,22 @@
         <div class="classify-item-other">
           <div class="classify-title">歌手</div>
           <div class="content">
-            <SearchResultList :listdata="searchResult.searchArtists" type="artist"></SearchResultList>
+            <p v-if="searchStatus('searchArtists')" class="search-status" role="status">{{ searchStatus('searchArtists') }}</p>
+            <SearchResultList v-else :listdata="searchResult.searchArtists" type="artist"></SearchResultList>
           </div>
         </div>
         <div class="classify-item-other">
           <div class="classify-title">歌单</div>
           <div class="content">
-            <SearchResultList :listdata="searchResult.searchPlaylists" type="playlist"></SearchResultList>
+            <p v-if="searchStatus('searchPlaylists')" class="search-status" role="status">{{ searchStatus('searchPlaylists') }}</p>
+            <SearchResultList v-else :listdata="searchResult.searchPlaylists" type="playlist"></SearchResultList>
           </div>
         </div>
         <div class="classify-item-other">
           <div class="classify-title">视频</div>
           <div class="content">
-            <SearchResultList :listdata="searchResult.searchMvs" type="mv"></SearchResultList>
+            <p v-if="searchStatus('searchMvs')" class="search-status" role="status">{{ searchStatus('searchMvs') }}</p>
+            <SearchResultList v-else :listdata="searchResult.searchMvs" type="mv"></SearchResultList>
           </div>
         </div>
       </div>
@@ -79,6 +86,24 @@
   .search-page{
     width: 100%;
     height: 100%;
+    .search-status{
+      color: var(--muted-text, #666);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .search-retry{
+      margin-left: auto;
+      padding: 4px 10px;
+      color: var(--text, #222);
+      background: transparent;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      cursor: pointer;
+      &:focus-visible{
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+      }
+    }
     .view-control{
       margin-bottom: 15Px;
       margin-left: -8Px;

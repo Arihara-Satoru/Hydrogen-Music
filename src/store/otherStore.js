@@ -123,6 +123,7 @@ export const useOtherStore = defineStore('otherStore', {
           mvRequestToken: 0,
           videoIsFull: false,
           searchResult: {},
+          searchErrors: {},
           searchLoading: false,
           searchRequestToken: 0,
           toUpdate: false,
@@ -213,6 +214,7 @@ export const useOtherStore = defineStore('otherStore', {
             const requestToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.searchRequestToken = requestToken
             this.searchLoading = true
+            this.searchErrors = {}
             this.searchResult = {
                 searchSongs: [],
                 searchAlbums: [],
@@ -249,10 +251,14 @@ export const useOtherStore = defineStore('otherStore', {
                     searchMvs: [],
                 }
 
+                const nextSearchErrors = {}
                 results.forEach((result, index) => {
-                    if (result.status !== 'fulfilled') return
-                    const data = result.value
                     const config = requestConfigs[index]
+                    if (result.status === 'rejected') {
+                        nextSearchErrors[config.key] = result.reason?.message || '搜索失败，请稍后重试'
+                        return
+                    }
+                    const data = result.value
                     if (!config || !data?.result) return
 
                     if (config.key === 'searchSongs') {
@@ -281,6 +287,7 @@ export const useOtherStore = defineStore('otherStore', {
                 })
 
                 this.searchResult = nextSearchResult
+                this.searchErrors = nextSearchErrors
             } finally {
                 if (this.searchRequestToken === requestToken) {
                     this.searchLoading = false
