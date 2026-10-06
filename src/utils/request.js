@@ -95,6 +95,7 @@ request.interceptors.request.use(async function (config) {
   const skipAuthCookie = (
     requestUrl.startsWith('/login/')
     && !requestUrl.startsWith('/login/device')
+    && requestUrl !== '/login/qr/authorize'
   ) || requestUrl === '/captcha/sent'
 
   const authCookieString = buildAuthCookieString(apiStatus?.device, !skipAuthCookie && isLogin())
@@ -137,7 +138,7 @@ request.interceptors.response.use(function (response) {
   }, function (error) {
     const url = error?.config?.url || ''
     const status = error?.response?.status
-    const msg = error?.response?.data?.message || error?.response?.data?.msg || error?.response?.data?.errmsg
+    const msg = error?.response?.data?.message || error?.response?.data?.msg || error?.response?.data?.errmsg || error?.response?.data?.error
     if (msg) error.message = String(msg)
     const code = error?.response?.data?.code
 

@@ -10,7 +10,7 @@ import request from '../utils/request'
       params: {
         timestamp: new Date().getTime(),
       },
-    });
+    }).then(ensureAccountFeatureResponse);
   }
 
 /**
@@ -77,8 +77,40 @@ function ensureAccountFeatureResponse(result) {
     const failed = Number(result?.status) === 0
         || (result?.error_code !== undefined && Number(result.error_code) !== 0)
         || (result?.errcode !== undefined && Number(result.errcode) !== 0)
-    if (failed) throw new Error(result?.msg || result?.message || result?.errmsg || (typeof result?.data === 'string' ? result.data : 'account-feature-request-failed'))
+    if (failed) throw new Error(result?.msg || result?.message || result?.errmsg || result?.error || (typeof result?.data === 'string' ? result.data : 'account-feature-request-failed'))
     return result
+}
+
+export function getPersonalProfile() {
+    return request({ url: '/user/info', method: 'get', params: withTimestamp() }).then(ensureAccountFeatureResponse)
+}
+
+export function updatePersonalProfile(data) {
+    return request({ url: '/user/update', method: 'post', params: withTimestamp(), data }).then(ensureAccountFeatureResponse)
+}
+
+export function updateAvatar(imgFile, filename) {
+    return request({ url: '/user/update/avatar', method: 'post', params: withTimestamp(), data: { imgFile, filename } }).then(ensureAccountFeatureResponse)
+}
+
+export function getUserRelations(type) {
+    if (!['follow', 'friends', 'fans'].includes(type)) throw new TypeError('无效的用户列表')
+    return request({ url: `/user/${type}`, method: 'get', params: withTimestamp() }).then(ensureAccountFeatureResponse)
+}
+
+export function followUser(tuid, follow = true) {
+    if (!/^[1-9]\d*$/.test(String(tuid))) throw new TypeError('请输入有效的用户 ID')
+    return request({ url: `/user/follow/${follow ? 'add' : 'del'}`, method: 'post', params: withTimestamp(), data: { tuid } }).then(ensureAccountFeatureResponse)
+}
+
+export function getPrivateMessages(id, maxid = 0) {
+    if (!/^[1-9]\d*$/.test(String(id))) throw new TypeError('请输入有效的用户 ID')
+    return request({ url: '/user/follow/message', method: 'get', params: withTimestamp({ id, maxid, pagesize: 30 }) }).then(ensureAccountFeatureResponse)
+}
+
+export function sendPrivateMessage(tuid, alert, nickname) {
+    if (!/^[1-9]\d*$/.test(String(tuid)) || !alert?.trim()) throw new TypeError('请填写用户 ID 和私信内容')
+    return request({ url: '/user/follow/chat', method: 'post', params: withTimestamp(), data: { tuid, alert, nickname, msgtype: 201 } }).then(ensureAccountFeatureResponse)
 }
 
 export function getListeningPreference() {

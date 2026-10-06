@@ -103,6 +103,7 @@
   }
 
   async function login() {
+    if (loginAnimation.value || sendingCaptcha.value) return
     const payload = validateLogin()
     if (!payload) return
 
@@ -133,266 +134,57 @@
 </script>
 
 <template>
-  <div class="account-container">
+  <form class="account-container" @submit.prevent="login">
     <div class="account">
       <div class="account-adress">
-        <label for="account">手机：</label>
+        <label for="account-phone">手机号</label>
         <div class="input-container" :class="{ 'login-animation': loginAnimation }">
           <span class="phone-country">+86</span>
-          <input
-            class="account-input"
-            v-model="accountNumber"
-            type="text"
-            name="account"
-            ref="accountInput"
-            spellcheck="false"
-            maxlength="11"
-            placeholder="请输入手机号"
-            @keyup.enter="sendCode"
-          >
+          <input id="account-phone" class="account-input" v-model="accountNumber" type="tel" inputmode="numeric"
+            autocomplete="tel-national" name="account" ref="accountInput" :disabled="loginAnimation"
+            spellcheck="false" maxlength="11" placeholder="请输入手机号" @keydown.enter.prevent="sendCode">
         </div>
       </div>
-
       <div class="mail-password">
-        <label for="password">验证码：</label>
-        <div class="code-row">
-          <input
-            class="password-input"
-            :class="{ 'login-animation': loginAnimation }"
-            type="text"
-            name="password"
-            ref="codeInput"
-            v-model="captchaCode"
-            spellcheck="false"
-            maxlength="8"
-            placeholder="请输入验证码"
-            @keyup.enter="login"
-          >
-          <div class="send-button" :class="{ disabled: sendingCaptcha || countdown > 0 }" @click="sendCode">
-            {{ countdown > 0 ? `${countdown}s` : (sendingCaptcha ? '发送中...' : '发送验证码') }}
-          </div>
+        <label for="account-code">验证码</label>
+        <div class="code-row" :class="{ 'login-animation': loginAnimation }">
+          <input id="account-code" class="password-input" type="text" inputmode="numeric" autocomplete="one-time-code"
+            name="captcha" ref="codeInput" v-model="captchaCode" :disabled="loginAnimation"
+            spellcheck="false" maxlength="8" placeholder="请输入验证码">
+          <button type="button" class="send-button" :disabled="sendingCaptcha || countdown > 0 || loginAnimation" @click="sendCode">
+            {{ countdown > 0 ? `${countdown}s 后重发` : (sendingCaptcha ? '发送中…' : '发送验证码') }}
+          </button>
         </div>
-        <div class="password-line" :class="{ 'login-animation': loginAnimation }"></div>
       </div>
-
-      <div class="animation">
-        <DataCheckAnimaton class="check-animation" ref="dataCheckAnimaton" v-if="loginAnimation"></DataCheckAnimaton>
+      <div class="animation" v-if="loginAnimation">
+        <DataCheckAnimaton class="check-animation" ref="dataCheckAnimaton" />
       </div>
     </div>
-
-    <div class="account-operation">
-      <div class="login-button" :class="{ loading: loginAnimation }" @click="login">
-        {{ loginAnimation ? '登录中...' : '登录' }}
-      </div>
-    </div>
-  </div>
+    <button type="submit" class="login-button" :disabled="loginAnimation || sendingCaptcha">
+      {{ loginAnimation ? '登录中…' : '登录' }}
+    </button>
+  </form>
 </template>
 
-<style scoped lang="scss">
-  .account-container {
-    margin-top: 7vh;
-    --login-text: #000000;
-    --login-muted: rgb(118, 118, 118);
-    --login-border: #000000;
-    --login-line: #000000;
-    --login-button-hover-bg: #000000;
-    --login-button-hover-text: #ffffff;
-
-    .account {
-      position: relative;
-
-      .account-adress {
-        margin-bottom: 7vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-
-        label {
-          font: 2.2vh SourceHanSansCN-Bold;
-          color: var(--login-text);
-        }
-
-        .input-container {
-          display: flex;
-          align-items: center;
-          transition: 0.2s ease-out;
-
-          .phone-country {
-            margin-right: 1vh;
-            width: 6vh;
-            text-align: center;
-            line-height: 3.7vh;
-            font-size: 2.7vh;
-            color: var(--login-text);
-            font-style: italic;
-            border-right: 0.5px solid var(--login-border);
-          }
-
-          .account-input {
-            width: 23.2vh;
-            font-size: 2.7vh;
-            color: var(--login-text);
-            font-style: italic;
-            border: none;
-            background: none;
-            outline: none;
-            transition: 0.2s;
-          }
-        }
-      }
-
-      .mail-password {
-        position: relative;
-
-        label {
-          font: 2.2vh SourceHanSansCN-Bold;
-          color: var(--login-text);
-        }
-
-        .code-row {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-
-          .send-button {
-            margin-left: 1vh;
-            width: 11vh;
-            height: 3.8vh;
-            line-height: 3.8vh;
-            text-align: center;
-            border: 1px solid var(--login-border);
-            color: var(--login-text);
-            font: 12px SourceHanSansCN-Bold;
-            transition: 0.2s;
-
-            &:hover {
-              cursor: pointer;
-              background-color: var(--login-button-hover-bg);
-              color: var(--login-button-hover-text);
-            }
-
-            &.disabled {
-              opacity: 0.6;
-              pointer-events: none;
-            }
-          }
-        }
-
-        .password-input {
-          transition: 0.2s ease-out;
-          width: 19vh;
-          font-size: 2.7vh;
-          font-style: italic;
-          color: var(--login-text);
-          border: none;
-          background: none;
-          outline: none;
-        }
-
-        .password-line {
-          transition: 0.2s ease-out;
-          background-color: var(--login-line);
-          width: 33vh;
-          height: 0.5px;
-          position: absolute;
-          bottom: -1.5vh;
-          left: 50%;
-          transform: translateX(-50%);
-        }
-      }
-
-      .animation {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-
-        .check-animation {
-          width: 19vh;
-          height: 19vh;
-          position: absolute;
-          top: -2vh;
-          transform: translateX(-10%);
-        }
-      }
-
-      .login-animation {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-    }
-
-    .account-operation {
-      margin-top: 9vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-
-      .login-button {
-        padding: 0.8vh 0;
-        width: 30vh;
-        text-align: center;
-        border: 1px solid var(--login-border);
-        font: 14px SourceHanSansCN-Bold;
-        color: var(--login-text);
-        position: relative;
-        transition: background-color 0.2s, color 0.2s;
-
-        &:hover {
-          cursor: pointer;
-          background-color: var(--login-button-hover-bg);
-          color: var(--login-button-hover-text);
-
-          &::before,
-          &::after {
-            opacity: 1;
-          }
-
-          &::before {
-            left: -40px;
-          }
-
-          &::after {
-            right: -40px;
-          }
-        }
-
-        &.loading {
-          pointer-events: none;
-          opacity: 0.8;
-        }
-
-        &::before,
-        &::after {
-          content: '';
-          width: 30px;
-          height: 1px;
-          position: absolute;
-          top: 50%;
-          transform: translateY(-50%);
-          opacity: 0;
-          transition: 0.1s;
-        }
-
-        &::before {
-          background: linear-gradient(to left, var(--login-border) 20%, rgba(0, 0, 0, 0.05));
-          left: -50px;
-        }
-
-        &::after {
-          background: linear-gradient(to right, var(--login-border) 20%, rgba(0, 0, 0, 0.05));
-          right: -50px;
-        }
-      }
-    }
-  }
-
-  :global(.dark) .account-container {
-    --login-text: #f2f5f7;
-    --login-muted: #adb4bf;
-    --login-border: rgba(255, 255, 255, 0.7);
-    --login-line: rgba(255, 255, 255, 0.65);
-    --login-button-hover-bg: rgba(255, 255, 255, 0.16);
-    --login-button-hover-text: #f2f5f7;
-  }
+<style scoped>
+.account-container { width: min(340px, calc(100% - 40px)); margin: 4vh auto 0; color: var(--login-text); }
+.account { position: relative; display: grid; gap: 22px; text-align: left; }
+label { display: block; margin-bottom: 9px; font: 13px SourceHanSansCN-Bold; }
+.input-container, .code-row { display: flex; align-items: center; min-height: 46px; border-bottom: 1px solid var(--login-muted); transition: opacity .2s, transform .2s; }
+.input-container:focus-within, .code-row:focus-within { border-color: var(--login-text); }
+.phone-country { padding-right: 14px; margin-right: 14px; border-right: 1px solid var(--login-muted); font-size: 15px; }
+input { min-width: 0; width: 100%; padding: 10px 0; border: 0; background: transparent; color: inherit; outline: none; font: 16px SourceHanSansCN-Regular, sans-serif; }
+input::placeholder { color: var(--login-muted); font-size: 14px; }
+button { cursor: pointer; border-radius: 0; font: 12px SourceHanSansCN-Bold; }
+button:disabled { cursor: default; opacity: .55; }
+button:focus-visible { outline: 2px solid var(--login-text); outline-offset: 4px; }
+.send-button { flex-shrink: 0; min-width: 100px; padding: 9px 10px; margin-left: 12px; border: 1px solid var(--login-muted); color: inherit; background: transparent; }
+.send-button:hover:not(:disabled) { border-color: var(--login-text); }
+.login-button { width: 100%; min-height: 44px; margin-top: 28px; border: 1px solid var(--login-text); background: var(--login-text); color: var(--bg); font-size: 14px; transition: opacity .2s; }
+.login-button:hover:not(:disabled) { opacity: .8; }
+.animation { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.check-animation { width: 150px; height: 150px; }
+.login-animation { opacity: 0; transform: scale(.95); }
+.dark .account-container input, .dark .account-container .send-button { background: transparent !important; }
+.dark .account-container .login-button { background: var(--login-text) !important; color: #171717 !important; }
 </style>

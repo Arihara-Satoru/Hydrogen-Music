@@ -64,13 +64,13 @@ function formatLocationText(raw = {}) {
     return region.join(' ')
 }
 
-function normalizeUserProfile(profileResult = {}) {
+export function normalizeUserProfile(profileResult = {}) {
     const raw = profileResult?.data || profileResult?.profile || profileResult || {}
     const userId = pickFirstValue(raw.userId, raw.userid, raw.id, getCookie('userid'))
     const nickname = pickFirstValue(raw.nickname, raw.k_nickname, raw.fx_nickname, raw.name)
     const avatarUrl = pickFirstValue(raw.avatarUrl, raw.pic, raw.k_pic, raw.fx_pic, raw.avatar)
     const backgroundUrl = pickFirstValue(raw.backgroundUrl, raw.backgroundPicUrl, raw.bg_pic)
-    const signature = pickFirstValue(raw.signature, raw.descri, raw.description)
+    const signature = raw.signature ?? pickFirstValue(raw.descri, raw.description)
     const birthdayText = formatBirthdayText(pickFirstValue(raw.birthdayText, raw.birthday, raw.birth))
     const location = formatLocationText(raw)
     const createdPlaylistCount = Number(pickFirstValue(raw.createdPlaylistCount, raw.created_playlist_count, raw.create_playlist_count, 0)) || 0
@@ -84,7 +84,7 @@ function normalizeUserProfile(profileResult = {}) {
         avatarUrl: avatarUrl || '',
         backgroundUrl: backgroundUrl || '',
         signature: signature || '',
-        description: pickFirstValue(raw.description, raw.descri, signature) || '',
+        description: signature || '',
         birthdayText,
         location: location || '',
         occupation: pickFirstValue(raw.occupation, raw.job, raw.profession, raw.career) || '',

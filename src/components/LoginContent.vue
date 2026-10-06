@@ -4,6 +4,7 @@
   import LoginByQRCode from './LoginByQRCode.vue'
   import LoginByWeChat from './LoginByWeChat.vue'
   import LoginByAccount from './LoginByAccount.vue'
+  import LoginByQQ from './LoginByQQ.vue'
 
   const route = useRoute()
   const router = useRouter()
@@ -11,19 +12,26 @@
   const loginByQR = ref(null)
   const loginByWX = ref(null)
   const loginByAC = ref(null)
+  const loginByQQ = ref(null)
   const jumpPage = ref(false)
   const jumpTimer = ref(null)
 
-  // 0: 酷狗二维码 1: 微信登录 2: 手机验证码
+  // 0: 酷狗二维码 1: 微信登录 2: 手机验证码 3: QQ 登录
   const loginMode = ref(0)
   const isKugouQrMode = computed(() => loginMode.value === 0)
   const isWechatMode = computed(() => loginMode.value === 1)
   const isPhoneMode = computed(() => loginMode.value === 2)
+  const isQQMode = computed(() => loginMode.value === 3)
 
   const syncModeFromRoute = () => {
     const queryMode = Number(route.query.mode)
 
-    // 支持三种登录方式，非法值回退到默认二维码
+    if (queryMode === 3) {
+      loginMode.value = 3
+      return
+    }
+
+    // 非法值回退到默认二维码
     if (queryMode === 1) {
       loginMode.value = 1
       return
@@ -54,9 +62,18 @@
     loginByAC.value?.inputFocus()
     loginByQR.value?.clearTimer()
     loginByWX.value?.clearTimer()
+    loginByQQ.value?.clearTimer()
   }
 
   const changeMode = (mode) => {
+    if (mode === loginMode.value) return
+    loginByQQ.value?.clearTimer()
+    if (mode === 3) {
+      loginByQR.value?.clearTimer()
+      loginByWX.value?.clearTimer()
+      loginMode.value = 3
+      return
+    }
     if (mode === 0) {
       enterKugouQrMode()
       return
@@ -74,6 +91,7 @@
   const jumpTo = () => {
     loginByQR.value?.clearTimer()
     loginByWX.value?.clearTimer()
+    loginByQQ.value?.clearTimer()
     if (jumpTimer.value) {
       clearTimeout(jumpTimer.value)
       jumpTimer.value = null
@@ -108,6 +126,7 @@
 
     loginByQR.value?.clearTimer()
     loginByWX.value?.clearTimer()
+    if (!isQQMode.value) loginByQQ.value?.clearTimer()
     loginByAC.value?.inputFocus()
   }, { immediate: true })
 
@@ -130,11 +149,13 @@
   onDeactivated(() => {
     loginByQR.value?.clearTimer()
     loginByWX.value?.clearTimer()
+    loginByQQ.value?.clearTimer()
   })
 
   onUnmounted(() => {
     loginByQR.value?.clearTimer()
     loginByWX.value?.clearTimer()
+    loginByQQ.value?.clearTimer()
     if (jumpTimer.value) {
       clearTimeout(jumpTimer.value)
       jumpTimer.value = null
@@ -156,7 +177,7 @@
         ref="loginByQR"
         class="qrcode-container"
         :firstLoadMode="loginMode"
-        v-show="isKugouQrMode"
+        v-if="isKugouQrMode"
         @jumpTo="jumpTo"
       />
 
@@ -164,9 +185,11 @@
         ref="loginByWX"
         class="qrcode-container"
         :firstLoadMode="loginMode"
-        v-show="isWechatMode"
+        v-if="isWechatMode"
         @jumpTo="jumpTo"
       />
+
+      <LoginByQQ v-if="isQQMode" ref="loginByQQ" @jumpTo="jumpTo" />
 
       <LoginByAccount
         ref="loginByAC"
@@ -176,24 +199,15 @@
       />
 
       <div class="login-other">
-        <span class="qrcode-tip" v-show="isKugouQrMode">推荐：打开酷狗 APP 扫码登录</span>
-        <span class="qrcode-tip" v-show="isWechatMode">使用微信扫码授权登录酷狗</span>
+        <span class="qrcode-tip" v-show="isKugouQrMode">使用酷狗音乐扫码登录，单击二维码刷新</span>
+        <span class="qrcode-tip" v-show="isWechatMode">使用微信扫码授权登录酷狗，单击二维码刷新</span>
         <span class="qrcode-tip" v-show="isPhoneMode">使用手机号验证码登录</span>
+        <span class="qrcode-tip" v-show="isQQMode">使用 QQ 扫码授权登录酷狗，单击二维码刷新</span>
 
-        <div class="login-method" v-show="isKugouQrMode">
-          <span class="active">酷狗二维码登录</span>
-          <span class="separation">|</span>
-          <span @click="changeMode(1)">微信登录</span>
-          <span class="separation">|</span>
-          <span @click="changeMode(2)">手机验证码登录</span>
-        </div>
-
-        <div class="login-method" v-show="!isKugouQrMode">
-          <span @click="changeMode(0)">酷狗二维码登录</span>
-          <span class="separation">|</span>
-          <span :class="{ active: isWechatMode }" @click="changeMode(1)">微信登录</span>
-          <span class="separation">|</span>
-          <span :class="{ active: isPhoneMode }" @click="changeMode(2)">手机验证码登录</span>
+        <div class="login-method">
+          <button v-for="(label, mode) in ['酷狗二维码', '微信登录', '手机验证码', 'QQ 登录']"
+            :key="mode" type="button" :class="{ active: loginMode === mode }"
+            :aria-pressed="loginMode === mode" @click="changeMode(mode)">{{ label }}</button>
         </div>
       </div>
     </div>
@@ -245,7 +259,15 @@
         }
 
         .login-method {
-          span {
+          display: flex;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 8px;
+          button {
+            border: 0;
+            background: transparent;
+            padding: 4px;
             font: 12px SourceHanSansCN-Bold;
             color: var(--login-muted);
             transition: 0.2s;
@@ -276,7 +298,7 @@
     transition: 0.6s 2.2s cubic-bezier(.47, 0, .98, .58);
   }
 
-  :global(.dark) .login-content {
+  .dark .login-content {
     --login-title: #f2f5f7;
     --login-text: #f2f5f7;
     --login-muted: #adb4bf;

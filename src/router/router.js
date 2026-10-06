@@ -31,6 +31,12 @@ const hasDifferentLibraryId = (to, from) => String(to?.params?.id || '') != Stri
 
 const routes = [
     {
+        path: '/account',
+        name: 'personalcenter',
+        component: () => import('../views/PersonalCenter.vue'),
+        beforeEnter: () => isLogin() ? undefined : { name: 'login' },
+    },
+    {
         path: '/',
         name: 'homepage',
         component: HomePage,

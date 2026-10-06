@@ -25,6 +25,7 @@
     "check:foreground-memory": "node scripts/check-foreground-memory.mjs",
     "check:fm-cache-cleanup": "node scripts/check-fm-cache-cleanup.mjs",
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",
+    "check:account-social": "node --experimental-vm-modules scripts/check-account-social.mjs",
     "check:onboarding": "node scripts/check-onboarding.mjs",
     "check:logic-races": "node scripts/check-logic-races.mjs",
     "check:background-memory": "node scripts/check-background-memory.mjs",

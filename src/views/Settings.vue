@@ -1066,6 +1066,7 @@ const clearFmRecent = () => {
             <span>退出</span>
           </div>
         </div>
+        <button class="device-refresh" type="button" @click="router.push('/account')">编辑资料与管理关注 / 私信</button>
         <div class="profile-details">
           <div
             class="profile-item"

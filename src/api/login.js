@@ -160,6 +160,26 @@ export function refreshLoginToken({ token, userid } = {}) {
     })
 }
 
+export function createQQQRcode() {
+    return request({ url: '/login/qq/qr/create', method: 'get', params: withTimestamp() })
+}
+
+export function checkQQStatus(session) {
+    const { qrsig, ptqrtoken, pt_login_sig, pt_openlogin_data, xlogin_url, cookie } = session
+    return request({ url: '/login/qq/qr/check', method: 'post', params: withTimestamp(),
+        data: { qrsig, ptqrtoken, pt_login_sig, pt_openlogin_data, xlogin_url, cookie } })
+}
+
+export function loginByQQ({ openid, access_token }) {
+    if (!openid?.trim() || !access_token?.trim()) throw new TypeError('请填写 QQ openid 和 access_token')
+    return request({ url: '/login/qq', method: 'post', params: withTimestamp(), data: { openid, access_token } })
+}
+
+export function authorizeQRcode(qrcode) {
+    if (!/^[\w-]+$/.test(qrcode)) throw new TypeError('请输入有效的二维码 key')
+    return request({ url: '/login/qr/authorize', method: 'post', params: withTimestamp(), data: { qrcode } })
+}
+
 /**
  * 调用此接口，可退出登录。
  * @returns

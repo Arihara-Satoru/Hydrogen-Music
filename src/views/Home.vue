@@ -9,7 +9,6 @@ import { usePlayerStore } from '../store/playerStore'
 const router = useRouter()
 const userStore = useUserStore()
 const playerStore = usePlayerStore()
-const isActive = ref(false)
 const routerContainer = ref(null)
 const homeLink = ref(null)
 const cloudLink = ref(null)
@@ -43,8 +42,6 @@ const handleAuthOptionClick = () => {
     userStore.appOptionShow = false
     router.push('/login')
 }
-const onAfterEnter = () => (isActive.value = true)
-const onAfterLeave = () => (isActive.value = false)
 const handleOnboardingAccountMenu = event => {
     userStore.appOptionShow = event.detail === true
 }
@@ -208,9 +205,10 @@ watch(
                                     </svg>
                                     <div class="img-mask"></div>
                                 </div>
-                                <transition name="app-option" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
-                                    <div class="app-option" data-tour="account-menu" :class="{ 'app-option-active': isActive }" v-show="userStore.appOptionShow">
+                                <transition name="app-option">
+                                    <div class="app-option" data-tour="account-menu" v-show="userStore.appOptionShow">
                                         <div class="option" @click="toSettings()">设置</div>
+                                        <button v-if="userStore.user" class="option" @click="userStore.appOptionShow = false; router.push('/account')">个人中心</button>
                                         <div class="option" @click="handleAuthOptionClick()">{{ isLogin() ? '退出登录' : '账号登录' }}</div>
 
                                         <div class="option-style option-style1"></div>
@@ -342,9 +340,9 @@ main {
                     }
                 }
                 .app-option {
-                    padding: 0;
+                    padding: 12px 0;
                     width: 100px;
-                    height: 0;
+                    height: auto;
                     background-image: url('../assets/img/halftone.png');
                     background-size: 120%;
                     background-repeat: repeat;
@@ -355,11 +353,11 @@ main {
                     left: -32.5px;
                     z-index: 2001; /* Above dragBar/globalWidget (999) */
                     -webkit-app-region: no-drag; /* Ensure clicks not captured by drag regions */
-                    &-active {
-                        height: 96px;
-                        padding: 12px 0;
-                    }
                     .option {
+                        display: block;
+                        width: 100%;
+                        border: 0;
+                        background: transparent;
                         padding: 8px 14px;
                         font: 14px SourceHanSansCN-Bold;
                         color: white;
@@ -428,19 +426,20 @@ main {
 
 <style lang="scss">
 .app-option-enter-active {
-    animation: app-option-in 0.2s forwards;
+    transition: opacity 0.2s ease, transform 0.2s ease;
 }
 .app-option-leave-active {
-    animation: app-option-in 0.2s reverse;
+    transition: opacity 0.15s ease, transform 0.15s ease;
 }
-@keyframes app-option-in {
-    0% {
-        height: 0;
-        padding: 0;
-    }
-    100% {
-        height: 96px;
-        padding: 12px 0;
+.app-option-enter-from,
+.app-option-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+}
+@media (prefers-reduced-motion: reduce) {
+    .app-option-enter-active,
+    .app-option-leave-active {
+        transition: none;
     }
 }
 </style>
