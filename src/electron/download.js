@@ -4,6 +4,7 @@ const fse = require('fs-extra')
 const axios = require('axios')
 const { randomUUID } = require('crypto')
 const { getElectronStore } = require('./store')
+const { parseStream } = require('./musicMetadata')
 const path = require('path');
 let NodeID3 = null
 let Metaflac = null
@@ -231,6 +232,8 @@ module.exports = async function MusicDownload(win) {
     downloadObj.fileName = args.name
     downloadObj.downloadUrl = args.url
     downloadObj.type = args.type
+    downloadObj.level = args.level || ''
+    downloadObj.preferredQuality = args.preferredQuality || ''
     downloadObj.id = args.id || null
     downloadObj.lyrics = args.lyrics || null
     downloadObj.coverUrl = args.coverUrl || null
@@ -324,6 +327,7 @@ module.exports = async function MusicDownload(win) {
       win.webContents.send('download-progress', progress)
     })
     item.once('done', async (event, state) => {
+      const result = { state, name: context.fileName, preferredQuality: context.preferredQuality }
       if (state === 'completed') {
         console.log('Download successfully')
         try {
@@ -331,13 +335,31 @@ module.exports = async function MusicDownload(win) {
         } catch (e) {
           console.warn('写入下载歌曲元数据失败:', e && e.message ? e.message : e)
         }
+        try {
+          const file = await fs.promises.open(item.getSavePath(), 'r')
+          // 文件句柄没有扩展名提示，由解析器读取音频头确定格式。
+          const stream = file.createReadStream({ autoClose: false })
+          try {
+            const { format } = await parseStream(stream, { size: (await file.stat()).size }, { skipCovers: true })
+            result.audio = {
+              ...format,
+              type: /Layer 3/.test(format.codec || '') ? 'mp3' : format.container,
+              level: context.level,
+            }
+          } finally {
+            stream.destroy()
+            await file.close()
+          }
+        } catch (error) {
+          console.warn('读取下载歌曲音频参数失败:', error.message)
+        }
       } else {
         console.log(`Download failed: ${state}`)
       }
       if (!win.isDestroyed()) {
         win.setProgressBar(-1);
+        if (!isClose) win.webContents.send('download-next', result)
       }
-      if (!isClose) win.webContents.send('download-next')
     })
     ipcMain.on('download-resume', () => {
       item.resume()

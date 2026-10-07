@@ -6,7 +6,7 @@ import { checkMusic, getLyric } from '../api/song'
 import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { noticeOpen } from './dialog'
 import { scanMusic } from './locaMusic'
-import { getPreferredQuality } from './quality'
+import { formatDownloadQuality, getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSirenAudioExtension, getSirenSourceId, SIREN_SOURCE } from './siren'
 
@@ -89,11 +89,14 @@ export const initDownloadManager = () => {
             const coverUrl = getItemCoverUrl(item)
             const artists = getItemArtists(item)
             const album = getItemAlbum(item)
+            const extension = getSirenAudioExtension(streamUrl)
+            item.downloadQuality = formatDownloadQuality({ type: extension }).text
 
             windowApi.download({
                 url: streamUrl,
                 name: item?.name,
-                type: getSirenAudioExtension(streamUrl),
+                type: extension,
+                level: extension,
                 id: item?.id || `siren:${sourceId}`,
                 lyrics: lyricPayload,
                 coverUrl,
@@ -128,6 +131,8 @@ export const initDownloadManager = () => {
                         downNext()
                         return
                     }
+                    const downloadQuality = formatDownloadQuality(trackInfo, preferredQuality)
+                    currentItem.downloadQuality = downloadQuality.text
                     // 获取歌词（不阻塞音频下载；即使失败也继续）
                     let lyricPayload = null
                     try {
@@ -150,12 +155,15 @@ export const initDownloadManager = () => {
                         url: trackInfo.url,
                         name: item.name,
                         type: trackInfo.type,
+                        level: trackInfo.level,
+                        preferredQuality,
                         id,
                         lyrics: lyricPayload,
                         coverUrl,
                         artists,
                         album
                     }
+                    if (downloadQuality.downgraded) noticeOpen(`《${item.name}》${downloadQuality.text}`, 5)
                     windowApi.download(fileObj)
                 }).catch(error => {
                     console.error('获取下载地址失败:', error)
@@ -171,20 +179,20 @@ export const initDownloadManager = () => {
         })
     }
 
-    const downNext = () => {
+    const downNext = (completedNotice = '') => {
         if(downloadList.value.length != 0) {
+            if (completedNotice) noticeOpen(completedNotice, 5)
             download()
         } else {
             isDownloading.value = false
             currentIndex = -1
             downloadList.value = []
             isFirstDownload.value = true
-            noticeOpen("全部下载完毕", 2)
+            noticeOpen(completedNotice ? `${completedNotice}；全部下载完毕` : "全部下载完毕", completedNotice ? 5 : 2)
             
             // 下载完成后自动刷新下载目录
             setTimeout(() => {
                 if (localStore.downloadedFolderSettings) {
-                    noticeOpen("正在刷新下载目录...", 2)
                     // 延迟一点时间再扫描，确保用户能看到"全部下载完毕"的提示
                     setTimeout(() => {
                         scanMusic({type:'downloaded', refresh:true})
@@ -195,10 +203,12 @@ export const initDownloadManager = () => {
     }
 
     // 注册全局下载回调
-    windowApi.downloadNext(() => {
+    windowApi.downloadNext((_event, result) => {
+        const completedNotice = result?.state === 'completed'
+            ? `《${result.name}》下载完成：${formatDownloadQuality(result.audio || {}, result.preferredQuality || '').text}` : ''
         if(isDownloading.value && downloadList.value.length != 0) {
             downloadList.value.splice(currentIndex, 1)
-            downNext()
+            downNext(completedNotice)
         } else {
             if(downloadList.value.length != 0) {
                 isDownloading.value = true

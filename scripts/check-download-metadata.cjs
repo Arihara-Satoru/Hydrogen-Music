@@ -3,6 +3,8 @@ const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { createRequire } = require('node:module')
+const { runInNewContext } = require('node:vm')
 const ffmpegPath = require('ffmpeg-static')
 const sharp = require('sharp')
 const { parseFile } = require('../src/electron/musicMetadata')
@@ -57,6 +59,52 @@ async function checkFile(filePath, expectedContainer, embeddedCover = coverData)
   assert.match(fs.readFileSync(filePath.replace(/\.[^.]+$/, '.lrc'), 'utf8'), /\[00:00\.000\]第一句/)
 }
 
+async function checkCompletionReport(sourcePath, expectedType) {
+  const listeners = new Map()
+  const sent = []
+  let onWillDownload
+  let onDone
+  let savedPath
+  const downloadPath = path.resolve(__dirname, '../src/electron/download.js')
+  const downloadRequire = createRequire(downloadPath)
+  const sandboxModule = { exports: {} }
+  runInNewContext(fs.readFileSync(downloadPath, 'utf8'), {
+    module: sandboxModule, Buffer,
+    console: { log() {}, warn: console.warn },
+    require: name => name === 'electron' ? { ipcMain: { on: (event, callback) => listeners.set(event, callback) } }
+      : name === './store' ? { getElectronStore: async () => class {
+        get() { return { local: { downloadFolder: tempRoot } } }
+      } } : downloadRequire(name),
+  }, { filename: downloadPath })
+  const win = {
+    isDestroyed: () => false, setProgressBar() {},
+    webContents: {
+      downloadURL() {}, send: (...args) => sent.push(args),
+      session: { on: (_event, callback) => { onWillDownload = callback } },
+    },
+  }
+  await sandboxModule.exports(win)
+  // Deliberately report FLAC even when the payload is MP3; the completed file must win.
+  await listeners.get('download')({}, {
+    url: 'https://audio.test/source.flac', name: `音源核实-${expectedType}`, type: 'flac', level: 'flac', preferredQuality: 'flac',
+  })
+  onWillDownload({}, {
+    getMimeType: () => 'audio/flac', getFilename: () => 'source.flac',
+    setSavePath: value => { savedPath = value; fs.copyFileSync(sourcePath, savedPath) },
+    getSavePath: () => savedPath, getURL: () => 'https://audio.test/source.flac',
+    getTotalBytes: () => fs.statSync(sourcePath).size,
+    on() {}, once: (_event, callback) => { onDone = callback },
+  })
+  await onDone({}, 'completed')
+  const result = sent.find(([event]) => event === 'download-next')[1]
+  assert.equal(result.state, 'completed')
+  assert.equal(result.preferredQuality, 'flac')
+  assert.equal(result.audio.type.toLowerCase(), expectedType)
+  assert.equal(result.audio.sampleRate, 44100)
+  assert.ok(result.audio.bitrate > 0)
+  if (expectedType === 'mp3') assert.equal(result.audio.bitsPerSample, undefined)
+}
+
 (async () => {
   try {
     assert.equal(resolveDownloadExtension({ getMimeType: () => 'audio/flac', getFilename: () => 'stream.mp3' }, 'mp3'), 'flac')
@@ -72,6 +120,8 @@ async function checkFile(filePath, expectedContainer, embeddedCover = coverData)
 
     await checkFile(mp3Path, 'MPEG', webpCover)
     await checkFile(flacPath, 'FLAC')
+    await checkCompletionReport(mp3Path, 'mp3')
+    await checkCompletionReport(flacPath, 'flac')
     console.log('download metadata check passed')
   } finally {
     const resolvedTempRoot = path.resolve(tempRoot)

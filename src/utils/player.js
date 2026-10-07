@@ -12,7 +12,7 @@ import { useLibraryStore } from "../store/libraryStore";
 import { useOtherStore } from "../store/otherStore";
 import { storeToRefs } from "pinia";
 import { markRaw, watch } from "vue";
-import { getPreferredQuality } from "./quality";
+import { buildLevelInfoFromStream, getPreferredQuality } from "./quality";
 import { resolveTrackByQualityPreference } from "./musicUrlResolver";
 import { getSongDisplayName } from "./songName";
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from "./siren";
@@ -702,14 +702,8 @@ async function hydrateGaplessStartedSongAssets(
   }
 
   if (isSirenSong(targetSong)) {
-    targetSong.level = {
-      sr: Howler.ctx?.sampleRate || 44100,
-      br: (Howler.ctx?.sampleRate || 44100) * 16 * 2,
-      size: 0,
-    };
-    targetSong.actualLevel =
-      entry?.level || getSirenAudioExtension(entry?.url || "");
-    targetSong.quality = targetSong.actualLevel;
+    const ext = entry?.level || getSirenAudioExtension(entry?.url || "");
+    setSongLevel(ext, { type: ext });
     try {
       const sirenPlayback = await resolveSirenSongPlayback(targetSong);
       if (songId.value !== targetSongId) return;
@@ -1679,10 +1673,7 @@ async function refreshStreamAndResume(eventType, error) {
     try {
       if (isSirenSong(currentSong)) {
         const ext = getSirenAudioExtension(nextStreamUrl);
-        const sr = Howler.ctx?.sampleRate || 44100;
-        currentSong.level = { sr, br: sr * 16 * 2, size: 0 };
-        currentSong.actualLevel = ext;
-        currentSong.quality = ext;
+        setSongLevel(ext, { type: ext });
       } else if (trackInfo) {
         setSongLevel(trackInfo.level, trackInfo);
       }
@@ -2234,33 +2225,6 @@ export function addSong(id, index, autoplay, isLocal, playbackOptions = {}) {
   }
 }
 
-function buildLevelInfoFromStream(streamInfo = {}) {
-  const sr = Number(
-    streamInfo?.sr || streamInfo?.sampleRate || streamInfo?.sample_rate,
-  );
-  const br = Number(
-    streamInfo?.br || streamInfo?.bitrate || streamInfo?.bitRate,
-  );
-  if (!Number.isFinite(sr) || sr <= 0 || !Number.isFinite(br) || br <= 0)
-    return null;
-  const size = Number(streamInfo?.size);
-  const bitsPerSample = Number(
-    streamInfo?.bitsPerSample ||
-      streamInfo?.bitDepth ||
-      streamInfo?.bit_depth ||
-      streamInfo?.bits_per_sample,
-  );
-  return {
-    sr,
-    br: br < 1000 ? br * 1000 : br,
-    bitsPerSample:
-      Number.isFinite(bitsPerSample) && bitsPerSample > 0
-        ? bitsPerSample
-        : 16,
-    size: Number.isFinite(size) && size > 0 ? size : 0,
-  };
-}
-
 export function setSongLevel(level, streamInfo = null) {
   const currentSong = songList.value && songList.value[currentIndex.value];
   if (!currentSong) return;
@@ -2271,17 +2235,21 @@ export function setSongLevel(level, streamInfo = null) {
   const mappedLevelInfo = levelField ? currentSong[levelField] : null;
   const streamLevelInfo = buildLevelInfoFromStream(streamInfo || {});
   const songLevelInfo = buildLevelInfoFromStream({
-    // ponytail: 酷狗列表只稳定给码率/文件大小，采样率默认按常见 44.1kHz；若后端返回 sr 会由 streamInfo 覆盖。
-    sr: 44100,
-    br:
+    br: Number(
       currentSong[`bitrate_${normalizedLevel}`] ||
       (normalizedLevel === "128" ? currentSong.bitrate : 0),
+    ) * 1000,
     size:
       currentSong[`filesize_${normalizedLevel}`] ||
       (normalizedLevel === "128" ? currentSong.filesize : 0),
   });
 
-  currentSong.level = mappedLevelInfo || streamLevelInfo || songLevelInfo || null;
+  currentSong.level = {
+    ...songLevelInfo,
+    ...buildLevelInfoFromStream(mappedLevelInfo || {}),
+    ...streamLevelInfo,
+  };
+  currentSong.extname = currentSong.level.type || '';
   currentSong.actualLevel = normalizedLevel;
   // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
   currentSong.quality = normalizedLevel;
@@ -2524,15 +2492,8 @@ export async function getSongUrl(
     }
 
     if (isSirenSong(targetSong)) {
-      targetSong.level = {
-        sr: Howler.ctx?.sampleRate || 44100,
-        br: (Howler.ctx?.sampleRate || 44100) * 16 * 2,
-        size: 0,
-      };
-      targetSong.actualLevel =
-        directPreloadedEntry.level ||
-        getSirenAudioExtension(directPreloadedEntry.url);
-      targetSong.quality = targetSong.actualLevel;
+      const ext = directPreloadedEntry.level || getSirenAudioExtension(directPreloadedEntry.url);
+      setSongLevel(ext, { type: ext });
       if (!isCurrentRequest()) return;
       play(
         directPreloadedEntry.url,
@@ -2632,32 +2593,9 @@ export async function getSongUrl(
         playbackOptions,
       );
 
-      // 在音频加载完成后设置塞壬歌曲音质信息
-      if (preloadedEntry) {
-        targetSong.level = {
-          sr: Howler.ctx?.sampleRate || 44100,
-          br: (Howler.ctx?.sampleRate || 44100) * 16 * 2,
-          size: 0,
-        };
-        targetSong.actualLevel =
-          preloadedEntry.level ||
-          getSirenAudioExtension(sirenPlayback.streamUrl);
-        targetSong.quality = targetSong.actualLevel;
-      }
-      if (currentMusic.value) {
-        const sirenStreamUrl = sirenPlayback.streamUrl;
-        currentMusic.value.once("load", () => {
-          if (songId.value !== targetSongId) return;
-          const ext = getSirenAudioExtension(sirenStreamUrl);
-          const sr = Howler.ctx?.sampleRate || 44100;
-          const channels = 2;
-          const bitsPerSample = 16;
-          const br = sr * bitsPerSample * channels;
-          targetSong.level = { sr, br, size: 0 };
-          targetSong.actualLevel = ext;
-          targetSong.quality = ext;
-        });
-      }
+      const ext = preloadedEntry?.level || getSirenAudioExtension(sirenPlayback.streamUrl);
+      // ponytail: 塞壬接口只提供音源地址；在线参数保持未知，下载完成后从文件读取。
+      setSongLevel(ext, { type: ext });
 
       try {
         const sirenLyric = await getSirenLyricPayload(sirenPlayback.lyricUrl);

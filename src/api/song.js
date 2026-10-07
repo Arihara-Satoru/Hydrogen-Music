@@ -122,9 +122,11 @@ function extractPlayableUrl(value) {
 function extractStreamMeta(body = {}, fallback = {}) {
     const loudnessSource = ['volume', 'volume_gain', 'volume_peak'].some(key => body?.[key] !== undefined)
         ? body : fallback
+    const br = Number(body?.br || body?.bitrate || body?.bitRate || fallback?.br || fallback?.bitrate || fallback?.bitRate)
+    // ponytail: 旧接口未注明码率单位，沿用 <1000 按 kbps 的兼容规则；后端提供单位后改为显式转换。
     return {
         sr: body?.sr || body?.sampleRate || body?.sample_rate || fallback?.sr || fallback?.sampleRate || fallback?.sample_rate,
-        br: body?.br || body?.bitrate || body?.bitRate || fallback?.br || fallback?.bitrate || fallback?.bitRate,
+        br: Number.isFinite(br) && br > 0 ? br < 1000 ? br * 1000 : br : undefined,
         bitsPerSample: body?.bitsPerSample || body?.bitDepth || body?.bit_depth || body?.bits_per_sample || fallback?.bitsPerSample || fallback?.bitDepth || fallback?.bit_depth || fallback?.bits_per_sample,
         size: body?.size || body?.fileSize || body?.filesize || fallback?.size || fallback?.fileSize || fallback?.filesize,
         loudness: loudnessSource?.volume !== undefined && loudnessSource?.volume_gain !== undefined && loudnessSource?.volume_peak !== undefined
@@ -178,12 +180,14 @@ function selectStreamByQuality(body, preferredQuality) {
         const url = extractPlayableUrl(info) || extractPlayableUrl(item)
         if (!url) return null
 
-        const level = normalizeStreamQuality(item, preferredQuality)
+        const reportedLevel = normalizeStreamQuality(item, preferredQuality)
+        const type = String(info?.extname || info?.extName || info?.ext || item?.extname || item?.extName || item?.ext
+            || (reportedLevel === 'flac' || reportedLevel === 'high' ? 'flac' : 'mp3')).toLowerCase()
+        const level = inferStreamQuality({ ...item, ...info }, preferredQuality, type)
         return {
             url,
             level,
-            type: info?.extname || info?.extName || info?.ext || item?.extname || item?.extName || item?.ext
-                || (level === 'flac' || level === 'high' ? 'flac' : 'mp3'),
+            type,
             ...extractStreamMeta(info, item),
         }
     }).filter(Boolean)
@@ -219,7 +223,7 @@ export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
     const raw = await get('/song/url', buildSongUrlParams(input, quality, requestParams))
     const body = raw?.body || raw?.data || raw || {}
     const url = extractPlayableUrl(body)
-    const type = String(body?.extName || body?.ext || 'mp3').toLowerCase()
+    const type = String(body?.extname || body?.extName || body?.ext || 'mp3').toLowerCase()
     return { data: [{ url: url || null, level: inferStreamQuality(body, quality, type), type, ...extractStreamMeta(body) }] }
 }
 

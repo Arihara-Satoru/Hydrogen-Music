@@ -6,6 +6,7 @@ import { storeToRefs } from 'pinia';
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
 import { vDelayedTooltip } from '../utils/delayedTooltip';
 import loudnessBadge from '../assets/img/loudness-badge.png';
+import { formatAudioInfo } from '../utils/quality';
 
 const playerStore = usePlayerStore();
 const {
@@ -233,6 +234,9 @@ const showLyricNoData = computed(() => {
 const showLyricArea = computed(() => {
     return !!(hasLyricsList.value && hasAnyLyricContent.value && lyricShow.value && lyricType.value.indexOf('original') != -1);
 });
+const audioInfo = computed(() => formatAudioInfo(
+    currentSong.value?.type === 'local' ? currentSong.value.format : currentSong.value?.level || {}
+));
 const showLyricPlaceholder = ref(showLyricNoData.value);
 
 // 原文重新显示时保留占位，等歌词完成测量后再交叉淡化，避免中间出现空白帧
@@ -1014,11 +1018,8 @@ watch([playing, lyricShow], ([p, show]) => {
                 v-delayed-tooltip="'响度均衡生效中'"
                 draggable="false"
             />
-            <span v-if="currentSong.type == 'local'">
-                {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}kbps
-            </span>
-            <span v-else-if="currentSong.level && currentSong.level.sr && currentSong.level.br">
-                {{ currentSong.level.sr / 1000 }}KHz/{{ currentSong.level.bitsPerSample || 16 }}Bits/{{ Math.round(currentSong.level.br / 1000) }}kbps/{{ (currentSong.actualLevel || currentSong.quality || '').toUpperCase() }}
+            <span>
+                采样率 {{ audioInfo.sampleRate }} / 位深 {{ audioInfo.bitDepth }} / 码率 {{ audioInfo.bitrate }} / {{ audioInfo.format }}
             </span>
         </div>
         <div class="border border1"></div>

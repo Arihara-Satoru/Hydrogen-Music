@@ -209,7 +209,7 @@ Object.assign(playerDependencies, {
     './siren': mock({ isSirenSong: () => false, getSirenSourceId: () => '', getSirenAudioExtension: () => '' }),
     '../api/song': mock({ checkMusic: async () => ({ success: true }), likeMusic: noop, getLyric: async () => ({}), getSongClimax: async () => ({}) }),
     './musicUrlResolver': mock({ resolveTrackByQualityPreference: async () => track }),
-    './quality': mock({ getPreferredQuality: () => '128' }),
+    './quality': await load('src/utils/quality.js'),
     './player/playbackTicker': mock({ PLAYBACK_TICK_FAST_INTERVAL_MS: 100, subscribePlaybackTick: () => noop }),
 })
 const player = await load('src/utils/player.js', playerDependencies, '\nexport { refreshStreamAndResume, preloadGaplessSong, startGaplessTarget };')

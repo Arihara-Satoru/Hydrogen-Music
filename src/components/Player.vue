@@ -13,6 +13,7 @@ import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
 import { getSongDisplayName } from '../utils/songName';
 import { vDelayedTooltip } from '../utils/delayedTooltip';
+import { formatAudioInfo } from '../utils/quality';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -128,16 +129,6 @@ const formatInfoDuration = value => {
     if (!Number.isFinite(duration) || duration <= 0) return '';
     return songTime2(duration);
 };
-const formatInfoBitrate = value => {
-    const bitrate = Number(value);
-    if (!Number.isFinite(bitrate) || bitrate <= 0) return '';
-    return `${Math.round(bitrate)} kbps`;
-};
-const formatInfoSampleRate = value => {
-    const sampleRate = Number(value);
-    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return '';
-    return `${Number((sampleRate >= 1000 ? sampleRate / 1000 : sampleRate).toFixed(1))} kHz`;
-};
 const formatTempo = (bpmValue, typeValue) => {
     const bpm = Number(bpmValue);
     if (!Number.isFinite(bpm) || bpm <= 0) return '';
@@ -166,12 +157,7 @@ const songInfoGroups = computed(() => {
     const artists = firstInfoValue(song.ar, song.artists, song.authors, song.singerinfo, song.author_name, song.singername, common.artists);
     const rawDuration = Number(firstInfoValue(song.dt, song.duration, song.timelen));
     const duration = Number(time.value) || (song.type === 'local' ? Number(format.duration) : rawDuration > 1000 ? rawDuration / 1000 : rawDuration);
-    const bitrate = streamLevel.br
-        ? Number(streamLevel.br) / 1000
-        : format.bitrate
-            ? Number(format.bitrate) / 1000
-            : firstInfoValue(actualLevel && song[`bitrate_${actualLevel}`], song.bitrate);
-    const bitsPerSample = firstInfoValue(streamLevel.bitsPerSample, song.bitsPerSample, format.bitsPerSample);
+    const audioInfo = formatAudioInfo(song.type === 'local' ? format : streamLevel);
     const fileSize = firstInfoValue(
         streamLevel.size,
         actualLevel && song[`filesize_${actualLevel}`],
@@ -194,10 +180,10 @@ const songInfoGroups = computed(() => {
             { label: '时长', value: formatInfoDuration(duration) },
             { label: '节奏速度', value: formatTempo(song.bpm, song.bpm_type) },
             { label: '当前音质', value: (song.actualLevel || song.quality || '').toString().toUpperCase() },
-            { label: '格式', value: firstInfoValue(song.extname, format.container) },
-            { label: '码率', value: formatInfoBitrate(bitrate) },
-            { label: '采样率', value: formatInfoSampleRate(firstInfoValue(streamLevel.sr, song.sampleRate, format.sampleRate)) },
-            { label: '位深', value: bitsPerSample ? `${bitsPerSample} bit` : '' },
+            { label: '格式', value: audioInfo.format },
+            { label: '码率', value: audioInfo.bitrate },
+            { label: '采样率', value: audioInfo.sampleRate },
+            { label: '位深', value: audioInfo.bitDepth },
             { label: '文件大小', value: formatInfoFileSize(fileSize) },
         ]),
         addGroup('平台信息', [

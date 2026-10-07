@@ -81,6 +81,7 @@
         <span class="download-index">{{index + 1}}</span>
         <div class="download">
           <div class="item-name">{{getSongDisplayName(item, '', showSongTranslation)}}</div>
+          <div v-if="item.downloadQuality" class="item-quality">{{item.downloadQuality}}</div>
           <div class="download-progress">
             <VueSlider class="progress" v-if="index == 0" v-model="safeProgress" :min="0" :max="100" :interval="1" :duration="0.5" :clickable="false" tooltip="none"></VueSlider>
             <div class="progress" v-show="index != 0"></div>
@@ -164,6 +165,12 @@
         }
         .download{
           width: 100%;
+          .item-quality{
+            font: 12Px SourceHanSansCN-Bold;
+            color: inherit;
+            text-align: left;
+            margin: 4Px 0;
+          }
           .item-name{
             width: calc(100% - 50Px);
             font: 14Px SourceHanSansCN-Bold;

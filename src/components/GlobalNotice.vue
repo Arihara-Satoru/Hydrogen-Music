@@ -42,9 +42,9 @@
             width: 100%;
             font: 13Px SourceHanSansCN-Bold;
             color: white;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            line-height: 1.5;
         }
         .notice-border{
             width: 3Px;
