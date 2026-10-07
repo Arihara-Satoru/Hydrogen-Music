@@ -103,9 +103,21 @@ export function followUser(tuid, follow = true) {
     return request({ url: `/user/follow/${follow ? 'add' : 'del'}`, method: 'post', params: withTimestamp(), data: { tuid } }).then(ensureAccountFeatureResponse)
 }
 
-export function getPrivateMessages(id, maxid = 0) {
+export async function getPrivateMessages(id, maxid = 0, userid) {
     if (!/^[1-9]\d*$/.test(String(id))) throw new TypeError('请输入有效的用户 ID')
-    return request({ url: '/user/follow/message', method: 'get', params: withTimestamp({ id, maxid, pagesize: 30 }) }).then(ensureAccountFeatureResponse)
+    if (userid !== undefined && !/^[1-9]\d*$/.test(String(userid))) throw new TypeError('请输入有效的当前用户 ID')
+    const fetchHistory = params => request({ url: '/user/follow/message', method: 'get', params: withTimestamp({ ...params, maxid, pagesize: 30 }) }).then(ensureAccountFeatureResponse)
+    if (userid === undefined) return fetchHistory({ id })
+    // ponytail: chats can use either participant order; read both tags until the API provides a conversation index.
+    const results = await Promise.all([
+        fetchHistory({ tag: `chat:${id}_${userid}` }),
+        fetchHistory({ tag: `chat:${userid}_${id}` }),
+    ])
+    const items = results.flatMap(result => extractPurchasedItems(result, ['messages', 'msglist', 'msg_list', 'list', 'info']))
+    const list = [...new Map(items.map(item => [item.msgid == null ? item : String(item.msgid), item])).values()]
+        .sort((a, b) => /^\d+$/.test(String(a.msgid)) && /^\d+$/.test(String(b.msgid)) ? (BigInt(a.msgid) > BigInt(b.msgid) ? -1 : BigInt(a.msgid) < BigInt(b.msgid) ? 1 : 0) : 0)
+        .slice(0, 30)
+    return { status: 1, list }
 }
 
 export function sendPrivateMessage(tuid, alert, nickname) {

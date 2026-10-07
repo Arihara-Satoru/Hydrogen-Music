@@ -50,6 +50,22 @@ await user.followUser('123', false)
 assert.equal(requests.at(-1).url, '/user/follow/del')
 await user.getPrivateMessages('123', '9007199254740993')
 assert.equal(requests.at(-1).params.maxid, '9007199254740993')
+respond = async config => ({ status: 1, list: config.params.tag === 'chat:456_123'
+  ? [{ msgid: '9007199254740993', uid: 456, message: { alert: '我发出的消息' } }]
+  : [{ msgid: '9007199254740992', uid: 123, message: { alert: '对方回复' } }] })
+const bothDirections = await user.getPrivateMessages('123', 0, '456')
+assert.equal(bothDirections.list.map(item => item.uid).join(','), '456,123', 'history must include either participant order')
+assert.equal(requests.at(-2).params.tag, 'chat:123_456')
+assert.equal(requests.at(-1).params.tag, 'chat:456_123')
+respond = async config => ({ status: 1, list: Array.from({ length: 30 }, (_, index) => ({
+  msgid: String(BigInt(config.params.tag === 'chat:456_123' ? '9007199254741099' : '9007199254741049') - BigInt(index)),
+})) })
+const mergedPage = await user.getPrivateMessages('123', '9007199254741199', '456')
+assert.equal(mergedPage.list.length, 30)
+assert.equal(mergedPage.list.at(-1).msgid, '9007199254741070', 'merged page must keep the newest 30 so its next cursor cannot skip the other tag')
+assert.equal(requests.at(-1).params.maxid, '9007199254741199')
+respond = async () => ({ status: 1, list: [{ msgid: '9007199254740993', uid: 456 }] })
+assert.equal((await user.getPrivateMessages('123', 0, '456')).list.length, 1, 'same message in both histories must be deduplicated')
 assert.throws(() => user.sendPrivateMessage('123', '  '))
 respond = async () => ({ status: 0, errcode: 3006, error: '需要对方关注或回复后才能恢复正常聊天' })
 await assert.rejects(user.sendPrivateMessage('123', '你好'), /需要对方关注/)
@@ -176,7 +192,7 @@ pendingPhone.resolve({ status: 0, msg: '验证码错误' })
 await phoneLogin
 
 const store = reactive({ user: { userId: '456', nickname: '我' }, updateUser(value) { this.user = value } })
-let account = '456', history = [{ msgid: '9007199254740993', fromuid: '123', message: '{"alert":"你好"}' }, { msgid: '9007199254740992', fromuid: '456', message: { alert: '收到' } }]
+let account = '456', history = [{ msgid: '9007199254740993', uid: '123', message: '{"alert":"你好"}' }, { msgid: '9007199254740992', uid: '456', message: { alert: '收到' } }]
 let sendFails = true, pendingHistory = null, uploads = 0
 const profile = await setup('src/views/PersonalCenter.vue', {
   useRouter: () => ({ replace() {}, back() {} }), useUserStore: () => store,
@@ -202,6 +218,8 @@ profile.get("openChat({ id: '123', name: '朋友' })")
 await new Promise(resolve => setImmediate(resolve))
 assert.equal(profile.get('messages.value.length'), 2, 'opening chat must load its first page')
 assert.equal(profile.get('messages.value[0].id'), '9007199254740992', 'large message IDs must keep order and precision')
+assert.equal(profile.get('messages.value[0].sender'), '456', 'actual history uid must identify outgoing messages as mine')
+assert.equal(profile.get('messages.value[1].sender'), '123', 'actual history uid must identify incoming messages')
 profile.get("messageText.value = '保留草稿'")
 await profile.get('sendMessage()')
 assert.equal(profile.get('messageText.value'), '保留草稿')

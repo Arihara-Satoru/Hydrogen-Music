@@ -179,13 +179,13 @@ async function loadMessages(older = false) {
   messageLoading.value = true
   messageError.value = ''
   try {
-    const result = await getPrivateMessages(id, cursor)
+    const result = await getPrivateMessages(id, cursor, selfId.value)
     if (!isCurrent(version, account) || current !== chatGeneration || id !== targetId.value.trim()) return
     const items = extractPurchasedItems(result, ['messages', 'msglist', 'msg_list', 'list', 'info']).map(item => {
       let content = item.message || item.content || item.msg || item
       if (typeof content === 'string') { try { content = JSON.parse(content) } catch { content = { alert: content } } }
       if (!content || typeof content !== 'object' || Array.isArray(content)) content = { alert: '[暂不支持的消息]' }
-      return { ...item, content, id: item.msgid ?? item.id, sender: String(item.fromuid ?? item.from_userid ?? item.sender ?? item.userid ?? content?.userid ?? '') }
+      return { ...item, content, id: item.msgid ?? item.id, sender: String(item.fromuid ?? item.from_userid ?? item.sender ?? item.uid ?? item.userid ?? content?.userid ?? '') }
     })
     const merged = older ? [...messages.value, ...items] : items
     messages.value = [...new Map(merged.map(item => [item.id == null ? item : String(item.id), item])).values()]
