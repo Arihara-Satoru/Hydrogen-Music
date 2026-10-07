@@ -515,6 +515,7 @@ function normalizeCommentItem(item = {}) {
         liked: !!(item?.like?.haslike ?? item?.liked),
         likedCount,
         parentCommentId: Number(item.parentCommentId || item.parent_comment_id || item.parent_id || item.pid || 0),
+        rootCommentId: Number(item.rootCommentId || item.tid || 0),
         replyTo: parsedContent.replyTo,
         replyCount,
         showFloorComment: {
@@ -656,7 +657,7 @@ export function getMusicComments(id, { limit = 20, offset = 0, ...extraParams } 
         pagesize: requestLimit,
         show_classify: source.show_classify ?? 1,
         show_hotword_list: source.show_hotword_list ?? 1,
-    }).then(response => normalizeMusicCommentsResponse(response, requestLimit))
+    }, true).then(response => normalizeMusicCommentsResponse(response, requestLimit))
 }
 
 /**
@@ -675,7 +676,7 @@ export function getMusicCommentsByClassify({ id, typeId, type_id, pageSize = 20,
         page: requestPage,
         pagesize: requestPageSize,
         sort,
-    }).then(response => normalizeMusicCommentsResponse(response, requestPageSize))
+    }, true).then(response => normalizeMusicCommentsResponse(response, requestPageSize))
 }
 
 /**
@@ -693,7 +694,7 @@ export function getMusicCommentsByHotword({ id, hotWord, hot_word, pageSize = 20
         hot_word: keyword,
         page: requestPage,
         pagesize: requestPageSize,
-    }).then(response => normalizeMusicCommentsResponse(response, requestPageSize))
+    }, true).then(response => normalizeMusicCommentsResponse(response, requestPageSize))
 }
 
 /**
@@ -731,7 +732,7 @@ export function getMusicCommentFloor({ id, parentCommentId, limit = 20, page = 1
         tid: commentTid,
         page,
         pagesize: limit,
-    }).then(response => normalizeMusicCommentFloorResponse(response, limit, page))
+    }, true).then(response => normalizeMusicCommentFloorResponse(response, limit, page))
 }
 
 /**
@@ -747,8 +748,11 @@ export function postMusicComment(id, content, commentId = null, extraParams = {}
     delete params.id
     params.content = String(params.content || '').trim()
     if (!params.content || !params.mixsongid) throw new TypeError('发送评论需要歌曲 ID 和内容')
-    if (params.commentId) {
-        if (!params.special_id || !params.tid) throw new TypeError('回复需要评论资源 ID 和顶层评论 ID')
+    if (params.commentId != null || params.tid != null || params.pid != null) {
+        if (!Number.isSafeInteger(Number(params.commentId)) || Number(params.commentId) <= 0) throw new TypeError('回复需要有效的目标评论 ID')
+        if (!params.special_id || !Number.isSafeInteger(Number(params.tid)) || Number(params.tid) <= 0) throw new TypeError('回复需要评论资源 ID 和顶层评论 ID')
+        // 只发楼层回复，关闭同时发布主评论（后端对 pid=0 默认开启）。
+        params.is_t = 0
         return post('/comment/floor/send', params, { timestamp: Date.now() })
     }
     return post('/comment/music/send', params, { timestamp: Date.now() })

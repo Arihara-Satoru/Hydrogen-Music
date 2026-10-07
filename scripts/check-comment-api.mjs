@@ -5,14 +5,16 @@ import { createContext, SourceTextModule, SyntheticModule } from 'node:vm'
 
 const context = createContext({ console })
 const requests = []
+const readOptions = []
 let responder = async () => ({})
 const plain = value => JSON.parse(JSON.stringify(value))
 
 const baseModule = new SyntheticModule(['post', 'get', 'getById', 'getWithPagination', 'operationRequest'], function setBaseExports() {
   this.setExport('post', (url, data) => { requests.push({ url, data }); return responder(url, data) })
-  this.setExport('get', (url, params) => {
+  this.setExport('get', (url, params, autoTimestamp = false) => {
     requests.push({ url, params })
-    return responder(url, params)
+    readOptions.push({ url, autoTimestamp })
+    return responder(url, params, autoTimestamp)
   })
   this.setExport('getById', () => Promise.resolve({}))
   this.setExport('getWithPagination', () => Promise.resolve({}))
@@ -134,6 +136,9 @@ assert.deepEqual(plain(requests.at(-1)), {
 assert.equal(floorResult.data.totalCount, 24)
 assert.equal(floorResult.data.hasMore, true)
 assert.equal(floorResult.data.nextPage, 3)
+for (const url of ['/comment/music', '/comment/music/classify', '/comment/music/hotword', '/comment/floor']) {
+  assert.equal(readOptions.findLast(read => read.url === url).autoTimestamp, true, `${url} must bypass stale API cache`)
+}
 console.log('comment API check passed')
 
 responder = async () => ({ status: 1 })
@@ -143,10 +148,116 @@ await songModule.namespace.postMusicComment({ id: 123, content: 'reply', comment
 assert.equal(requests.at(-1).url, '/comment/floor/send')
 assert.equal(requests.at(-1).data.tid, 8)
 assert.equal(requests.at(-1).data.pid, 9)
+assert.equal(requests.at(-1).data.is_t, 0)
+await songModule.namespace.postMusicComment({ id: 123, content: 'reply', commentId: 8, special_id: 12, tid: 8, pid: 0, is_t: 1 })
+assert.equal(requests.at(-1).data.is_t, 0)
 assert.throws(() => songModule.namespace.postMusicComment({ id: 123, content: 'reply', commentId: 9 }), /回复需要/)
+for (const commentId of [0, '', 'bad', -1]) {
+  const requestCount = requests.length
+  assert.throws(() => songModule.namespace.postMusicComment({ id: 123, content: 'reply', commentId, special_id: 12, tid: 8 }), /有效的目标评论/)
+  assert.equal(requests.length, requestCount)
+}
+assert.throws(() => songModule.namespace.postMusicComment({ id: 123, content: 'reply', tid: 8, special_id: 12 }), /有效的目标评论/)
+assert.throws(() => songModule.namespace.postMusicComment({ id: 123, content: 'reply', commentId: 9, tid: 'bad', special_id: 12 }), /顶层评论/)
 await songModule.namespace.deleteMusicComment({ mixsongid: 123, cid: 9, tid: 8 })
 assert.deepEqual(plain(requests.at(-1)), { url: '/comment/music/del', data: { mixsongid: 123, cid: 9, tid: 8 } })
 console.log('comment mutations check passed')
+
+// 执行真实评论组件和 API，验证回复保留原楼层并刷新楼层接口。
+const componentSource = (await readFile('src/components/Comments.vue', 'utf8')).match(/<script setup>([\s\S]*?)<\/script>/)[1]
+const notices = []
+let confirmDeletion
+const playerState = { songId: { value: 123 }, songList: { value: [{ id: 123 }] }, currentIndex: { value: 0 }, listInfo: { value: {} } }
+const componentMocks = {
+  vue: { ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), watch() {}, onMounted() {}, onUnmounted() {}, nextTick: async callback => callback?.() },
+  pinia: { storeToRefs: value => value },
+  '../store/playerStore': { usePlayerStore: () => playerState },
+  '../store/userStore': { useUserStore: () => ({ user: { userId: 42 } }) },
+  '../utils/dialog': { noticeOpen: message => notices.push(message), dialogOpen: (_title, _message, handler) => { confirmDeletion = handler } },
+  '../utils/commentScrollMemory': { getCommentScrollPosition() {}, setCommentScrollPosition() {}, getLastCommentTargetKey() {}, setLastCommentTargetKey() {} },
+  '../api/dj': { getDjProgramCommentsNew() {}, getDjProgramCommentFloor() {}, postDjProgramComment() {}, likeDjProgramComment() {} },
+  './CommentText.vue': { default: {} },
+  './CommentVerification.vue': { default: {} },
+}
+context.defineEmits = () => () => {}
+context.document = { querySelector: () => null }
+const commentsComponent = new SourceTextModule(componentSource + '\nexport { comments, newComment, replyingTo, floorReplies, toggleReply, submitComment, resolveReplyRootCommentId, toggleFloorReplies, getVisibleFloorReplies, removeComment };', { context })
+await commentsComponent.link(name => {
+  if (name === '../api/song') return songModule
+  if (name === '../utils/commentReplies') return commentRepliesModule
+  const exports = componentMocks[name]
+  assert.ok(exports, `Unexpected component import: ${name}`)
+  return new SyntheticModule(Object.keys(exports), function () {
+    for (const [key, value] of Object.entries(exports)) this.setExport(key, value)
+  }, { context })
+})
+await commentsComponent.evaluate()
+const component = commentsComponent.namespace
+const root = { commentId: 8, content: 'original', special_child_id: 12, user: { nickname: 'original author' }, showFloorComment: { replyCount: 0 } }
+component.comments.value = [root]
+responder = async url => url === '/comment/floor'
+  ? { status: 1, comments_num: 1, list: [{ id: 9, tid: 8, pid: 0, content: 'reply//@original author:original', puser_id: 7 }] }
+  : { status: 1 }
+component.toggleReply(root)
+component.newComment.value = 'reply'
+let replyRequestStart = requests.length
+await component.submitComment()
+assert.deepEqual(requests.slice(replyRequestStart).map(request => request.url), ['/comment/floor/send', '/comment/floor'])
+assert.equal(requests[replyRequestStart].data.tid, 8)
+assert.equal(requests[replyRequestStart].data.pid, 0)
+assert.equal(requests[replyRequestStart].data.is_t, 0)
+assert.equal(requests[replyRequestStart + 1].params.pagesize, 30)
+assert.equal(component.comments.value[0], root)
+assert.equal(component.floorReplies.value['8'].expanded, true)
+assert.equal(component.floorReplies.value['8'].items[0].rootCommentId, 8)
+assert.equal(root.showFloorComment.replyCount, 1)
+assert.equal(notices.at(-1), '回复发送成功')
+const child = component.floorReplies.value['8'].items[0]
+assert.equal(component.resolveReplyRootCommentId({ ...child, parentCommentId: 99 }), 8)
+component.toggleReply(child)
+component.newComment.value = 'nested reply'
+replyRequestStart = requests.length
+await component.submitComment()
+assert.equal(requests[replyRequestStart].data.tid, 8)
+assert.equal(requests[replyRequestStart].data.pid, 9)
+assert.equal(requests[replyRequestStart].data.is_t, 0)
+assert.equal(requests[replyRequestStart].data.special_id, 12)
+assert.equal(component.comments.value[0], root)
+
+// 此楼层的真实记录结构：旧回复在前，新回复在第 17、18 条。
+const toyouRoot = { commentId: 374305268, content: '歌词上传完成，辛苦熬夜打的👍', special_child_id: '22357329', user: { userId: 594987594, nickname: 'Toyou-Ghoul' }, showFloorComment: { replyCount: 20 } }
+const floorRecords = Array.from({ length: 20 }, (_, index) => ({ id: 1000 + index, user_id: 100 + index, content: 'existing reply', tid: 374305268, pid: 0 }))
+for (const [index, id] of [[16, 633107608], [17, 633106726]]) {
+  floorRecords[index] = { id, user_id: 598130887, user_name: '蒲公英的约定', content: '辛苦了//@Toyou-Ghoul:歌词上传完成，辛苦熬夜打的👍', tid: 374305268, pid: 0, puser_id: '594987594', is_reply: 1 }
+}
+responder = async () => ({ status: 1, comments_num: 20, current_page: 1, list: floorRecords.slice(0, requests.at(-1).params.pagesize) })
+await component.toggleFloorReplies(toyouRoot)
+const visibleReplies = component.getVisibleFloorReplies(toyouRoot)
+assert.deepEqual(plain(visibleReplies.filter(node => node.comment.user.userId === 598130887).map(node => [node.comment.commentId, node.comment.content, node.depth])), [[633107608, '辛苦了', 0], [633106726, '辛苦了', 0]])
+assert.equal(component.floorReplies.value['374305268'].hasMore, false)
+
+responder = async () => ({ status: 0, ssaCode: 'reply-event' })
+component.toggleReply(root)
+component.newComment.value = 'preserved reply'
+await component.submitComment()
+assert.equal(component.replyingTo.value.commentId, 8)
+assert.equal(component.newComment.value, 'preserved reply')
+assert.equal(component.comments.value[0], root)
+console.log('comment reply flow check passed')
+
+// 删除成功后，未绕过缓存的读取会返回旧评论，必须使用新数据。
+const ownComment = { commentId: 1771115180, user: { userId: 42 }, content: '辛苦了' }
+component.comments.value = [ownComment]
+const deletionStart = requests.length
+responder = async (url, _params, fresh) => url === '/comment/music'
+  ? { status: 1, count: fresh ? 0 : 1, list: fresh ? [] : [{ id: ownComment.commentId, user_id: 42, content: '辛苦了' }] }
+  : { status: 1 }
+component.removeComment(ownComment)
+await confirmDeletion(true)
+assert.deepEqual(requests.slice(deletionStart).map(request => request.url), ['/comment/music/del', '/comment/music'])
+assert.equal(component.comments.value.length, 0)
+assert.equal(notices.at(-1), '评论已删除')
+console.log('comment deletion refresh check passed')
 
 const challenge = { eventid: 'test-event', sid: 'test-sid', edt: 'test-edt' }
 assert.deepEqual(plain(songModule.namespace.getCommentSecurityChallenge({ response: { data: {

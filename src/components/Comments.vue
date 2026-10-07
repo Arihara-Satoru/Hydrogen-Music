@@ -58,7 +58,8 @@ const imagePreviewCloseRef = ref(null)
 const imagePreviewTrigger = ref(null)
 let commentRequestSerial = 0
 
-const FLOOR_REPLY_LIMIT = 5
+// 小页请求与 hot_replylist 的热门窗口不一致，使用接口默认页大小。
+const FLOOR_REPLY_LIMIT = 30
 
 const COMMENTS_PREFETCH_PX = 200
 const commentsContainerRef = ref(null)
@@ -171,7 +172,7 @@ const commentSectionTitle = computed(() => {
 })
 
 const resolveReplyRootCommentId = (comment, rootCommentId = null) => {
-    const explicitRoot = Number(rootCommentId)
+    const explicitRoot = Number(rootCommentId || comment?.rootCommentId)
     if (Number.isFinite(explicitRoot) && explicitRoot > 0) return explicitRoot
 
     const parentId = Number(comment && comment.parentCommentId)
@@ -343,7 +344,7 @@ const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
     if (!state || state.loading) return
 
     const replyCount = getCommentReplyCount(comment)
-    if (!replyCount && state.items.length === 0) {
+    if (!forceFirstPage && !replyCount && state.items.length === 0) {
         state.hasMore = false
         state.total = 0
         state.expanded = true
@@ -561,21 +562,22 @@ const submitComment = async () => {
 
     const targetKey = commentTargetKey.value
     const accountId = userStore.user?.userId || userStore.user?.userid
+    const reply = replyingTo.value
+    const rootComment = reply && [...hotComments.value, ...comments.value].find(comment => comment.commentId === resolveReplyRootCommentId(reply, reply.__rootCommentId))
     submitting.value = true
 
     try {
         let response = null
         if (isDj.value && programId.value) {
-            response = await postDjProgramComment(programId.value, newComment.value.trim(), replyingTo.value ? replyingTo.value.commentId : null)
+            response = await postDjProgramComment(programId.value, newComment.value.trim(), reply ? reply.commentId : null)
         } else {
             const params = {
                 id: musicCommentId.value,
                 content: newComment.value.trim(),
             }
-            if (replyingTo.value) {
-                const reply = replyingTo.value
+            if (reply) {
                 params.commentId = reply.commentId
-                params.special_id = reply.special_child_id || reply.specialChildId
+                params.special_id = reply.special_child_id || reply.specialChildId || rootComment?.special_child_id || rootComment?.specialChildId
                 params.tid = resolveReplyRootCommentId(reply, reply.__rootCommentId)
                 params.pid = params.tid === reply.commentId ? 0 : reply.commentId
                 params.reply_user_name = getUserName(reply.user)
@@ -586,11 +588,16 @@ const submitComment = async () => {
 
         if (targetKey !== commentTargetKey.value || accountId !== (userStore.user?.userId || userStore.user?.userid)) return
         if (isDj.value ? response?.code === 200 : Number(response?.status) === 1 && Number(response?.error_code ?? response?.err_code ?? 0) === 0) {
-            noticeOpen('评论发送成功', 2)
+            noticeOpen(reply ? '回复发送成功' : '评论发送成功', 2)
             newComment.value = ''
             replyingTo.value = null
-            // 重新获取评论
-            await fetchComments(true)
+            if (rootComment) {
+                await loadFloorReplies(rootComment, { forceFirstPage: true })
+                const state = getFloorState(rootComment)
+                if (state && !state.error) rootComment.showFloorComment = { ...rootComment.showFloorComment, replyCount: state.total }
+            } else {
+                await fetchComments(true)
+            }
         } else {
             securityChallenge.value = getCommentSecurityChallenge(response)
             if (!securityChallenge.value) noticeOpen(response?.msg || response?.message || '评论发送失败', 2)
