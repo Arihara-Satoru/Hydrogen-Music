@@ -343,6 +343,7 @@ main {
                     padding: 12px 0;
                     width: 100px;
                     height: auto;
+                    interpolate-size: allow-keywords;
                     background-image: url('../assets/img/halftone.png');
                     background-size: 120%;
                     background-repeat: repeat;
@@ -426,20 +427,19 @@ main {
 
 <style lang="scss">
 .app-option-enter-active {
-    transition: opacity 0.2s ease, transform 0.2s ease;
+    animation: app-option-in 0.2s forwards;
 }
 .app-option-leave-active {
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    animation: app-option-in 0.2s reverse;
 }
-.app-option-enter-from,
-.app-option-leave-to {
-    opacity: 0;
-    transform: translateY(-8px);
-}
-@media (prefers-reduced-motion: reduce) {
-    .app-option-enter-active,
-    .app-option-leave-active {
-        transition: none;
+@keyframes app-option-in {
+    0% {
+        height: 0;
+        padding: 0;
+    }
+    100% {
+        height: auto;
+        padding: 12px 0;
     }
 }
 </style>
