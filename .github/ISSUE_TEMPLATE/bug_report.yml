@@ -1,0 +1,72 @@
+name: 🐛 Bug 反馈
+description: 报告程序问题，帮助我们复现并修复。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交反馈。请勿在 Issue 中粘贴账号密码、Cookie、二维码或其他个人信息。
+
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索现有 Issues，确认这不是重复反馈。
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Hydrogen Music 版本
+      description: 可在应用的关于信息或安装包文件名中查看。
+      placeholder: 例如 0.7.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序描述触发问题的操作。
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 你原本期望发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么？如果有报错，请贴出报错文字。
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 截图或补充信息
+      description: 可附上截图、日志或其他有助于定位问题的信息。请先移除账号、Cookie 等敏感信息。
+    validations:
+      required: false

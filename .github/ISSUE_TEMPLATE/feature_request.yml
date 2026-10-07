@@ -1,0 +1,48 @@
+name: 💡 功能建议
+description: 提出功能改进或新的使用场景。
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢分享建议。请描述要解决的问题和实际使用场景，便于评估。
+
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索现有 Issues，确认这不是重复建议。
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题？
+      description: 描述当前遇到的不便或缺少的能力。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: 你希望如何改进？
+      description: 描述你期待的行为或功能。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
+      description: 如果尝试过其他做法，也可以写在这里。
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 补充信息
+      description: 可附上截图、示例或其他背景。
+    validations:
+      required: false
