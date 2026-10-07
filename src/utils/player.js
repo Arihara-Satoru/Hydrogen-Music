@@ -20,6 +20,7 @@ import { syncLyricIndexForSeek } from "../composables/usePlayerRuntime";
 import { schedulePlaylistCacheInvalidation } from "./cacheInvalidation";
 import { isLogin } from "./authority";
 import { createDecodedAudioPlayer } from "./webAudioGapless";
+import { calculateLoudnessGain, prepareHowlAudioProcessing } from "./loudnessNormalization.mjs";
 import { pickMusicVideoPoolEntry } from "./musicVideoPool.mjs";
 import { createOtherAudioPauseController } from "./otherAudioPause.mjs";
 import {
@@ -66,6 +67,8 @@ const {
   currentLyricIndex,
   showSongTranslation,
   chorusMode,
+  loudnessNormalization,
+  dynamicCompression,
 } = storeToRefs(playerStore);
 
 let isProgress = false;
@@ -152,6 +155,38 @@ watch(volume, (v) => {
   window.playerApi?.setVolume?.(normalizedVolume);
   currentMusic.value?.volume?.(normalizedVolume);
 });
+watch([loudnessNormalization, dynamicCompression], () => {
+  const playback = currentMusic.value;
+  if (!playback) return;
+  const gain = loudnessNormalization.value
+    ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1;
+  if ((gain !== 1 || dynamicCompression.value) && !playback.setAudioProcessing && !playback.__hmAudioProcessingUnavailable) {
+    play(playback._src, playing.value, Number(playback.seek()) || 0, null, {
+      trackInfo: { loudness: playback.__hmLoudnessMetadata },
+    });
+    return;
+  }
+  void applyPlaybackAudioProcessing(playback);
+});
+
+async function applyPlaybackAudioProcessing(playback, autoplay = playback.playing?.() === true) {
+  if (playback.__hmAudioProcessingUnavailable) return;
+  const pauseToken = playbackPauseToken;
+  const gain = loudnessNormalization.value
+    ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1;
+  try {
+    await playback.setAudioProcessing?.(gain, dynamicCompression.value);
+  } catch (error) {
+    console.warn("音频处理不可用，使用原音量播放", error);
+    playback.__hmAudioProcessingUnavailable = true;
+    if (currentMusic.value === playback) {
+      play(playback._src, autoplay && pauseToken === playbackPauseToken, Number(playback.seek()) || 0, null, {
+        trackInfo: { loudness: playback.__hmLoudnessMetadata },
+        audioProcessingUnavailable: true,
+      });
+    }
+  }
+}
 watch(showSongTranslation, () => {
   updateWindowTitleDock();
 });
@@ -1675,6 +1710,7 @@ export function play(
     ? Math.max(0, playOptions.fadeInMs)
     : 200;
   const previousPlayback = currentMusic.value;
+  const pauseToken = playbackPauseToken;
   // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
   stopProgressSampling();
   if (previousPlayback && !keepPreviousPlayback) {
@@ -1770,6 +1806,9 @@ export function play(
   if (preloadedPlayer) {
     const playback = markRaw(preloadedPlayer);
     currentMusic.value = playback;
+    playback.__hmLoudnessMetadata = playOptions.trackInfo?.loudness || null;
+    void applyPlaybackAudioProcessing(playback, shouldAutoplay);
+    if (currentMusic.value !== playback) return;
     playback.loop?.(playMode.value == 2);
     playback.volume?.(keepPreviousPlayback ? 0 : volume.value);
     playback.on?.("play", () => handlePlaybackStart(playback));
@@ -1787,7 +1826,7 @@ export function play(
 
   const playback = markRaw(new Howl({
     src: url,
-    autoplay: shouldAutoplay,
+    autoplay: false,
     html5: true,
     preload: true,
     format: [
@@ -1809,21 +1848,40 @@ export function play(
       withCredentials: true,
     },
     onplayerror: function (_id, err) {
+      if (currentMusic.value !== playback) return;
       console.warn("检测到播放错误，尝试刷新播放地址", err);
       refreshStreamAndResume("playerror", err);
     },
     onloaderror: function (_id, err) {
+      if (currentMusic.value !== playback) return;
+      if (playback.__hmAudioProcessingPrepared && !playback.__hmAudioProcessingUnavailable) {
+        noticeOpen("当前音频不支持音效处理，已恢复普通播放", 2);
+        play(url, shouldAutoplay && pauseToken === playbackPauseToken, normalizedSeek, null, {
+          ...playOptions,
+          audioProcessingUnavailable: true,
+        });
+        return;
+      }
       console.warn("加载音频失败，尝试刷新播放地址", err);
       refreshStreamAndResume("loaderror", err);
     },
   }));
   currentMusic.value = playback;
-  playback.once("load", () => applyLoadedState(playback));
+  playback.__hmLoudnessMetadata = playOptions.trackInfo?.loudness || null;
+  playback.__hmAudioProcessingUnavailable = playOptions.audioProcessingUnavailable === true;
+  if (!playback.__hmAudioProcessingUnavailable && (dynamicCompression.value
+    || (loudnessNormalization.value && calculateLoudnessGain(playback.__hmLoudnessMetadata) !== 1))) {
+    prepareHowlAudioProcessing(playback);
+  }
+  playback.once("load", async () => {
+    applyLoadedState(playback);
+    await applyPlaybackAudioProcessing(playback, shouldAutoplay && pauseToken === playbackPauseToken);
+    if (currentMusic.value === playback && shouldAutoplay && pauseToken === playbackPauseToken) playback.play();
+  });
   playback.on("play", () => handlePlaybackStart(playback));
   playback.on("pause", () => handlePlaybackPause(playback));
   playback.on("end", () => handlePlaybackEnd(playback));
-  // Howl 初始化时若指定了 autoplay，提前标记播放状态，避免 play 事件因微任务时序
-  // 被其他逻辑（如 refreshStreamAndResume 递归调用 play）干扰而无法正确设置 playing。
+  // 等加载及响度层就绪后再开声；保留加载期间的播放状态供 UI 使用。
   if (shouldAutoplay) {
     syncPlaybackStarted();
   }
@@ -2496,7 +2554,7 @@ export async function getSongUrl(
       autoplay,
       null,
       directPreloadedEntry.player,
-      playbackOptions,
+      { ...playbackOptions, trackInfo: directPreloadedEntry.trackInfo },
     );
     setSongLevel(directPreloadedEntry.level, directPreloadedEntry.trackInfo);
     void loadRemoteSongAssets(targetSong, targetSongId, directPreloadedEntry);

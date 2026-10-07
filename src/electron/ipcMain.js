@@ -138,10 +138,12 @@ function normalizeMusicSettings(music = {}) {
   normalized.audioVisualizer = normalized.audioVisualizer === true;
   normalized.autoPlayOnStartup = normalized.autoPlayOnStartup === true;
   normalized.pauseOnOtherAudio = normalized.pauseOnOtherAudio === true;
+  normalized.loudnessNormalization = normalized.loudnessNormalization === true;
+  normalized.dynamicCompression = normalized.dynamicCompression === true
+    ? 1 : [1, 2, 3].includes(normalized.dynamicCompression) ? normalized.dynamicCompression : 0;
   // 兼容历史版本：读取后清理旧迁移标记字段。
   delete normalized.levelMigratedToLosslessV1;
   delete normalized.gaplessPlayback;
-  delete normalized.loudnessNormalization;
   return normalized;
 }
 
@@ -616,6 +618,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           audioVisualizer: false,
           autoPlayOnStartup: false,
           pauseOnOtherAudio: false,
+          loudnessNormalization: false,
+          dynamicCompression: 0,
           coverSize: 400,
         },
         local: {

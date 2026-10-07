@@ -1,5 +1,17 @@
 <template>
-  <div class="selector" ref="select" @click="changeOptionsVisible">
+  <div
+    class="selector"
+    ref="select"
+    role="combobox"
+    tabindex="0"
+    aria-label="选择"
+    aria-haspopup="listbox"
+    :aria-expanded="option"
+    :aria-controls="listId"
+    :aria-activedescendant="option ? `${listId}-${activeIndex}` : undefined"
+    @click="changeOptionsVisible"
+    @keydown="handleKeydown"
+  >
     <div class="selector-head">
       <span class="select-head-cont" :class="{ 'long-label': isLongLabel(current?.label) }">{{ current?.label }}</span>
     </div>
@@ -7,6 +19,8 @@
       <transition name="selector" @enter="absolutePosition(overlay, select)">
         <div
           class="selector-option"
+          :id="listId"
+          role="listbox"
           :style="{
             '--count': options.length < maxItems ? options.length : maxItems,
             maxHeight: maxItems * 34 + 16 + 'px',
@@ -16,10 +30,15 @@
         >
           <div
             class="selector-option-item"
-            v-for="item in options"
+            v-for="(item, index) in options"
+            :key="item.value"
+            :id="`${listId}-${index}`"
+            role="option"
+            :aria-selected="modelValue === item.value"
             @click="changeOption(item)"
+            @mousemove="activeIndex = index"
             :class="{
-              'selector-option-item-selected': modelValue === item.value,
+              'selector-option-item-selected': modelValue === item.value || activeIndex === index,
             }"
           >
             <span :class="{'long-label' :isLongLabel(item?.label)}">{{ item?.label }}</span>
@@ -30,7 +49,7 @@
   </div>
 </template>
 <script setup>
-import { computed, onActivated, onDeactivated, ref } from "vue";
+import { computed, nextTick, onActivated, onDeactivated, ref, useId } from "vue";
 import { absolutePosition } from "../utils/domHandler";
 
 const props = defineProps({
@@ -46,6 +65,8 @@ const emit = defineEmits(["update:modelValue"]);
 const select = ref();
 const overlay = ref();
 const option = ref(false);
+const activeIndex = ref(0);
+const listId = useId();
 const current = computed(() =>
   props.options.find((x) => x.value === props.modelValue)
 );
@@ -53,6 +74,7 @@ const current = computed(() =>
 const changeOption = (e) => {
   emit("update:modelValue", e.value);
   option.value = false;
+  select.value?.focus();
 };
 
 const isLongLabel = (label) => {
@@ -71,12 +93,38 @@ onDeactivated(() => {
   window.removeEventListener("click", clickOutside);
 });
 
-const changeOptionsVisible = () => (option.value = !option.value);
+const scrollActiveOption = () => nextTick(() =>
+  overlay.value?.children[activeIndex.value]?.scrollIntoView({ block: "nearest" })
+);
+const changeOptionsVisible = () => {
+  option.value = !option.value;
+  if (option.value) {
+    activeIndex.value = Math.max(0, props.options.findIndex(item => item.value === props.modelValue));
+    scrollActiveOption();
+  }
+};
+const handleKeydown = (event) => {
+  if (event.key === "Tab") { option.value = false; return; }
+  if (!["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape"].includes(event.key)) return;
+  event.preventDefault();
+  if (event.key === "Escape") { option.value = false; return; }
+  if (!props.options.length) return;
+  if (event.key === "Enter" || event.key === " ") {
+    if (option.value) changeOption(props.options[Math.min(activeIndex.value, props.options.length - 1)]);
+    else changeOptionsVisible();
+    return;
+  }
+  if (!option.value) changeOptionsVisible();
+  activeIndex.value = event.key === "Home" ? 0 : event.key === "End" ? props.options.length - 1
+    : Math.max(0, Math.min(props.options.length - 1, activeIndex.value + (event.key === "ArrowDown" ? 1 : -1)));
+  scrollActiveOption();
+};
 </script>
 
 <style scoped lang="scss">
 .selector {
   position: relative;
+  &:focus-visible .selector-head { outline: 2px solid currentColor; outline-offset: 2px; }
   &-head {
     text-align: center;
     box-sizing: border-box;

@@ -46,6 +46,8 @@ export const usePlayerStore = defineStore('playerStore', {
             playing: false,//是否正在播放
             progress: 0,//进度条
             volume: 0.3,//音量
+            loudnessNormalization: false, // 上游响度数据可用时均衡音量
+            dynamicCompression: 0, // 实时动态压缩：0 关闭，1 轻度，2 适中，3 较强
             // volumeBeforeMuted: 0,//静音前音量
             playMode: 0,//0为顺序播放，1为列表循环，2为单曲循环，3为随机播放
             listInfo: null,

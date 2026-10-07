@@ -6,12 +6,38 @@ function clampVolume(value) {
     return Math.max(0, Math.min(1, value))
 }
 
-function getAudioContext() {
+export function getAudioContext() {
     if (sharedAudioContext) return sharedAudioContext
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext
     if (!AudioContextCtor) throw new Error('Web Audio API 不可用')
     sharedAudioContext = new AudioContextCtor()
     return sharedAudioContext
+}
+
+const compressionPresets = {
+    1: { threshold: -18, knee: 6, ratio: 2, makeup: 0.6 },
+    2: { threshold: -22, knee: 8, ratio: 3, makeup: 0.43 },
+    3: { threshold: -26, knee: 10, ratio: 4, makeup: 0.33 },
+}
+
+export function configureDynamicCompression(context, level, compression = null) {
+    const preset = compressionPresets[level]
+    if (!preset) throw new RangeError('无效的压缩强度')
+    if (!compression) {
+        const compressor = context.createDynamicsCompressor()
+        const makeupGain = context.createGain()
+        compressor.connect(makeupGain)
+        compression = { compressor, makeupGain }
+    }
+    const { compressor, makeupGain } = compression
+    compressor.threshold.value = preset.threshold
+    compressor.knee.value = preset.knee
+    compressor.ratio.value = preset.ratio
+    compressor.attack.value = 0.01
+    compressor.release.value = 0.25
+    // ponytail: compensate Chromium's automatic makeup gain per preset; recalibrate when presets or the audio engine change.
+    makeupGain.gain.value = preset.makeup
+    return compression
 }
 
 async function fetchAudioArrayBuffer(url) {
@@ -32,12 +58,17 @@ async function fetchAudioArrayBuffer(url) {
 }
 
 class WebAudioBufferPlayer {
-    constructor(buffer) {
+    constructor(buffer, url) {
         this.__hmWebAudioPlayer = true
         this._context = getAudioContext()
         this._buffer = buffer
+        this._src = url
         this._gain = this._context.createGain()
+        this._loudnessGain = this._context.createGain()
+        this._loudnessGain.connect(this._gain)
         this._gain.connect(this._context.destination)
+        this._compression = null
+        this._compressionLevel = 0
         this._source = null
         this._sourceToken = 0
         this._state = 'loaded'
@@ -66,6 +97,22 @@ class WebAudioBufferPlayer {
         const safeValue = clampVolume(value)
         this._gain.gain.setValueAtTime(safeValue, this._context.currentTime)
         return safeValue
+    }
+
+    setAudioProcessing(value, compressionLevel = 0) {
+        if (this._state === 'unloaded') return
+        this._loudnessGain.gain.setValueAtTime(value, this._context.currentTime)
+        if (this._compressionLevel === compressionLevel) return
+        if (compressionLevel) this._compression = configureDynamicCompression(this._context, compressionLevel, this._compression)
+        this._loudnessGain.disconnect()
+        this._compression?.makeupGain.disconnect()
+        if (compressionLevel) {
+            this._loudnessGain.connect(this._compression.compressor)
+            this._compression.makeupGain.connect(this._gain)
+        } else {
+            this._loudnessGain.connect(this._gain)
+        }
+        this._compressionLevel = compressionLevel
     }
 
     loop(value) {
@@ -114,6 +161,9 @@ class WebAudioBufferPlayer {
             this._fadeTimer = null
         }
         try { this._gain.disconnect() } catch (_) {}
+        try { this._loudnessGain.disconnect() } catch (_) {}
+        this._compression?.compressor.disconnect()
+        this._compression?.makeupGain.disconnect()
         this._events.clear()
         this._buffer = null
     }
@@ -184,7 +234,7 @@ class WebAudioBufferPlayer {
         const source = this._context.createBufferSource()
         source.buffer = this._buffer
         source.loop = this._loop
-        source.connect(this._gain)
+        source.connect(this._loudnessGain)
         source.onended = () => {
             if (token !== this._sourceToken || this._state === 'unloaded') return
             this._source = null
@@ -224,5 +274,5 @@ export async function createDecodedAudioPlayer(url) {
     const audioContext = getAudioContext()
     const audioData = await fetchAudioArrayBuffer(url)
     const decodedBuffer = await audioContext.decodeAudioData(audioData.slice(0))
-    return new WebAudioBufferPlayer(decodedBuffer)
+    return new WebAudioBufferPlayer(decodedBuffer, url)
 }

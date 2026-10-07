@@ -158,6 +158,14 @@ const lyricInterlude = ref(13);
 const searchAssistLimit = ref(8);
 const autoPlayOnStartup = ref(false);
 const pauseOnOtherAudio = ref(false);
+const loudnessNormalization = ref(false);
+const dynamicCompression = ref(0);
+const dynamicCompressionOptions = [
+  { label: "关闭", value: 0 },
+  { label: "轻度（推荐）", value: 1 },
+  { label: "适中", value: 2 },
+  { label: "较强", value: 3 },
+];
 const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
@@ -386,6 +394,8 @@ onActivated(() => {
     autoPlayOnStartup.value = settings?.music?.autoPlayOnStartup === true;
     pauseOnOtherAudio.value =
       settings?.music?.pauseOnOtherAudio === true;
+    loudnessNormalization.value = settings?.music?.loudnessNormalization === true;
+    dynamicCompression.value = settings?.music?.dynamicCompression ?? 0;
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
     playerStore.audioVisualizer = settings?.music?.audioVisualizer === true;
@@ -495,6 +505,8 @@ const setAppSettings = () => {
       // 启动恢复上次歌单后是否自动播放。
       autoPlayOnStartup: autoPlayOnStartup.value,
       pauseOnOtherAudio: pauseOnOtherAudio.value,
+      loudnessNormalization: loudnessNormalization.value,
+      dynamicCompression: dynamicCompression.value,
     },
     local: {
       videoFolder: videoFolder.value,
@@ -516,6 +528,8 @@ const setAppSettings = () => {
     },
   };
   playerStore.quality = musicLevel.value;
+  playerStore.loudnessNormalization = loudnessNormalization.value;
+  playerStore.dynamicCompression = dynamicCompression.value;
   windowApi.setSettings(JSON.stringify(settings));
 };
 
@@ -1149,6 +1163,38 @@ const clearFmRecent = () => {
                   v-model="musicLevel"
                   :options="musicLevelOptions"
                   :maxItems="4"
+                ></Selector>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name" id="loudness-normalization-label">响度均衡（上游数据可用时生效）</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  role="switch"
+                  tabindex="0"
+                  :aria-checked="loudnessNormalization"
+                  aria-labelledby="loudness-normalization-label"
+                  @click="loudnessNormalization = !loudnessNormalization"
+                  @keydown.enter.prevent="loudnessNormalization = !loudnessNormalization"
+                  @keydown.space.prevent="loudnessNormalization = !loudnessNormalization"
+                >
+                  <div class="toggle-off" :class="{ 'toggle-on-in': loudnessNormalization }">
+                    {{ loudnessNormalization ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div class="toggle-on" v-show="loudnessNormalization"></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name" id="dynamic-compression-label">压缩强度（减小强弱段落差异）</div>
+              <div class="option-operation">
+                <Selector
+                  v-model="dynamicCompression"
+                  :options="dynamicCompressionOptions"
+                  aria-labelledby="dynamic-compression-label"
                 ></Selector>
               </div>
             </div>

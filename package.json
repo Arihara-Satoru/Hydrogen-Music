@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:loudness-normalization": "node --experimental-vm-modules scripts/check-loudness-normalization.mjs",
     "check:kugou-compatibility": "node --experimental-vm-modules scripts/check-kugou-compatibility.mjs",
     "check:cloud-api": "node --experimental-vm-modules scripts/check-cloud-api.mjs",
     "check:cloud-metadata": "node scripts/check-cloud-metadata.cjs",

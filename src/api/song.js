@@ -120,11 +120,16 @@ function extractPlayableUrl(value) {
 }
 
 function extractStreamMeta(body = {}, fallback = {}) {
+    const loudnessSource = ['volume', 'volume_gain', 'volume_peak'].some(key => body?.[key] !== undefined)
+        ? body : fallback
     return {
         sr: body?.sr || body?.sampleRate || body?.sample_rate || fallback?.sr || fallback?.sampleRate || fallback?.sample_rate,
         br: body?.br || body?.bitrate || body?.bitRate || fallback?.br || fallback?.bitrate || fallback?.bitRate,
         bitsPerSample: body?.bitsPerSample || body?.bitDepth || body?.bit_depth || body?.bits_per_sample || fallback?.bitsPerSample || fallback?.bitDepth || fallback?.bit_depth || fallback?.bits_per_sample,
         size: body?.size || body?.fileSize || body?.filesize || fallback?.size || fallback?.fileSize || fallback?.filesize,
+        loudness: loudnessSource?.volume !== undefined && loudnessSource?.volume_gain !== undefined && loudnessSource?.volume_peak !== undefined
+            ? { volume: loudnessSource.volume, gain: loudnessSource.volume_gain, peak: loudnessSource.volume_peak }
+            : null,
     }
 }
 

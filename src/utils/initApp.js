@@ -40,6 +40,8 @@ export const initSettings = () => {
       : 8;
     showSongTranslation.value = settings?.music?.showSongTranslation !== false;
     audioVisualizer.value = settings?.music?.audioVisualizer === true;
+    playerStore.loudnessNormalization = settings?.music?.loudnessNormalization === true;
+    playerStore.dynamicCompression = settings?.music?.dynamicCompression ?? 0;
     coverSize.value = settings?.music?.coverSize ?? 400;
     applyCustomFontStyle(settings?.other?.customFont || "");
     // 记录旧的文件夹设置，用于检测变化
