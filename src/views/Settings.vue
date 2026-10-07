@@ -1711,6 +1711,15 @@ const clearFmRecent = () => {
                 </div>
               </div>
             </div>
+            <div class="option" v-if="userStore.personalFMPage">
+              <label class="option-name" for="personal-fm-layout">私人漫游界面</label>
+              <div class="option-operation">
+                <select id="personal-fm-layout" v-model="userStore.personalFMLayout" class="fm-layout-select">
+                  <option value="modern">歌词水面（新版）</option>
+                  <option value="classic">经典界面</option>
+                </select>
+              </div>
+            </div>
             <div class="option">
               <div class="option-name">开启塞壬唱片页面</div>
               <div class="option-operation">
@@ -2198,6 +2207,26 @@ const clearFmRecent = () => {
             }
             select {
               padding: 8px 10px;
+            }
+            .fm-layout-select {
+              margin-right: 1px;
+              width: 200px;
+              height: 34px;
+              border: 0;
+              border-radius: 0;
+              color: var(--text);
+              background: var(--layer);
+              font: 13px SourceHanSansCN-Bold;
+              text-align: center;
+              cursor: pointer;
+              option {
+                color: var(--text);
+                background: var(--panel);
+              }
+              &:focus-visible {
+                outline: 2px solid var(--text);
+                outline-offset: 2px;
+              }
             }
             option {
               background-color: rgba(255, 255, 255, 0.35);

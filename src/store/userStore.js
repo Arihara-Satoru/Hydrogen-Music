@@ -14,6 +14,7 @@ export const useUserStore = defineStore('userStore', {
             homePage: true,
             cloudDiskPage: true,
             personalFMPage: true,
+            personalFMLayout: 'modern',
             autoClearFmCacheEvery3Days: false,
             sirenPage: false,
         }
@@ -50,6 +51,6 @@ export const useUserStore = defineStore('userStore', {
     },
     persist: {
         storage: localStorage,
-        pick: ['user','biliUser','homePage','cloudDiskPage','personalFMPage','autoClearFmCacheEvery3Days','sirenPage','favoritePlaylistId','favoritePlaylistName']
+        pick: ['user','biliUser','homePage','cloudDiskPage','personalFMPage','personalFMLayout','autoClearFmCacheEvery3Days','sirenPage','favoritePlaylistId','favoritePlaylistName']
     },
 })

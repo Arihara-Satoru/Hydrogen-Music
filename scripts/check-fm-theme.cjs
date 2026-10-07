@@ -16,6 +16,14 @@ app.disableHardwareAcceleration();
 const { parse, compileStyle } = require('@vue/compiler-sfc');
 const root = path.resolve(__dirname, '..');
 const { descriptor } = parse(fs.readFileSync(path.join(root, 'src/components/PersonalFM.vue'), 'utf8'));
+const { descriptor: settings } = parse(fs.readFileSync(path.join(root, 'src/views/Settings.vue'), 'utf8'));
+const layoutOption = settings.template.content.match(/<div class="option" v-if="userStore\.personalFMPage">\s*<label[^>]*for="personal-fm-layout"[\s\S]*?<\/select>\s*<\/div>\s*<\/div>/)?.[0];
+assert.ok(layoutOption, 'Layout selector must be conditional on the FM page switch');
+const layoutRender = require('@vue/compiler-dom').compile(layoutOption, { mode: 'function' }).code;
+const storeSource = fs.readFileSync(path.join(root, 'src/store/userStore.js'), 'utf8');
+const storeOptions = require('node:vm').runInNewContext(storeSource.replace(/^import .*;\s*/m, '').replace('export const useUserStore =', 'globalThis.options ='), { defineStore: (_id, options) => options, localStorage: {} });
+assert.ok(storeOptions.persist.pick.includes('personalFMLayout'), 'Layout preference must be persisted');
+const layoutLogic = descriptor.scriptSetup.content.match(/const isClassic = computed\([^\n]+/)[0];
 const vue = fs.readFileSync(require.resolve('vue/dist/vue.global.prod.js'), 'utf8');
 const render = require('@vue/compiler-dom').compile(descriptor.template.content, { mode: 'function' }).code;
 const tiltLogic = descriptor.scriptSetup.content.slice(descriptor.scriptSetup.content.indexOf('const fmSceneRef ='), descriptor.scriptSetup.content.indexOf('// ponytail: this three-line view'));
@@ -31,19 +39,23 @@ for (const style of descriptor.styles) {
 }
 // Sample settled colors, independently of the app's theme/button transitions.
 css.push('*:not(.fm-lyric-line):not(.fm-lyric-line p) { transition: none !important; }');
-css.push('.mainWindow { width: 100%; height: 100vh; } #preview { height: 100%; }');
+css.push('.mainWindow { width: 100%; height: 100vh; } #preview { height: 100%; } #settings-preview { position: fixed; visibility: hidden; }');
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { offscreen: true } });
   try {
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<style>${css.join('\n')}</style>
-      <div class="mainWindow"><div id="preview"></div></div>`));
+      <div class="mainWindow"><div id="preview"></div></div><div id="settings-preview"></div>`));
     await win.webContents.executeJavaScript(vue + '; void 0');
     await win.webContents.executeJavaScript(`
       const cover = ${JSON.stringify(cover)};
       const song = { id: 1, name: 'ワールドイズマイン (世界第一公主殿下)(Game Version)', ar: [{name: '初音ミク'}], al: {name: 'Project DIVA', picUrl: cover} };
       const noop = () => {};
+      const userStore = Vue.reactive(${JSON.stringify(storeOptions.state())});
+      const { computed } = Vue;
+      ${layoutLogic}
       const state = Vue.reactive({
+        isClassic,
         waterMotionEnabled: false, songId: 1, currentLyricIndex: 1, lyricsObjArr: [
           { time: 0, lyric: '沿着水光，慢慢靠近' },
           { time: 10, lyric: '让这一刻停留在耳边', tlyric: 'Let this moment linger' },
@@ -67,7 +79,6 @@ app.whenReady().then(async () => {
         toggleModePanel: noop, changeFmMode: noop, changeFmSubmode: noop, handleCoverSlotClick: noop,
         openArtist: noop, openAlbum: noop, goPrev: noop, goNext: noop, trashSong: noop, likeSong: noop, refreshFM: noop,
       });
-      const { computed } = Vue;
       const songId = Vue.toRef(state, 'songId'), currentSong = Vue.toRef(state, 'currentSong');
       const lyricsObjArr = Vue.toRef(state, 'lyricsObjArr'), currentLyricIndex = Vue.toRef(state, 'currentLyricIndex');
       ${lyricLogic}
@@ -81,6 +92,7 @@ app.whenReady().then(async () => {
         state.stopFmTilt = stopFmTilt;
         return state;
       }, render: new Function('Vue', ${JSON.stringify(render)})(Vue) }).mount('#preview');
+      Vue.createApp({setup: () => ({userStore}), render: new Function('Vue', ${JSON.stringify(layoutRender)})(Vue)}).mount('#settings-preview');
       void 0;
       `);
     assert.equal(await win.webContents.executeJavaScript('!!document.querySelector(".fm-mode-trigger")'), true, 'Actual FM template must render');
@@ -333,7 +345,84 @@ app.whenReady().then(async () => {
       });
       fs.writeFileSync(path.join(process.env.FM_THEME_PREVIEW_DIR, 'water-motion.png'), bitmap.toPNG());
     }
-    console.log('FM theme check passed: actual template, light/dark and dynamic colors, live lyrics/translation/empty states, lyrics-only panel, bounded pointer tilt and reset, seamless forward-flow water without stripes, play/pause and reduced motion, long title, 800/390px layouts, controls and keyboard focus.');
+    win.setContentSize(1400, 900);
+    const selection = await win.webContents.executeJavaScript(`(async () => {
+      const originalSong = state.currentSong, originalHistory = state.playedSongs;
+      const originalIndex = state.currentIndex;
+      const selector = document.querySelector('#personal-fm-layout');
+      const initial = {layout: selector.value, classic: state.isClassic};
+      const selectLayout = async value => {
+        selector.value = value;
+        selector.dispatchEvent(new Event('change', {bubbles: true}));
+        await Vue.nextTick();
+      };
+      await selectLayout('classic');
+      const classic = {
+        selected: userStore.personalFMLayout,
+        root: document.querySelector('.personal-fm').classList.contains('fm-layout-classic'),
+        title: document.querySelector('.song-name').textContent,
+        actions: document.querySelectorAll('.action-btn').length,
+        lyrics: !!document.querySelector('.fm-lyrics'),
+        water: !!document.querySelector('.fm-water-filter'),
+        reflection: !!document.querySelector('.fm-cover-reflection'),
+        song: state.currentSong === originalSong,
+        history: state.playedSongs === originalHistory,
+        index: state.currentIndex === originalIndex,
+        tilt: document.querySelector('.personal-fm').style.getPropertyValue('--fm-pointer-yaw'),
+      };
+      userStore.personalFMPage = false;
+      await Vue.nextTick();
+      const hidden = !document.querySelector('#personal-fm-layout');
+      userStore.personalFMPage = true;
+      await Vue.nextTick();
+      const restored = document.querySelector('#personal-fm-layout').value;
+      userStore.personalFMLayout = 'invalid';
+      await Vue.nextTick();
+      const fallback = !!document.querySelector('.fm-layout-modern .fm-lyrics');
+      userStore.personalFMLayout = 'modern';
+      await Vue.nextTick();
+      const modern = {lyrics: !!document.querySelector('.fm-lyrics'), actions: document.querySelectorAll('.action-btn').length, song: state.currentSong === originalSong};
+      userStore.personalFMLayout = 'classic';
+      await Vue.nextTick();
+      return {initial, classic, hidden, restored, fallback, modern};
+    })()`);
+    assert.equal(selection.initial.layout, 'modern');
+    assert.equal(selection.initial.classic, false);
+    assert.equal(selection.classic.selected, 'classic');
+    assert.ok(selection.classic.root);
+    assert.ok(selection.classic.title.includes('ワールドイズマイン'));
+    assert.equal(selection.classic.actions, 4);
+    for (const key of ['lyrics', 'water', 'reflection']) assert.equal(selection.classic[key], false);
+    for (const key of ['song', 'history', 'index']) assert.ok(selection.classic[key], `Layout change must preserve ${key}`);
+    assert.equal(selection.classic.tilt, '0deg');
+    assert.ok(selection.hidden);
+    assert.equal(selection.restored, 'classic');
+    assert.ok(selection.fallback);
+    assert.ok(selection.modern.lyrics && selection.modern.song);
+    assert.equal(selection.modern.actions, 0);
+    for (const dark of [false, true]) {
+      await win.webContents.executeJavaScript(`document.documentElement.className = '${dark ? 'dark' : ''}'; state.modePanelOpen = true; Vue.nextTick().then(() => undefined)`);
+      const classic = await win.webContents.executeJavaScript(`(() => {
+        const styles = selector => getComputedStyle(document.querySelector(selector));
+        return {bg: styles('.fm-panel').backgroundImage, selected: styles('.fm-mode-btn.active').backgroundColor, title: styles('.song-name').color, mainColumns: styles('.fm-main').gridTemplateColumns.split(' ').length};
+      })()`);
+      assert.ok(classic.bg.includes('gradient'), 'Classic panel must retain its original backdrop');
+      assert.equal(classic.selected, dark ? 'rgb(255, 255, 255)' : 'rgb(255, 250, 0)');
+      assert.equal(classic.mainColumns, 2);
+      if (process.env.FM_THEME_PREVIEW_DIR) {
+        await win.webContents.executeJavaScript('state.modePanelOpen = false; Vue.nextTick().then(() => undefined)');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        fs.writeFileSync(path.join(process.env.FM_THEME_PREVIEW_DIR, `classic-${dark ? 'dark' : 'light'}.png`), (await win.webContents.capturePage()).toPNG());
+      }
+    }
+    for (const width of [800, 390]) {
+      win.setContentSize(width, 1000);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const layout = await win.webContents.executeJavaScript(`({columns: getComputedStyle(document.querySelector('.fm-main')).gridTemplateColumns.split(' ').length, width: document.documentElement.scrollWidth, viewport: innerWidth})`);
+      assert.equal(layout.columns, 1);
+      assert.ok(layout.width <= layout.viewport, 'Classic layout must fit narrow windows');
+    }
+    console.log('FM theme check passed: modern/classic layouts, settings visibility and retained selection, shared song/history, light/dark and dynamic colors, lyrics, bounded tilt, seamless water, reduced motion, and 800/390px layouts.');
   } finally {
     win.destroy();
   }

@@ -2,10 +2,10 @@
   <section
     ref="fmSceneRef"
     class="personal-fm fm-window-fill"
-    :class="{ 'fm-cover-interrupting': coverInterrupting, 'fm-record-playing': isPlaying }"
+    :class="{ 'fm-cover-interrupting': coverInterrupting, 'fm-record-playing': isPlaying, 'fm-layout-classic': isClassic, 'fm-layout-modern': !isClassic }"
     aria-labelledby="personal-fm-title"
   >
-    <svg class="fm-water-filter" width="0" height="0" aria-hidden="true" focusable="false">
+    <svg v-if="!isClassic" class="fm-water-filter" width="0" height="0" aria-hidden="true" focusable="false">
       <defs>
         <filter id="fm-water-distortion" x="-12%" y="-12%" width="124%" height="124%" color-interpolation-filters="sRGB">
           <!-- ponytail: two offset copies wrap a stitched 256×128 tile; keep both offsets one tile apart for a seamless loop. -->
@@ -181,7 +181,7 @@
                   @click="handleCoverSlotClick(item)"
                 >
                   <template v-if="item.song && !item.isPlaceholder">
-                    <span v-if="item.role === 'center'" class="fm-cd" aria-hidden="true">
+                    <span v-if="item.role === 'center' && !isClassic" class="fm-cd" aria-hidden="true">
                       <span class="fm-cd-label"></span>
                     </span>
                     <img
@@ -195,7 +195,7 @@
                           : ''
                       "
                     />
-                    <span v-if="item.role === 'center'" class="fm-cover-reflection" aria-hidden="true">
+                    <span v-if="item.role === 'center' && !isClassic" class="fm-cover-reflection" aria-hidden="true">
                       <span class="fm-cd"><span class="fm-cd-label"></span></span>
                       <img
                         :src="getFmSongCover(item.song) || '/src/assets/img/default-cover.svg'"
@@ -234,10 +234,10 @@
                   </template>
                 </button>
               </TransitionGroup>
-              <span class="fm-water-surface" aria-hidden="true"></span>
+              <span v-if="!isClassic" class="fm-water-surface" aria-hidden="true"></span>
             </div>
 
-            <article class="fm-dossier" aria-label="漫游歌词">
+            <article v-if="!isClassic" class="fm-dossier" aria-label="漫游歌词">
               <section class="fm-lyrics" aria-label="当前歌曲歌词">
                 <div class="fm-lyrics-heading">
                   <span>LYRIC / LIVE</span>
@@ -257,6 +257,135 @@
                 </TransitionGroup>
                 <p v-else class="fm-lyrics-empty" role="status">{{ fmLyricStatus }}</p>
               </section>
+            </article>
+
+            <article v-else class="fm-dossier" aria-labelledby="fm-current-song">
+              <div class="fm-info">
+              <p class="fm-record-kicker">
+                CURRENT RECORD / {{ currentIndex + 1 }}
+              </p>
+              <h2 id="fm-current-song" class="song-name">
+                {{ getSongDisplayName(currentSong, "", showSongTranslation) }}
+              </h2>
+              <p class="artist-name">
+                <template
+                  v-for="(artist, index) in currentSongArtists"
+                  :key="artist?.id || artist?.name || index"
+                >
+                  <button
+                    v-if="canOpenArtist(artist)"
+                    type="button"
+                    class="artist-link clickable"
+                    @click="openArtist(artist)"
+                  >
+                    {{ artist?.name || "" }}
+                  </button>
+                  <span v-else class="artist-link">
+                    {{ artist?.name || "" }}
+                  </span>
+                  <span
+                    v-if="index != currentSongArtists.length - 1"
+                    class="artist-separator"
+                    >/</span
+                  >
+                </template>
+              </p>
+              <button
+                v-if="canOpenAlbum(currentSongAlbum)"
+                type="button"
+                class="album-name clickable"
+                @click="openAlbum(currentSongAlbum)"
+              >
+                {{ getFmSongAlbumName(currentSong) }}
+              </button>
+              <p v-else class="album-name">
+                {{ getFmSongAlbumName(currentSong) }}
+              </p>
+              </div>
+
+            <div class="fm-actions" aria-label="播放决策">
+            <button
+              type="button"
+              class="action-btn prev"
+              :disabled="currentIndex <= 0"
+              @click="goPrev"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+              </svg>
+              <span><small>PREV</small>上一首</span>
+            </button>
+
+            <button
+              type="button"
+              class="action-btn trash"
+              @click="trashSong"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                />
+              </svg>
+              <span><small>SKIP</small>不喜欢</span>
+            </button>
+
+            <button
+              type="button"
+              class="action-btn like"
+              @click="likeSong"
+              :disabled="likeLoading"
+              :class="{ active: isCurrentSongLiked }"
+              :aria-pressed="isCurrentSongLiked"
+              :aria-busy="likeLoading"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                />
+              </svg>
+              <span>
+                <small>{{ likeLoading ? "SAVING" : "SAVE" }}</small>
+                {{
+                  likeLoading
+                    ? "保存中"
+                    : isCurrentSongLiked
+                      ? "已喜欢"
+                      : "喜欢"
+                }}
+              </span>
+            </button>
+
+            <button type="button" class="action-btn next" @click="goNext">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
+              <span><small>NEXT</small>下一首</span>
+            </button>
+            </div>
             </article>
           </div>
           <div class="fm-status-strip" aria-label="漫游状态">
@@ -317,13 +446,20 @@ import { useRouter } from "vue-router";
 import {
   getPersonalFM,
   getPersonalFMByMode,
+  fmTrash,
   getLyric,
 } from "../api/song";
 import { getRecommendSongs, normalizePlaylistSong } from "../api/playlist";
 import { usePlayerStore } from "../store/playerStore";
 import { useUserStore } from "../store/userStore";
+import { noticeOpen } from "../utils/dialog";
+import { schedulePlaylistCacheInvalidation } from "../utils/cacheInvalidation";
+import { getSongDisplayName } from "../utils/songName";
 import { mapSongsPlayableStatus } from "../utils/songStatus";
 import {
+  applyOptimisticLikeState,
+  isSongLiked,
+  updateFavoritePlaylistTrack,
   play,
   playCurrentSongChorus,
   pauseMusic,
@@ -342,8 +478,13 @@ import { resolveTrackByQualityPreference } from "../utils/musicUrlResolver";
 const router = useRouter();
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
-const { songId, playing, progress, quality, time, chorusMode, lyricsObjArr, currentLyricIndex } =
+const isClassic = computed(() => userStore.personalFMLayout === "classic");
+const { songId, playing, progress, quality, showSongTranslation, time, chorusMode, lyricsObjArr, currentLyricIndex } =
   storeToRefs(playerStore);
+const { likelist } = storeToRefs(userStore);
+const isCurrentSongLiked = computed(() => isSongLiked(currentSong.value?.id, likelist.value));
+const currentSongArtists = computed(() => getFmSongArtists(currentSong.value));
+const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value));
 
 
 const fmSongs = ref([]);
@@ -525,6 +666,64 @@ function getFmSongCover(song) {
     if (nestedSong.img1v1Url) return nestedSong.img1v1Url;
   }
   return null;
+}
+
+function getFmSongAlbumName(song) {
+  return (
+    song?.album?.name ||
+    song?.al?.name ||
+    song?.song?.album?.name ||
+    song?.song?.al?.name ||
+    ""
+  );
+}
+
+function getArtistId(artist) {
+  if (!artist || typeof artist != "object") return null;
+  if (artist.id !== undefined && artist.id !== null && artist.id !== "")
+    return artist.id;
+  if (
+    artist.artistId !== undefined &&
+    artist.artistId !== null &&
+    artist.artistId !== ""
+  )
+    return artist.artistId;
+  return null;
+}
+
+function getAlbumId(album) {
+  if (!album || typeof album != "object") return null;
+  if (album.id !== undefined && album.id !== null && album.id !== "")
+    return album.id;
+  if (
+    album.albumId !== undefined &&
+    album.albumId !== null &&
+    album.albumId !== ""
+  )
+    return album.albumId;
+  return null;
+}
+
+function canOpenArtist(artist) {
+  return !!getArtistId(artist);
+}
+
+function canOpenAlbum(album) {
+  return !!getAlbumId(album);
+}
+
+function openArtist(artist) {
+  const artistId = getArtistId(artist);
+  if (!artistId) return;
+  playerStore.forbidLastRouter = true;
+  router.push("/mymusic/artist/" + artistId);
+}
+
+function openAlbum(album) {
+  const albumId = getAlbumId(album);
+  if (!albumId) return;
+  playerStore.forbidLastRouter = true;
+  router.push("/mymusic/album/" + albumId);
 }
 
 function normalizeFmSong(song) {
@@ -746,6 +945,7 @@ function bootstrapFromPoolIfNeeded(source) {
 }
 const currentIndex = ref(0);
 const loading = ref(false);
+const likeLoading = ref(false);
 const isPrefetching = ref(false);
 const isPanelIntroActive = ref(false);
 const isPanelOutlineReady = ref(false);
@@ -872,7 +1072,7 @@ function resetFmTilt() {
   fmSceneRef.value?.style.setProperty("--fm-pointer-pitch", "0deg");
 }
 function handleFmPointer(event) {
-  if (!waterMotionEnabled.value || innerWidth <= 900 || event.pointerType === "touch") return;
+  if (isClassic.value || !waterMotionEnabled.value || innerWidth <= 900 || event.pointerType === "touch") return;
   fmPointerX = Math.max(-1, Math.min(1, event.clientX / Math.max(1, innerWidth) * 2 - 1));
   fmPointerY = Math.max(-1, Math.min(1, event.clientY / Math.max(1, innerHeight) * 2 - 1));
   if (fmTiltFrame) return;
@@ -901,7 +1101,7 @@ onMounted(startFmTilt);
 onActivated(startFmTilt);
 onDeactivated(stopFmTilt);
 onUnmounted(stopFmTilt);
-watch(waterMotionEnabled, enabled => { if (!enabled) resetFmTilt(); });
+watch([waterMotionEnabled, isClassic], ([enabled, classic]) => { if (!enabled || classic) resetFmTilt(); });
 
 // ponytail: this three-line view scans the shared timeline; cache nonempty rows if unusually long lyrics become costly.
 const fmLyricLines = computed(() => {
@@ -1517,6 +1717,61 @@ const handleCoverSlotClick = async (item) => {
   }
 };
 
+const trashSong = async () => {
+  if (!currentSong.value) return;
+
+  try {
+    // 使用文档中的 action=garbage 标记“不喜欢”，并顺手把下一批推荐预热进候选池。
+    const response = await fmTrash(
+      currentSong.value,
+      buildCurrentFmRequestContext({ action: "garbage" }),
+    );
+    const songs = Array.isArray(response?.data) ? response.data : [];
+    if (songs.length > 0) {
+      addToFmPoolUnique(songs, FM_REFRESH_SOURCE.PERSONAL_FM);
+    }
+    await goNext();
+  } catch (error) {
+    console.warn("FM trash failed, skipping to next song:", error);
+    await goNext();
+  }
+};
+
+const likeSong = async () => {
+  if (!currentSong.value || likeLoading.value) return;
+
+  const targetSong = currentSong.value;
+  const targetSongId = targetSong.id;
+  const shouldLike = !isSongLiked(targetSongId, likelist.value);
+  const currentLikelist = Array.isArray(likelist.value) ? likelist.value : [];
+  likeLoading.value = true;
+  try {
+    // 酷狗没有 /like；直接写入“我喜欢的音乐”，完整歌曲对象用于生成 name|hash|albumId|mixsongId。
+    const result = await updateFavoritePlaylistTrack(targetSong, shouldLike);
+    if (!result.success) throw new Error(result.message || "歌单 tracks 返回异常");
+
+    // ponytail: 酷狗没有 /likelist；本次会话先乐观更新，跨会话状态应由账号初始化加载喜欢歌单时恢复。
+    userStore.updateLikelist(
+      applyOptimisticLikeState(targetSongId, shouldLike, currentLikelist),
+    );
+    noticeOpen(
+      shouldLike
+        ? `已添加到${result.favoritePlaylist?.name || "我喜欢的音乐"}`
+        : "已取消喜欢",
+      2,
+    );
+    schedulePlaylistCacheInvalidation();
+  } catch (error) {
+    console.error("PersonalFM 喜欢操作失败:", error);
+    noticeOpen(
+      `${shouldLike ? "喜欢" : "取消喜欢"}失败：${error?.message || "未知错误"}`,
+      2,
+    );
+  } finally {
+    likeLoading.value = false;
+  }
+};
+
 const refreshFM = async ({ silent = false } = {}) => {
   const requestUserId = getCurrentFmUserId();
   if (!requestUserId) {
@@ -1840,7 +2095,8 @@ const handleFmClearRecent = () => {
 </script>
 
 <style scoped lang="scss">
-.personal-fm {
+.fm-layout-modern {
+&.personal-fm {
   // ponytail: share the app backdrop so cover colors and transitions stay identical across routes.
   --fm-signal: var(--text);
   --fm-stage-bg: transparent;
@@ -1907,7 +2163,7 @@ const handleFmClearRecent = () => {
   }
 }
 
-.personal-fm.fm-cover-interrupting {
+&.personal-fm.fm-cover-interrupting {
   --fm-cover-transition-duration: 0.18s;
   --fm-cover-transition-ease: cubic-bezier(0.22, 0.78, 0.28, 1);
   --fm-cover-ghost-fade-duration: 0.08s;
@@ -2843,10 +3099,1661 @@ const handleFmClearRecent = () => {
   }
 }
 
+
+}
+
+// ponytail: preserve the original presentation here; playback and queue logic stay shared above.
+.fm-layout-classic {
+&.personal-fm {
+  --ark-ink: #080914;
+  --ark-paper: #f3f2ef;
+  --ark-signal: #46f6e6;
+  --fm-ink: var(--ark-ink);
+  --fm-paper: var(--ark-paper);
+  --fm-signal: var(--ark-signal);
+  --fm-stage-bg: transparent;
+  --fm-panel-bg: linear-gradient(
+    132deg,
+    rgba(14, 16, 34, 0.98),
+    rgba(8, 9, 20, 0.995) 56%,
+    rgba(12, 21, 34, 0.98)
+  );
+  --fm-panel-border: rgba(243, 242, 239, 0.2);
+  --fm-panel-overlay:
+    radial-gradient(circle at 18% 23%, rgba(70, 246, 230, 0.8) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 72% 17%, rgba(243, 242, 239, 0.44) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 84% 68%, rgba(70, 246, 230, 0.52) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 38% 82%, rgba(243, 242, 239, 0.34) 0 1px, transparent 1.6px);
+  --fm-panel-overlay-opacity: 0.72;
+  --fm-text: var(--fm-paper);
+  --fm-muted: rgba(243, 242, 239, 0.68);
+  --fm-subtle: rgba(243, 242, 239, 0.42);
+  --fm-primary-btn-bg: var(--fm-signal);
+  --fm-primary-btn-text: var(--fm-ink);
+  --fm-primary-btn-border: rgba(70, 246, 230, 0.8);
+  --fm-primary-btn-hover-bg: #77fff1;
+  --fm-ghost-btn-bg: rgba(243, 242, 239, 0.045);
+  --fm-ghost-btn-hover-bg: rgba(70, 246, 230, 0.09);
+  --fm-mode-bg: rgba(8, 9, 20, 0.78);
+  --fm-mode-hover-bg: rgba(70, 246, 230, 0.08);
+  --fm-mode-panel-bg: rgba(12, 14, 29, 0.98);
+  --fm-mode-panel-bg-soft: rgba(8, 9, 20, 0.98);
+  --fm-mode-active-bg: var(--fm-signal);
+  --fm-mode-active-text: var(--fm-ink);
+  --fm-mode-active-border: var(--fm-signal);
+  --fm-play-overlay-bg: rgba(8, 9, 20, 0.84);
+  --fm-play-overlay-hover-bg: rgba(8, 9, 20, 0.96);
+  --fm-play-overlay-border: rgba(70, 246, 230, 0.72);
+  --fm-play-overlay-icon: var(--fm-signal);
+  --fm-danger: #ff8d8d;
+  --fm-danger-bg: rgba(255, 141, 141, 0.1);
+  --fm-spinner-track: rgba(243, 242, 239, 0.14);
+  --fm-slot-bg: rgba(243, 242, 239, 0.035);
+  --fm-slot-hover-border: var(--fm-signal);
+  --fm-side-opacity: 0.36;
+  --fm-placeholder-bg: rgba(243, 242, 239, 0.025);
+  --fm-placeholder-text: rgba(243, 242, 239, 0.38);
+  --fm-intro-line-color: rgba(70, 246, 230, 0.42);
+  --fm-intro-line-width: 1px;
+  --fm-intro-content-offset: 12px;
+  --fm-cover-transition-duration: 0.72s;
+  --fm-cover-transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fm-cover-ghost-fade-duration: 0.1s;
+  --fm-cover-ghost-fade-delay: calc(
+    var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration)
+  );
+  --fm-cover-placeholder-fade-duration: 0.12s;
+  --fm-cover-overlap-release-ratio: 0.45;
+  --fm-cover-overlap-fade-duration: 0.14s;
+  --fm-cover-overlap-release-delay: calc(
+    var(--fm-cover-transition-duration) * var(--fm-cover-overlap-release-ratio)
+  );
+  --fm-cover-z-leaving: 1;
+  --fm-cover-z-side: 2;
+  --fm-cover-z-side-moving: 3;
+  --fm-cover-z-center: 4;
+  --fm-cover-z-prev-new-center-top: calc(var(--fm-cover-z-center) + 2);
+  --fm-cover-z-prev-old-center-mid: calc(var(--fm-cover-z-center) + 1);
+  --fm-cover-z-prev-right-leave-bottom: var(--fm-cover-z-leaving);
+
+  height: 100%;
+  overflow: auto;
+  padding: 8px 0 10px;
+  color: var(--fm-text);
+  color-scheme: dark;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+&.personal-fm.fm-cover-interrupting {
+  --fm-cover-transition-duration: 0.18s;
+  --fm-cover-transition-ease: cubic-bezier(0.22, 0.78, 0.28, 1);
+  --fm-cover-ghost-fade-duration: 0.08s;
+}
+
+.fm-stage {
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  padding: 0;
+  background: var(--fm-stage-bg) !important;
+}
+
+.fm-panel {
+  width: 100%;
+  max-width: 100%;
+  min-height: max(600px, 100%);
+  padding: 32px 38px 24px 112px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--fm-panel-bg);
+  border: 1px solid var(--fm-panel-border);
+  box-shadow:
+    inset 0 0 80px rgba(70, 246, 230, 0.025),
+    0 18px 54px rgba(8, 9, 20, 0.18);
+}
+
+.fm-panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  background-image: var(--fm-panel-overlay);
+  opacity: var(--fm-panel-overlay-opacity);
+  clip-path: inset(0 0 0 0);
+  z-index: -1;
+}
+
+.fm-outline-draw {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  z-index: 3;
+}
+
+.outline-seg {
+  position: absolute;
+  background: var(--fm-intro-line-color);
+  opacity: 1;
+}
+
+.outline-seg.top,
+.outline-seg.bottom {
+  left: 0;
+  right: 0;
+  height: var(--fm-intro-line-width);
+  transform: scaleX(0);
+}
+
+.outline-seg.top {
+  top: 0;
+  transform-origin: left center;
+}
+
+.outline-seg.bottom {
+  bottom: 0;
+  transform-origin: right center;
+}
+
+.outline-seg.left,
+.outline-seg.right {
+  top: 0;
+  bottom: 0;
+  width: var(--fm-intro-line-width);
+  transform: scaleY(0);
+}
+
+.outline-seg.left {
+  left: 0;
+  transform-origin: bottom center;
+}
+
+.outline-seg.right {
+  right: 0;
+  transform-origin: top center;
+}
+
+.fm-panel-intro-active .fm-outline-draw {
+  opacity: 1;
+}
+
+.fm-panel-intro-active .outline-seg.top,
+.fm-panel-intro-active .outline-seg.bottom {
+  animation: classic-fm-outline-grow-x 0.64s cubic-bezier(0.25, 0.9, 0.3, 1) both;
+}
+
+.fm-panel-intro-active .outline-seg.left,
+.fm-panel-intro-active .outline-seg.right {
+  animation: classic-fm-outline-grow-y 0.64s cubic-bezier(0.25, 0.9, 0.3, 1) both;
+}
+
+.fm-panel-outline-ready .outline-seg.top,
+.fm-panel-outline-ready .outline-seg.bottom,
+.fm-panel-outline-ready .outline-seg.left,
+.fm-panel-outline-ready .outline-seg.right {
+  transform: none;
+}
+
+.fm-panel-intro-active::before {
+  opacity: 0;
+  clip-path: inset(0 100% 0 0);
+  animation: classic-fm-overlay-reveal 0.72s cubic-bezier(0.25, 0.9, 0.3, 1) 0.12s both;
+}
+
+.fm-panel-intro-active .fm-archive-rail,
+.fm-panel-intro-active .fm-mode-floating,
+.fm-panel-intro-active .fm-header,
+.fm-panel-intro-active .fm-content,
+.fm-panel-intro-active .fm-loading,
+.fm-panel-intro-active .fm-empty {
+  animation: classic-fm-content-reveal 0.72s cubic-bezier(0.18, 0.92, 0.28, 1) 0.42s both;
+}
+
+.fm-archive-rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 76px;
+  padding: 28px 0 22px;
+  border-right: 1px solid var(--fm-panel-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 2;
+  color: var(--fm-muted);
+  background: rgba(8, 9, 20, 0.36);
+}
+
+.archive-index {
+  font: 28px/1 Bender-Bold, Consolas, monospace;
+  color: var(--fm-signal);
+  font-variant-numeric: tabular-nums;
+}
+
+.archive-rule {
+  width: 1px;
+  flex: 1 1 auto;
+  min-height: 64px;
+  background: linear-gradient(
+    180deg,
+    var(--fm-signal),
+    rgba(70, 246, 230, 0.06)
+  );
+}
+
+.archive-name,
+.archive-status {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.16em;
+}
+
+.archive-status {
+  color: var(--fm-subtle);
+}
+
+.fm-header {
+  width: min(56%, 620px);
+  margin-bottom: 18px;
+  text-align: left;
+  position: relative;
+  z-index: 1;
+
+  h1 {
+    margin: 10px 0 0;
+    display: flex;
+    gap: 0.16em;
+    font-family:
+      "Noto Serif SC", "Source Han Serif SC", STSong, serif;
+    font-size: clamp(44px, 4.4vw, 68px);
+    font-weight: 600;
+    line-height: 0.92;
+    letter-spacing: -0.055em;
+    color: var(--fm-text) !important;
+
+    em {
+      color: var(--fm-signal);
+      font-style: normal;
+      font-weight: 400;
+    }
+  }
+}
+
+.fm-headline {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 10px/1 Geometos, sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--fm-signal) !important;
+
+  &::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: currentColor;
+  }
+}
+
+.fm-subtitle {
+  margin: 14px 0 0;
+  font: 13px/1.7 SourceHanSansCN-Bold, sans-serif;
+  color: var(--fm-muted) !important;
+  display: block;
+}
+
+.fm-mode-floating {
+  position: absolute;
+  top: 30px;
+  right: 36px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.fm-mode-trigger {
+  border: 1px solid rgba(70, 246, 230, 0.42);
+  min-height: 42px;
+  min-width: 236px;
+  max-width: 280px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background-color: var(--fm-mode-bg) !important;
+  color: var(--fm-text) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--fm-mode-hover-bg) !important;
+    border-color: var(--fm-signal);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  &:active {
+    outline: none;
+    box-shadow: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 3px;
+  }
+}
+
+.mode-trigger-code {
+  flex: 0 0 auto;
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.12em;
+  color: var(--fm-signal);
+}
+
+.mode-trigger-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font: 12px SourceHanSansCN-Bold, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode-trigger-arrow {
+  flex: 0 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.fm-mode-floating.open .mode-trigger-arrow {
+  transform: rotate(180deg);
+}
+
+.fm-mode-dropdown {
+  margin-top: 10px;
+  width: min(400px, calc(100vw - 72px));
+  padding: 16px;
+  border: 1px solid rgba(70, 246, 230, 0.36);
+  border-radius: 16px 2px 16px 2px;
+  background: linear-gradient(
+    180deg,
+    var(--fm-mode-panel-bg) 0%,
+    var(--fm-mode-panel-bg-soft) 100%
+  );
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(18px);
+}
+
+.fm-mode-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fm-mode-title-code {
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.14em;
+  color: var(--fm-signal) !important;
+}
+
+.fm-mode-title-text {
+  font: 12px SourceHanSansCN-Bold, sans-serif;
+  color: var(--fm-muted) !important;
+}
+
+.fm-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fm-submode-grid {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fm-panel-border);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fm-submode-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--fm-muted);
+  font: 10px/1 SourceHanSansCN-Bold, sans-serif;
+
+  small {
+    color: var(--fm-subtle);
+    font: 8px/1 Bender-Bold, Consolas, monospace;
+    letter-spacing: 0.08em;
+  }
+}
+
+.fm-mode-btn,
+.fm-submode-btn {
+  border: 1px solid var(--fm-panel-border);
+  border-radius: 999px;
+  background-color: var(--fm-mode-bg) !important;
+  color: var(--fm-text) !important;
+  padding: 7px 10px;
+  min-height: 44px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+  cursor: pointer;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+
+  .mode-code {
+    font: 8px/1 Bender-Bold, Consolas, monospace;
+    letter-spacing: 0.1em;
+    line-height: 1.1;
+    color: var(--fm-subtle);
+  }
+
+  .mode-label {
+    font: 11px SourceHanSansCN-Bold, sans-serif;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background-color: var(--fm-mode-hover-bg) !important;
+    border-color: rgba(70, 246, 230, 0.64);
+  }
+
+  &.active {
+    background-color: var(--fm-mode-active-bg) !important;
+    color: var(--fm-mode-active-text) !important;
+    border-color: var(--fm-mode-active-border);
+
+    .mode-code {
+      color: var(--fm-mode-active-text);
+    }
+  }
+
+  &.active:hover:not(:disabled) {
+    transform: none;
+    background-color: var(--fm-mode-active-bg) !important;
+    color: var(--fm-mode-active-text) !important;
+    border-color: var(--fm-mode-active-border);
+  }
+
+  &:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  &:active {
+    outline: none;
+    box-shadow: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 2px;
+  }
+}
+
+.fm-mode-float-enter-active,
+.fm-mode-float-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.fm-mode-float-enter-from,
+.fm-mode-float-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.fm-content {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.fm-main {
+  min-height: 390px;
+  display: grid;
+  grid-template-columns: minmax(430px, 1.45fr) minmax(260px, 0.72fr);
+  align-items: center;
+  gap: clamp(28px, 4vw, 64px);
+}
+
+.fm-cover-carousel {
+  width: 100%;
+  min-width: 0;
+  padding: 30px 0;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    width: 340px;
+    height: 340px;
+    left: 50%;
+    top: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(70, 246, 230, 0.26);
+    box-shadow:
+      0 0 0 14px rgba(70, 246, 230, 0.018),
+      inset 0 0 36px rgba(70, 246, 230, 0.025);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    left: 50%;
+    top: 50%;
+    margin: -2px 0 0 167px;
+    border-radius: 50%;
+    background: var(--fm-signal);
+    box-shadow: 0 0 12px rgba(70, 246, 230, 0.62);
+    transform-origin: -167px 2px;
+    pointer-events: none;
+    animation: classic-fm-orbit-drift 24s linear infinite;
+  }
+}
+
+.fm-cover-track {
+  min-height: 286px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 2.2vw, 34px);
+  isolation: isolate;
+}
+
+.fm-cover-slot {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  padding: 5px;
+  border: 1px solid var(--fm-panel-border);
+  border-radius: 2px;
+  background-color: var(--fm-slot-bg) !important;
+  color: var(--fm-text) !important;
+  appearance: none;
+  transition:
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    border-radius: 2px;
+    object-fit: cover;
+    background: var(--fm-slot-bg);
+    border: 0;
+    display: block;
+    transform: translateZ(0);
+  }
+}
+
+.fm-cover-slot.slot-center {
+  width: 258px;
+  height: 258px;
+  padding: 7px;
+  opacity: 1;
+  z-index: var(--fm-cover-z-center);
+  border-color: rgba(70, 246, 230, 0.54);
+  box-shadow:
+    0 0 0 1px rgba(8, 9, 20, 0.9),
+    0 22px 58px rgba(0, 0, 0, 0.34);
+}
+
+.fm-cover-slot.slot-side {
+  opacity: var(--fm-side-opacity);
+  z-index: var(--fm-cover-z-side);
+}
+
+.fm-cover-slot.slot-clickable:hover {
+  cursor: pointer;
+  border-color: var(--fm-slot-hover-border);
+}
+
+.fm-cover-slot:focus-visible {
+  outline: 2px solid var(--fm-signal);
+  outline-offset: 4px;
+}
+
+.fm-cover-slot:disabled {
+  cursor: default;
+}
+
+.fm-cover-slot.slot-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--fm-placeholder-bg) !important;
+  border-style: solid;
+}
+
+.slot-placeholder-text {
+  font: 10px/1 Bender-Bold, Consolas, monospace;
+  letter-spacing: 0.12em;
+  color: var(--fm-placeholder-text) !important;
+}
+
+.slot-side-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 9, 20, 0.58),
+    rgba(8, 9, 20, 0.18)
+  );
+  pointer-events: none;
+}
+
+.fm-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 1px solid var(--fm-play-overlay-border);
+  background-color: var(--fm-play-overlay-bg) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--fm-play-overlay-icon) !important;
+  opacity: 0.86;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+  z-index: 10;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.fm-cover-slot.slot-center:hover .fm-play-overlay {
+  opacity: 1;
+  background-color: var(--fm-play-overlay-hover-bg) !important;
+  transform: translate(-50%, -50%) scale(1.04);
+}
+
+.fm-dossier {
+  min-width: 0;
+  min-height: 318px;
+  margin: 0;
+  padding: 24px 0 6px 30px;
+  border-left: 1px solid var(--fm-panel-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.fm-info {
+  min-width: 0;
+  text-align: left;
+
+  .fm-record-kicker {
+    margin: 0 0 18px;
+    font: 9px/1 Geometos, sans-serif;
+    letter-spacing: 0.16em;
+    color: var(--fm-signal) !important;
+  }
+
+  .song-name {
+    max-width: 13ch;
+    margin: 0 0 18px;
+    font-family:
+      "Noto Serif SC", "Source Han Serif SC", STSong, serif;
+    font-size: clamp(27px, 2.4vw, 38px);
+    font-weight: 600;
+    line-height: 1.14;
+    letter-spacing: -0.035em;
+    color: var(--fm-text) !important;
+    overflow-wrap: anywhere;
+  }
+
+  .artist-name {
+    font: 13px/1.6 SourceHanSansCN-Bold, sans-serif;
+    color: var(--fm-muted) !important;
+    margin: 0 0 6px;
+
+    .artist-link {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background-color: transparent !important;
+      color: inherit !important;
+      font: inherit;
+      transition: color 0.2s ease;
+
+      &.clickable {
+        cursor: pointer;
+
+        &:hover {
+          color: var(--fm-signal) !important;
+        }
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--fm-signal);
+        outline-offset: 3px;
+      }
+    }
+
+    .artist-separator {
+      margin: 0 0.45em;
+      color: var(--fm-subtle);
+    }
+  }
+
+  .album-name {
+    width: fit-content;
+    padding: 0;
+    border: 0;
+    background-color: transparent !important;
+    font: 11px/1.6 SourceHanSansCN-Bold, sans-serif;
+    color: var(--fm-subtle) !important;
+    margin: 0;
+
+    &.clickable {
+      cursor: pointer;
+      transition: color 0.2s ease;
+
+      &:hover {
+        color: var(--fm-signal) !important;
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--fm-signal);
+      outline-offset: 3px;
+    }
+  }
+}
+
+.fm-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.action-btn {
+  min-width: 0;
+  min-height: 54px;
+  padding: 0 16px;
+  border: 1px solid var(--fm-panel-border);
+  border-radius: 999px;
+  background-color: var(--fm-ghost-btn-bg) !important;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 11px;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+  color: var(--fm-text) !important;
+  font: 12px/1 SourceHanSansCN-Bold, sans-serif;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+
+  span {
+    display: grid;
+    gap: 3px;
+    text-align: left;
+  }
+
+  small {
+    font: 8px/1 Geometos, sans-serif;
+    letter-spacing: 0.12em;
+    color: var(--fm-subtle);
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background-color: var(--fm-ghost-btn-hover-bg) !important;
+    border-color: rgba(70, 246, 230, 0.52);
+  }
+
+  &.trash:hover {
+    background-color: var(--fm-danger-bg) !important;
+    border-color: var(--fm-danger);
+    color: var(--fm-danger) !important;
+  }
+
+  &.like.active {
+    background-color: rgba(70, 246, 230, 0.11) !important;
+    border-color: var(--fm-signal);
+    color: var(--fm-signal) !important;
+  }
+
+  &.like:hover {
+    background-color: rgba(70, 246, 230, 0.11) !important;
+    border-color: var(--fm-signal);
+  }
+
+  &.next {
+    background-color: var(--fm-primary-btn-bg) !important;
+    color: var(--fm-primary-btn-text) !important;
+    border-color: var(--fm-primary-btn-border);
+
+    small {
+      color: rgba(8, 9, 20, 0.62);
+    }
+
+    &:hover {
+      background-color: var(--fm-primary-btn-hover-bg) !important;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 3px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.34;
+  }
+}
+
+.fm-status-strip {
+  min-height: 54px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--fm-panel-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: clamp(30px, 5vw, 76px);
+  color: var(--fm-muted);
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 7%,
+    #000 96%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 7%,
+    #000 96%,
+    transparent
+  );
+
+  span {
+    min-width: 112px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 14px;
+  }
+
+  small {
+    font: 8px/1 Geometos, sans-serif;
+    letter-spacing: 0.12em;
+    color: var(--fm-subtle);
+  }
+
+  strong {
+    font: 11px/1.2 Bender-Bold, Consolas, monospace;
+    color: var(--fm-text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.fm-loading,
+.fm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 380px;
+  position: relative;
+  z-index: 1;
+  color: var(--fm-muted) !important;
+}
+
+.loading-spinner {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--fm-spinner-track);
+  border-top-color: var(--fm-signal);
+  border-right-color: rgba(70, 246, 230, 0.46);
+  border-radius: 50%;
+  animation: classic-spin 1.2s linear infinite;
+  margin-bottom: 20px;
+}
+
+.fm-loading p,
+.fm-empty p {
+  color: var(--fm-muted) !important;
+}
+
+.fm-loading .state-kicker,
+.fm-empty .state-kicker {
+  margin: 0 0 10px;
+  font: 9px/1 Geometos, sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--fm-signal) !important;
+}
+
+@keyframes classic-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes classic-fm-orbit-drift {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes classic-fm-outline-grow-x {
+  0% {
+    transform: scaleX(0);
+  }
+  99% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes classic-fm-outline-grow-y {
+  0% {
+    transform: scaleY(0);
+  }
+  99% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes classic-fm-overlay-reveal {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: var(--fm-panel-overlay-opacity);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes classic-fm-content-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(var(--fm-intro-content-offset));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes classic-fm-content-reveal-reduced {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.empty-icon {
+  margin-bottom: 16px;
+  color: var(--fm-subtle) !important;
+}
+
+.error-hint {
+  font-size: 12px;
+  color: var(--fm-danger) !important;
+  margin: 5px 0;
+}
+
+.refresh-button {
+  margin-top: 18px;
+  min-width: 132px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--fm-signal);
+  border-radius: 999px;
+  background-color: transparent !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease;
+  font: 13px SourceHanSansCN-Bold, sans-serif;
+  color: var(--fm-signal) !important;
+
+  &:hover {
+    transform: translateY(-1px);
+    background-color: rgba(70, 246, 230, 0.1) !important;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 3px;
+  }
+}
+
+.fm-shift-next-move,
+.fm-shift-prev-move,
+.fm-shift-neutral-move {
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+}
+
+.fm-cover-slot.slot-side.fm-shift-next-move {
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-side-moving);
+  animation: classic-fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
+}
+
+.fm-cover-slot.slot-center.fm-shift-next-move,
+.fm-cover-slot.slot-center.fm-shift-neutral-move {
+  opacity: 1;
+  z-index: var(--fm-cover-z-center);
+}
+
+/* goPrev 三层顺序：新中间 > 旧中间 > right->leave（最低） */
+.fm-cover-slot.slot-side.fm-shift-prev-move {
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+  animation: classic-fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
+}
+
+.fm-cover-slot.slot-right.fm-shift-prev-move {
+  z-index: var(--fm-cover-z-prev-old-center-mid);
+}
+
+.fm-cover-slot.slot-center.fm-shift-prev-move {
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-new-center-top);
+}
+
+.fm-cover-slot.slot-center.fm-shift-prev-enter-active,
+.fm-cover-slot.slot-center.fm-shift-prev-enter-from,
+.fm-cover-slot.slot-center.fm-shift-prev-enter-to,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-active,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-from,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-to {
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+}
+
+.fm-shift-next-enter-active,
+.fm-shift-prev-enter-active,
+.fm-shift-neutral-enter-active {
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+}
+
+.fm-shift-next-leave-active,
+.fm-shift-prev-leave-active,
+.fm-shift-neutral-leave-active {
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-ghost-fade-duration) linear
+      var(--fm-cover-ghost-fade-delay);
+}
+
+.fm-cover-slot.slot-placeholder.fm-shift-next-leave-active,
+.fm-cover-slot.slot-placeholder.fm-shift-prev-leave-active,
+.fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-active {
+  transition: opacity var(--fm-cover-placeholder-fade-duration) linear;
+}
+
+.fm-cover-slot.fm-shift-next-leave-active,
+.fm-cover-slot.fm-shift-prev-leave-active,
+.fm-cover-slot.fm-shift-neutral-leave-active {
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
+}
+
+.fm-shift-next-leave-from,
+.fm-shift-prev-leave-from,
+.fm-shift-neutral-leave-from {
+  opacity: 1;
+}
+
+.fm-cover-slot.slot-right.fm-shift-prev-leave-active,
+.fm-cover-slot.slot-right.fm-shift-prev-leave-from,
+.fm-cover-slot.slot-right.fm-shift-prev-leave-to {
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+}
+
+.fm-shift-next-enter-from {
+  opacity: 0;
+  transform: translateX(20px) scale(0.97);
+}
+
+.fm-shift-next-leave-to {
+  opacity: 0;
+  transform: translateX(-20px) scale(0.97);
+}
+
+.fm-shift-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-20px) scale(0.97);
+}
+
+.fm-shift-prev-leave-to {
+  opacity: 0;
+  transform: translateX(20px) scale(0.97);
+}
+
+.fm-shift-neutral-enter-from,
+.fm-shift-neutral-leave-to {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+.fm-cover-slot.slot-placeholder.fm-shift-next-leave-to,
+.fm-cover-slot.slot-placeholder.fm-shift-prev-leave-to,
+.fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-to {
+  opacity: 0;
+  transform: none;
+}
+
+@keyframes classic-fm-cover-side-overlap-release {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: var(--fm-side-opacity);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fm-panel-intro-active,
+  .fm-panel-intro-active::before,
+  .fm-panel-intro-active .fm-outline-draw,
+  .fm-panel-intro-active .outline-seg,
+  .fm-cover-carousel::after {
+    animation: none !important;
+  }
+
+  .fm-panel-intro-active::before {
+    opacity: 1 !important;
+    clip-path: inset(0 0 0 0) !important;
+  }
+
+  .fm-panel-intro-active .fm-outline-draw {
+    opacity: 1 !important;
+  }
+
+  .fm-panel-intro-active .outline-seg,
+  .fm-panel-outline-ready .outline-seg {
+    transform: none !important;
+  }
+
+  .fm-panel-intro-active .fm-archive-rail,
+  .fm-panel-intro-active .fm-mode-floating,
+  .fm-panel-intro-active .fm-header,
+  .fm-panel-intro-active .fm-content,
+  .fm-panel-intro-active .fm-loading,
+  .fm-panel-intro-active .fm-empty {
+    animation: classic-fm-content-reveal-reduced 0.12s linear both;
+  }
+}
+
+@media (max-width: 1180px) {
+  .fm-panel {
+    padding: 28px 28px 22px 94px;
+  }
+
+  .fm-archive-rail {
+    width: 64px;
+  }
+
+  .fm-main {
+    grid-template-columns: minmax(390px, 1.25fr) minmax(250px, 0.75fr);
+    gap: 24px;
+  }
+
+  .fm-cover-carousel::before {
+    width: 300px;
+    height: 300px;
+  }
+
+  .fm-cover-carousel::after {
+    margin-left: 147px;
+    transform-origin: -147px 2px;
+  }
+
+  .fm-cover-slot {
+    width: 108px;
+    height: 108px;
+  }
+
+  .fm-cover-slot.slot-center {
+    width: 220px;
+    height: 220px;
+  }
+
+  .action-btn {
+    padding-inline: 12px;
+  }
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  .fm-panel {
+    min-height: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .fm-archive-rail {
+    position: relative;
+    inset: auto;
+    order: 1;
+    width: 100%;
+    min-height: 34px;
+    padding: 0 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--fm-panel-border);
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+  }
+
+  .archive-index {
+    font-size: 22px;
+  }
+
+  .archive-rule {
+    width: auto;
+    height: 1px;
+    min-height: 1px;
+    min-width: 36px;
+    background: linear-gradient(
+      90deg,
+      var(--fm-signal),
+      rgba(70, 246, 230, 0.06)
+    );
+  }
+
+  .archive-name,
+  .archive-status {
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+
+  .fm-header {
+    order: 2;
+    width: 100%;
+    margin: 22px 0 0;
+
+    h1 {
+      font-size: clamp(42px, 10vw, 58px);
+    }
+  }
+
+  .fm-mode-floating {
+    position: relative;
+    inset: auto;
+    order: 3;
+    margin: 22px 0 8px;
+    align-items: flex-start;
+  }
+
+  .fm-mode-trigger {
+    min-width: min(300px, 100%);
+  }
+
+  .fm-mode-dropdown {
+    width: min(400px, calc(100vw - 82px));
+  }
+
+  .fm-content {
+    order: 4;
+  }
+
+  .fm-main {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .fm-cover-carousel {
+    padding-block: 22px;
+  }
+
+  .fm-dossier {
+    min-height: 0;
+    padding: 24px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--fm-panel-border);
+  }
+
+  .fm-info .song-name {
+    max-width: none;
+  }
+
+  .fm-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .action-btn {
+    justify-content: center;
+  }
+
+  .fm-status-strip {
+    justify-content: space-between;
+  }
+
+  .fm-loading,
+  .fm-empty {
+    order: 4;
+  }
+}
+
+@media (max-width: 600px) {
+  .fm-panel {
+    padding: 12px 16px;
+  }
+
+  .fm-archive-rail {
+    min-height: 28px;
+    padding-bottom: 8px;
+    gap: 8px;
+  }
+
+  .archive-index {
+    font-size: 18px;
+  }
+
+  .archive-name {
+    font-size: 8px;
+  }
+
+  .archive-status {
+    display: none;
+  }
+
+  .fm-header {
+    margin-top: 12px;
+
+    h1 {
+      margin-top: 8px;
+      font-size: 34px;
+    }
+  }
+
+  .fm-headline {
+    font-size: 8px;
+  }
+
+  .fm-subtitle {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .fm-mode-floating {
+    margin: 12px 0 4px;
+  }
+
+  .fm-mode-trigger,
+  .fm-mode-dropdown {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .fm-mode-trigger {
+    min-height: 40px;
+  }
+
+  .fm-mode-dropdown {
+    padding: 12px;
+  }
+
+  .fm-submode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fm-cover-carousel {
+    margin-inline: -4px;
+    width: calc(100% + 8px);
+    padding-block: 10px;
+
+    &::before {
+      width: 210px;
+      height: 210px;
+    }
+
+    &::after {
+      margin-left: 103px;
+      transform-origin: -103px 2px;
+    }
+  }
+
+  .fm-cover-track {
+    min-height: 184px;
+    gap: 8px;
+  }
+
+  .fm-cover-slot {
+    width: 50px;
+    height: 50px;
+    padding: 3px;
+  }
+
+  .fm-cover-slot.slot-center {
+    width: 156px;
+    height: 156px;
+    padding: 5px;
+  }
+
+  .fm-play-overlay {
+    width: 46px;
+    height: 46px;
+  }
+
+  .fm-dossier {
+    padding-top: 16px;
+    gap: 16px;
+  }
+
+  .fm-info {
+    .fm-record-kicker {
+      margin-bottom: 10px;
+      font-size: 8px;
+    }
+
+    .song-name {
+      margin-bottom: 10px;
+      font-size: 26px;
+    }
+
+    .artist-name {
+      margin-bottom: 2px;
+      font-size: 12px;
+    }
+
+    .album-name {
+      font-size: 10px;
+    }
+  }
+
+  .fm-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .action-btn {
+    min-height: 44px;
+    padding-inline: 12px;
+    justify-content: flex-start;
+  }
+
+  .fm-status-strip {
+    min-height: 44px;
+    padding-top: 8px;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+
+    span {
+      width: auto;
+      min-width: 0;
+      flex: 1 1 0;
+      gap: 6px;
+    }
+
+    small {
+      font-size: 7px;
+    }
+
+    strong {
+      font-size: 10px;
+    }
+  }
+}
+
+@media (max-height: 720px) and (min-width: 901px) {
+  .fm-panel {
+    min-height: 560px;
+    padding-block: 22px 18px;
+  }
+
+  .fm-header {
+    margin-bottom: 8px;
+
+    h1 {
+      font-size: 44px;
+    }
+  }
+
+  .fm-main {
+    min-height: 328px;
+  }
+
+  .fm-cover-carousel {
+    padding-block: 16px;
+  }
+
+  .fm-cover-track {
+    min-height: 236px;
+  }
+
+  .fm-cover-carousel::before {
+    width: 288px;
+    height: 288px;
+  }
+
+  .fm-cover-carousel::after {
+    margin-left: 141px;
+    transform-origin: -141px 2px;
+  }
+
+  .fm-cover-slot {
+    width: 106px;
+    height: 106px;
+  }
+
+  .fm-cover-slot.slot-center {
+    width: 218px;
+    height: 218px;
+  }
+
+  .fm-dossier {
+    min-height: 280px;
+    padding-top: 16px;
+    gap: 18px;
+  }
+}
+
+}
 </style>
 
 <style lang="scss">
-html .personal-fm {
+html .personal-fm.fm-layout-modern {
   --fm-cover-size: clamp(190px, min(21vw, 28vh), 350px);
   --fm-disc-metal: #bec8cc;
 
@@ -3088,28 +4995,28 @@ html .personal-fm {
 }
 
 @media (min-width: 901px) and (orientation: landscape) {
-  html .personal-fm .fm-dossier {
+  html .personal-fm.fm-layout-modern .fm-dossier {
     position: relative;
     top: clamp(-128px, -10vh, -64px);
   }
 }
 
 @media (prefers-reduced-motion: no-preference) and (min-width: 901px) and (orientation: landscape) {
-  html .personal-fm .fm-cover-carousel {
+  html .personal-fm.fm-layout-modern .fm-cover-carousel {
     transform: rotateX(var(--fm-pointer-pitch, 0deg)) rotateY(calc(10deg + var(--fm-pointer-yaw, 0deg)));
     transition: transform .35s ease-out;
   }
-  html .personal-fm .fm-dossier {
+  html .personal-fm.fm-layout-modern .fm-dossier {
     transform: rotateX(var(--fm-pointer-pitch, 0deg)) rotateY(calc(-10deg + var(--fm-pointer-yaw, 0deg)));
     transition: transform .35s ease-out;
   }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  html .personal-fm .fm-cover-reflection { filter: url("#fm-water-distortion"); }
-  html .personal-fm .fm-cd { animation: fm-disc-spin 24s linear infinite paused; }
-  html .personal-fm.fm-record-playing .fm-cd { animation-play-state: running; }
-  html .personal-fm .fm-lyric-line {
+  html .personal-fm.fm-layout-modern .fm-cover-reflection { filter: url("#fm-water-distortion"); }
+  html .personal-fm.fm-layout-modern .fm-cd { animation: fm-disc-spin 24s linear infinite paused; }
+  html .personal-fm.fm-layout-modern.fm-record-playing .fm-cd { animation-play-state: running; }
+  html .personal-fm.fm-layout-modern .fm-lyric-line {
     transition: transform .48s cubic-bezier(.22, 1, .36, 1), opacity .35s ease, border-color .35s ease;
     p { transition: color .35s ease, font-size .4s ease; }
   }
@@ -3118,7 +5025,7 @@ html .personal-fm {
 @keyframes fm-disc-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1180px) {
-  html .personal-fm {
+  html .personal-fm.fm-layout-modern {
     --fm-cover-size: clamp(190px, min(22vw, 28vh), 260px);
     .fm-panel { padding-inline: 116px 40px; }
     .fm-archive-rail { width: 76px; }
@@ -3129,7 +5036,7 @@ html .personal-fm {
 }
 
 @media (max-width: 900px), (orientation: portrait) {
-  html .personal-fm {
+  html .personal-fm.fm-layout-modern {
     --fm-cover-size: clamp(210px, 36vw, 310px);
     .fm-panel { padding: 104px 28px 140px; gap: 0; }
     .fm-archive-rail { display: none; }
@@ -3144,7 +5051,7 @@ html .personal-fm {
 }
 
 @media (max-height: 760px) and (min-width: 901px) and (orientation: landscape) {
-  html .personal-fm {
+  html .personal-fm.fm-layout-modern {
     --fm-cover-size: clamp(170px, 22vh, 230px);
     .fm-panel { padding-top: 96px; padding-bottom: 104px; }
     .fm-header h1 { font-size: 34px; }
@@ -3153,7 +5060,7 @@ html .personal-fm {
 }
 
 @media (max-width: 600px) {
-  html .personal-fm {
+  html .personal-fm.fm-layout-modern {
     --fm-cover-size: clamp(160px, 42vw, 240px);
     .fm-panel { padding: 96px 20px 130px; }
     .fm-cover-track { gap: 12px; }
@@ -3167,19 +5074,19 @@ html .personal-fm {
   }
 }
 
-html.dark .personal-fm {
+html.dark .personal-fm.fm-layout-modern {
   --fm-danger: #ff8d8d;
 }
 
-html .personal-fm :is(.fm-mode-trigger, .fm-mode-btn, .fm-submode-btn, .fm-cover-slot, .refresh-button) {
+html .personal-fm.fm-layout-modern :is(.fm-mode-trigger, .fm-mode-btn, .fm-submode-btn, .fm-cover-slot, .refresh-button) {
   background-color: var(--layer) !important;
 }
 
-html .personal-fm :is(.fm-mode-trigger, .fm-mode-btn, .fm-submode-btn, .refresh-button):hover:not(:disabled) {
+html .personal-fm.fm-layout-modern :is(.fm-mode-trigger, .fm-mode-btn, .fm-submode-btn, .refresh-button):hover:not(:disabled) {
   background-color: var(--fm-ghost-btn-hover-bg) !important;
 }
 
-html .personal-fm :is(.fm-mode-btn.active, .fm-submode-btn.active, .fm-play-overlay) {
+html .personal-fm.fm-layout-modern :is(.fm-mode-btn.active, .fm-submode-btn.active, .fm-play-overlay) {
   background-color: var(--fm-primary-btn-bg) !important;
   color: var(--fm-primary-btn-text) !important;
   border-color: var(--fm-primary-btn-border) !important;
@@ -3198,8 +5105,679 @@ html .personal-fm :is(.fm-mode-btn.active, .fm-submode-btn.active, .fm-play-over
   }
 }
 
-html .personal-fm button:focus-visible {
+html .personal-fm.fm-layout-modern button:focus-visible {
   outline: 2px solid var(--text) !important;
   outline-offset: 3px;
+}
+
+
+html:not(.dark) .personal-fm.fm-layout-classic {
+  --ark-ink: #191919;
+  --ark-paper: #f4f4ee;
+  --ark-signal: #fffa00;
+  --fm-ink: var(--ark-ink);
+  --fm-paper: var(--ark-paper);
+  --fm-signal: var(--fm-ink);
+  --fm-rail: #e2e2db;
+  --fm-field: #d6d8d4;
+  --fm-yellow: var(--ark-signal);
+  --fm-stage-bg: transparent;
+  --fm-panel-bg:
+    linear-gradient(90deg, transparent 0 71%, rgb(25 25 25 / 5%) 71% 71.1%, transparent 71.1%),
+    linear-gradient(135deg, transparent 0 77%, rgb(226 226 219 / 72%) 77% 100%),
+    var(--fm-paper);
+  --fm-panel-border: var(--fm-ink);
+  --fm-panel-overlay: none;
+  --fm-panel-overlay-opacity: 0.3;
+  --fm-text: var(--fm-ink);
+  --fm-muted: #595a56;
+  --fm-subtle: #73746e;
+  --fm-primary-btn-bg: var(--fm-yellow);
+  --fm-primary-btn-text: var(--fm-ink);
+  --fm-primary-btn-border: var(--fm-ink);
+  --fm-primary-btn-hover-bg: #ffff52;
+  --fm-ghost-btn-bg: var(--fm-paper);
+  --fm-ghost-btn-hover-bg: #e2e2db;
+  --fm-mode-bg: var(--fm-paper);
+  --fm-mode-hover-bg: var(--fm-rail);
+  --fm-mode-panel-bg: var(--fm-paper);
+  --fm-mode-panel-bg-soft: #e2e2db;
+  --fm-mode-active-bg: var(--fm-yellow);
+  --fm-mode-active-text: var(--fm-ink);
+  --fm-mode-active-border: var(--fm-ink);
+  --fm-play-overlay-bg: var(--fm-yellow);
+  --fm-play-overlay-hover-bg: #ffff52;
+  --fm-play-overlay-border: var(--fm-ink);
+  --fm-play-overlay-icon: var(--fm-ink);
+  --fm-danger: #a22f26;
+  --fm-danger-bg: #f1ddd8;
+  --fm-spinner-track: #c5c6bf;
+  --fm-slot-bg: var(--fm-paper);
+  --fm-slot-hover-border: var(--fm-ink);
+  --fm-side-opacity: 0.52;
+  --fm-placeholder-bg: #d8dad5;
+  --fm-placeholder-text: #53554f;
+  --fm-intro-line-color: var(--fm-ink);
+  color-scheme: light;
+
+  .fm-stage {
+    align-items: stretch;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  .fm-panel {
+    width: 100%;
+    max-width: 100%;
+    min-height: max(600px, 100%);
+    padding: 32px 38px 24px 112px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    box-shadow: 0 18px 42px rgb(25 25 25 / 12%);
+  }
+
+  .fm-panel::before {
+    inset: 0;
+    z-index: 0;
+    background-image:
+      linear-gradient(90deg, transparent 0 24%, rgb(25 25 25 / 8%) 24% calc(24% + 1px), transparent calc(24% + 1px)),
+      linear-gradient(180deg, transparent 0 64%, rgb(25 25 25 / 8%) 64% calc(64% + 1px), transparent calc(64% + 1px));
+    background-size: auto;
+    opacity: 1;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .fm-panel::after {
+    content: "";
+    position: absolute;
+    right: 34px;
+    bottom: 22px;
+    width: 72px;
+    height: 12px;
+    z-index: 0;
+    pointer-events: none;
+    background: var(--fm-yellow);
+    clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  }
+
+  .fm-archive-rail {
+    inset: 0 auto 0 0;
+    width: 76px;
+    height: auto;
+    padding: 28px 0 22px;
+    border: 0;
+    border-right: 1px solid var(--fm-ink);
+    flex-direction: column;
+    gap: 16px;
+    color: var(--fm-ink);
+    background: var(--fm-rail);
+  }
+
+  .archive-index {
+    padding: 8px 7px 5px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background: var(--fm-ink);
+    color: var(--fm-paper);
+    box-shadow: inset 0 -7px 0 var(--fm-yellow);
+    font-size: 22px;
+  }
+
+  .archive-rule {
+    width: 1px;
+    height: auto;
+    min-height: 64px;
+    flex: 1 1 auto;
+    background: linear-gradient(180deg, var(--fm-ink), transparent);
+  }
+
+  .archive-name,
+  .archive-status {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    color: var(--fm-ink);
+    font-family: SourceHanSansCN-Bold, sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+
+  .archive-status {
+    margin-left: 0;
+    color: var(--fm-subtle);
+  }
+
+  .fm-header {
+    width: min(60%, 680px);
+    margin-bottom: 20px;
+
+    h1 {
+      margin-top: 8px;
+      gap: 0.12em;
+      font-family:
+        SourceHanSansCN-Heavy, SourceHanSansCN-Bold, "Microsoft YaHei",
+        sans-serif;
+      font-size: clamp(44px, 4.4vw, 68px);
+      font-weight: 900;
+      line-height: 0.92;
+      letter-spacing: -0.055em;
+
+      em {
+        position: relative;
+        padding-inline: 0.06em;
+        color: var(--fm-ink);
+        font-weight: 900;
+        box-shadow: inset 0 -0.2em 0 var(--fm-yellow);
+      }
+    }
+  }
+
+  .fm-headline {
+    color: var(--fm-ink) !important;
+    font-family: Bender-Bold, Consolas, monospace;
+    font-size: 10px;
+
+    &::before {
+      width: 34px;
+      height: 4px;
+      background: var(--fm-yellow);
+      box-shadow: inset 0 0 0 1px var(--fm-ink);
+    }
+  }
+
+  .fm-subtitle {
+    color: var(--fm-muted) !important;
+  }
+
+  .fm-mode-trigger {
+    min-height: 44px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+    background-color: var(--fm-yellow) !important;
+    color: var(--fm-ink) !important;
+  }
+
+  .mode-trigger-code,
+  .mode-trigger-value {
+    color: var(--fm-ink);
+  }
+
+  .fm-mode-dropdown {
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+    box-shadow: 8px 8px 0 rgb(25 25 25 / 22%);
+    backdrop-filter: none;
+  }
+
+  .fm-mode-btn,
+  .fm-submode-btn {
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--fm-ink);
+    }
+
+    &.active,
+    &.active:hover:not(:disabled) {
+      background-color: var(--fm-mode-active-bg) !important;
+      color: var(--fm-mode-active-text) !important;
+      border-color: var(--fm-mode-active-border);
+
+      .mode-code,
+      .mode-label {
+        color: var(--fm-mode-active-text);
+      }
+    }
+  }
+
+  .fm-main {
+    gap: clamp(24px, 3vw, 52px);
+  }
+
+  .fm-cover-carousel {
+    padding: 34px 18px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background:
+      linear-gradient(90deg, #c9ccca 0 22%, transparent 22% 24%, #e8e8e1 24% 68%, transparent 68% 70%, #bfc5c4 70% 100%),
+      var(--fm-field);
+
+    &::before {
+      width: min(330px, 58vw);
+      height: auto;
+      aspect-ratio: 1;
+      border: 1px solid var(--fm-ink);
+      border-radius: 0;
+      background:
+        linear-gradient(135deg, rgb(244 244 238 / 76%) 0 48%, transparent 48%),
+        rgb(25 25 25 / 7%);
+      box-shadow: inset 0 0 0 12px rgb(244 244 238 / 22%);
+      clip-path: polygon(0 10%, 90% 0, 100% 90%, 10% 100%);
+      opacity: 0.9;
+      animation: classic-fm-endfield-breathe 4.8s ease-in-out infinite alternate;
+    }
+
+    &::after {
+      width: 68px;
+      height: 12px;
+      top: 12%;
+      right: 8%;
+      left: auto;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      background: var(--fm-yellow);
+      box-shadow: inset 0 0 0 1px var(--fm-ink);
+      clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+      transform-origin: center;
+      animation: none;
+    }
+  }
+
+  .fm-cover-slot {
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+
+    img {
+      border-radius: 0;
+    }
+  }
+
+  .fm-cover-slot.slot-center {
+    border-color: var(--fm-ink);
+    border-radius: 0;
+    background: var(--fm-paper) !important;
+    box-shadow:
+      0 0 0 1px var(--fm-paper),
+      0 16px 28px rgb(25 25 25 / 22%);
+  }
+
+  .slot-side-overlay {
+    border-radius: 0;
+    background: linear-gradient(
+      90deg,
+      rgb(25 25 25 / 48%),
+      rgb(25 25 25 / 10%)
+    );
+  }
+
+  .fm-play-overlay {
+    border-width: 1px;
+    border-radius: 2px;
+    backdrop-filter: none;
+  }
+
+  .fm-dossier {
+    padding: 24px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background: rgb(244 244 238 / 92%);
+  }
+
+  .fm-info {
+    .fm-record-kicker {
+      color: var(--fm-ink) !important;
+    }
+
+    .song-name {
+      font-family:
+        SourceHanSansCN-Heavy, SourceHanSansCN-Bold, "Microsoft YaHei",
+        sans-serif;
+      font-weight: 900;
+      letter-spacing: -0.045em;
+    }
+  }
+
+  .action-btn {
+    border: 1px solid var(--fm-ink);
+    border-radius: 2px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--fm-ink);
+    }
+
+    &.trash:hover {
+      border-color: var(--fm-ink);
+      color: var(--fm-danger) !important;
+    }
+
+    &.like.active,
+    &.like:hover {
+      border-color: var(--fm-ink);
+    }
+
+    &.like.active {
+      background-color: var(--fm-yellow) !important;
+      color: var(--fm-ink) !important;
+
+      small {
+        color: rgb(25 25 25 / 62%);
+      }
+    }
+  }
+
+  .fm-status-strip {
+    min-height: 52px;
+    padding: 10px 14px;
+    border: 1px solid var(--fm-ink);
+    border-radius: 0;
+    background:
+      linear-gradient(90deg, var(--fm-yellow) 0 8px, transparent 8px),
+      var(--fm-rail);
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .refresh-button {
+    border-width: 1px;
+    border-color: var(--fm-ink);
+    border-radius: 2px;
+    color: var(--fm-ink) !important;
+    background-color: var(--fm-yellow) !important;
+  }
+}
+
+@keyframes classic-fm-endfield-breathe {
+  from {
+    transform: translate(-50%, -50%) scale(0.985);
+    opacity: 0.76;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.92;
+  }
+}
+
+@media (max-width: 1180px) {
+  html:not(.dark) .personal-fm.fm-layout-classic {
+    .fm-panel {
+      padding: 28px 28px 22px 94px;
+    }
+
+    .fm-archive-rail {
+      width: 64px;
+    }
+  }
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  html:not(.dark) .personal-fm.fm-layout-classic {
+    .fm-panel {
+      min-height: 0;
+      padding: 20px;
+    }
+
+    .fm-panel::before {
+      inset: 0;
+    }
+
+    .fm-panel::after {
+      right: 20px;
+      bottom: 18px;
+      width: 62px;
+      height: 10px;
+    }
+
+    .fm-archive-rail {
+      position: relative;
+      inset: auto;
+      order: 1;
+      width: calc(100% + 40px);
+      height: auto;
+      min-height: 48px;
+      margin: -20px -20px 0;
+      padding: 10px 20px;
+      border-right: 0;
+      border-bottom: 1px solid var(--fm-ink);
+      flex-direction: row;
+      gap: 12px;
+    }
+
+    .archive-rule {
+      width: auto;
+      height: 1px;
+      min-height: 1px;
+      min-width: 36px;
+      background: linear-gradient(90deg, var(--fm-ink), transparent);
+    }
+
+    .archive-name,
+    .archive-status {
+      writing-mode: horizontal-tb;
+      transform: none;
+    }
+
+    .archive-status {
+      margin-left: auto;
+    }
+
+    .fm-header {
+      width: 100%;
+      margin: 22px 0 0;
+
+      h1 {
+        font-size: clamp(38px, 9vw, 54px);
+      }
+    }
+
+    .fm-cover-carousel {
+      padding-block: 26px;
+    }
+
+    .fm-dossier {
+      padding: 22px;
+      border-top: 1px solid var(--fm-ink);
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  html:not(.dark) .personal-fm.fm-layout-classic {
+    .fm-stage {
+      padding: 0;
+    }
+
+    .fm-panel {
+      width: 100%;
+      max-width: 100%;
+      padding: 12px 16px;
+      border-radius: 0;
+      box-shadow: 0 12px 28px rgb(25 25 25 / 10%);
+    }
+
+    .fm-panel::before {
+      inset: 0;
+    }
+
+    .fm-panel::after {
+      right: 14px;
+      bottom: 12px;
+      width: 52px;
+      height: 9px;
+    }
+
+    .fm-archive-rail {
+      width: calc(100% + 32px);
+      min-height: 44px;
+      margin: -12px -16px 0;
+      padding: 8px 16px;
+      gap: 8px;
+    }
+
+    .archive-index {
+      padding: 5px 8px 4px;
+      font-size: 16px;
+    }
+
+    .archive-rule {
+      min-width: 20px;
+    }
+
+    .archive-status {
+      display: none;
+    }
+
+    .archive-name {
+      font-size: 8px;
+    }
+
+    .fm-header {
+      margin-top: 8px;
+
+      h1 {
+        font-size: 34px;
+      }
+    }
+
+    .fm-cover-carousel {
+      padding-block: 18px;
+      border-radius: 0;
+
+      &::before {
+        width: min(230px, 60vw);
+      }
+
+      &::after {
+        width: 52px;
+        height: 10px;
+        top: 10%;
+        right: 6%;
+      }
+    }
+
+    .fm-dossier {
+      padding: 18px;
+      border-radius: 0;
+    }
+
+    .fm-status-strip {
+      padding-inline: 10px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not(.dark) .personal-fm.fm-layout-classic .fm-cover-carousel::before,
+  html:not(.dark) .personal-fm.fm-layout-classic .fm-cover-carousel::after {
+    animation: none !important;
+  }
+}
+
+html .personal-fm.fm-layout-classic.fm-window-fill {
+  height: 100%;
+  padding: 0;
+}
+
+@media (min-width: 901px) and (orientation: landscape) {
+  html .personal-fm.fm-layout-classic.fm-window-fill {
+    .fm-panel {
+      min-height: 100%;
+      padding: 117px 83px 24px 157px;
+    }
+
+    .fm-archive-rail {
+      width: 121px;
+      padding: 113px 0 22px 45px;
+    }
+
+    .fm-mode-floating {
+      top: 115px;
+      right: 81px;
+    }
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) and (orientation: landscape) {
+  html .personal-fm.fm-layout-classic.fm-window-fill {
+    .fm-panel {
+      padding: 113px 73px 22px 139px;
+    }
+
+    .fm-archive-rail {
+      width: 109px;
+      padding-top: 113px;
+    }
+  }
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  html .personal-fm.fm-layout-classic.fm-window-fill .fm-panel {
+    padding: 105px 20px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  html .personal-fm.fm-layout-classic.fm-window-fill .fm-panel {
+    padding: 97px 16px 14px;
+  }
+}
+
+@media (max-height: 720px) and (min-width: 901px) {
+  html .personal-fm.fm-layout-classic.fm-window-fill .fm-panel {
+    padding-top: 107px;
+    padding-bottom: 18px;
+  }
+}
+
+.dark .personal-fm.fm-layout-classic .fm-mode-trigger,
+.dark .personal-fm.fm-layout-classic .fm-mode-btn,
+.dark .personal-fm.fm-layout-classic .fm-submode-btn,
+.dark .personal-fm.fm-layout-classic .fm-cover-slot,
+.dark .personal-fm.fm-layout-classic .action-btn,
+.dark .personal-fm.fm-layout-classic .artist-link,
+.dark .personal-fm.fm-layout-classic .album-name,
+.dark .personal-fm.fm-layout-classic .refresh-button {
+  background-color: var(--fm-ghost-btn-bg) !important;
+}
+
+.dark .personal-fm.fm-layout-classic .fm-mode-trigger,
+.dark .personal-fm.fm-layout-classic .fm-mode-btn,
+.dark .personal-fm.fm-layout-classic .fm-submode-btn {
+  background-color: var(--fm-mode-bg) !important;
+}
+
+.dark .personal-fm.fm-layout-classic .artist-link,
+.dark .personal-fm.fm-layout-classic .album-name,
+.dark .personal-fm.fm-layout-classic .refresh-button {
+  background-color: transparent !important;
+}
+
+.dark .personal-fm.fm-layout-classic .fm-mode-btn.active,
+.dark .personal-fm.fm-layout-classic .fm-submode-btn.active {
+  background-color: var(--fm-mode-active-bg) !important;
+  color: var(--fm-mode-active-text) !important;
+  border-color: var(--fm-mode-active-border) !important;
+}
+
+.dark .personal-fm.fm-layout-classic .fm-mode-btn.active .mode-code,
+.dark .personal-fm.fm-layout-classic .fm-mode-btn.active .mode-label,
+.dark .personal-fm.fm-layout-classic .fm-submode-btn.active .mode-code,
+.dark .personal-fm.fm-layout-classic .fm-submode-btn.active .mode-label {
+  color: var(--fm-mode-active-text) !important;
+}
+
+.dark .personal-fm.fm-layout-classic .action-btn.next {
+  background-color: var(--fm-primary-btn-bg) !important;
+  color: var(--fm-primary-btn-text) !important;
+}
+
+.dark .personal-fm.fm-layout-classic .action-btn.next svg path {
+  fill: var(--fm-primary-btn-text) !important;
+  stroke: var(--fm-primary-btn-text) !important;
+}
+
+.dark .personal-fm.fm-layout-classic .action-btn.like.active svg path,
+.dark .personal-fm.fm-layout-classic .fm-play-overlay svg path {
+  fill: var(--fm-signal) !important;
+  stroke: var(--fm-signal) !important;
+}
+
+/* Restore the classic dark-theme selected state from the original global theme. */
+.dark .personal-fm.fm-layout-classic :is(.fm-mode-btn.active, .fm-submode-btn.active) {
+  background-color: #fff !important;
+  color: #111213 !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  :is(.mode-code, .mode-label) { color: #111213 !important; opacity: 1 !important; }
 }
 </style>
