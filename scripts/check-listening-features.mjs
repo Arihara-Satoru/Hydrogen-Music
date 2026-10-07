@@ -61,8 +61,10 @@ const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(
 function playback() {
     const listeners = new Map()
     return {
-        position: 0, active: false,
+        position: 0, active: false, unloaded: false,
         seek() { return this.position }, playing() { return this.active },
+        state() { return this.unloaded ? 'unloaded' : 'loaded' },
+        rate() { if (this.unloaded) throw new TypeError("Cannot read properties of undefined (reading '_id')"); return 1 },
         on(event, fn) { const list = listeners.get(event) || new Set(); list.add(fn); listeners.set(event, list) },
         off(event, fn) { listeners.get(event)?.delete(fn) },
         emit(event) { for (const fn of [...(listeners.get(event) || [])]) fn() },
@@ -90,6 +92,7 @@ assert.equal(reports.at(-1).d_sec, 100)
 clock = 10000; first.active = true; first.emit('play')
 clock = 11000; first.position = 32; tick()
 player.songList = [{ id: 456 }]
+first.unloaded = true
 player.currentMusic = playback()
 flushWatchers()
 await settle()

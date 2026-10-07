@@ -110,8 +110,19 @@ function enqueueReport(data, accountId) {
 function sampleSession() {
     if (!session) return
     const now = nowMilliseconds()
-    const seek = Number(session.playback.seek?.())
-    const rate = Number(session.playback.rate?.()) || 1
+    let seek
+    let rate
+    try {
+        if (session.playback.state?.() === 'unloaded') {
+            session.lastAt = now
+            return
+        }
+        seek = Number(session.playback.seek?.())
+        rate = Number(session.playback.rate?.()) || 1
+    } catch (_) {
+        session.lastAt = now
+        return
+    }
     session.duration += calculatePlaybackMilliseconds(session.lastAt, now, session.lastSeek, seek, rate)
     session.lastAt = now
     session.lastSeek = seek
