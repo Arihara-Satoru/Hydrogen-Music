@@ -68,6 +68,7 @@ const {
   showSongTranslation,
   chorusMode,
   loudnessNormalization,
+  loudnessNormalizationActive,
   dynamicCompression,
 } = storeToRefs(playerStore);
 
@@ -170,12 +171,18 @@ watch([loudnessNormalization, dynamicCompression], () => {
 });
 
 async function applyPlaybackAudioProcessing(playback, autoplay = playback.playing?.() === true) {
+  if (currentMusic.value === playback) loudnessNormalizationActive.value = false;
   if (playback.__hmAudioProcessingUnavailable) return;
   const pauseToken = playbackPauseToken;
   const gain = loudnessNormalization.value
     ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1;
   try {
     await playback.setAudioProcessing?.(gain, dynamicCompression.value);
+    if (currentMusic.value === playback && gain === (loudnessNormalization.value
+      ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1)) {
+      loudnessNormalizationActive.value = gain !== 1 && typeof playback.setAudioProcessing === "function"
+        && playback.state?.() !== "unloaded";
+    }
   } catch (error) {
     console.warn("音频处理不可用，使用原音量播放", error);
     playback.__hmAudioProcessingUnavailable = true;
@@ -1710,6 +1717,7 @@ export function play(
     ? Math.max(0, playOptions.fadeInMs)
     : 200;
   const previousPlayback = currentMusic.value;
+  loudnessNormalizationActive.value = false;
   const pauseToken = playbackPauseToken;
   // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
   stopProgressSampling();

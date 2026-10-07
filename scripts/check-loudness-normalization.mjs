@@ -158,6 +158,7 @@ for (const level of [0, 1, 2, 3]) assert.equal(context.normalizeMusicSettings({ 
 const playerStoreModule = await load('src/store/playerStore.js', { pinia: mock({ defineStore: (_id, options) => options.state }) })
 const playerState = playerStoreModule.namespace.usePlayerStore()
 assert.equal(playerState.dynamicCompression, 0)
+assert.equal(playerState.loudnessNormalizationActive, false)
 Object.assign(playerState, { songList: [{ id: 1, name: 'Track' }, { id: 2, name: 'Next' }], songId: 1, loudnessNormalization: true })
 const refs = Object.fromEntries(Object.keys(playerState).map(key => [key, {
     get value() { return playerState[key] }, set value(value) { playerState[key] = value },
@@ -215,7 +216,9 @@ const player = await load('src/utils/player.js', playerDependencies, '\nexport {
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve() }
 player.namespace.play(track.url, true, null, null, { trackInfo: track })
 let active = playerState.currentMusic
+assert.equal(playerState.loudnessNormalizationActive, false) // loading is not applied processing
 active.emit('load'); await settle()
+assert.equal(playerState.loudnessNormalizationActive, true)
 assert.equal(active.playing(), true)
 assert.equal(active.volume(), 0.3)
 assert.equal(nodes.at(-3).gain.value, expected)
@@ -224,6 +227,7 @@ const processingWatcher = watchers.find(item => Array.isArray(item.source) && it
 processingWatcher.callback()
 await settle()
 assert.equal(nodes.at(-3).gain.value, 1)
+assert.equal(playerState.loudnessNormalizationActive, false)
 assert.equal(playerState.volume, 0.3)
 playerState.loudnessNormalization = true
 await player.namespace.refreshStreamAndResume('loaderror')
@@ -238,15 +242,19 @@ playerState.songId = 2; playerState.currentIndex = 1
 await player.namespace.getSongUrl(2, 1, false, false)
 assert.equal(playerState.currentMusic, entry.player)
 assert.equal(playerState.currentMusic.__hmLoudnessMetadata.volume, -9.9)
+await settle()
+assert.equal(playerState.loudnessNormalizationActive, true) // decoded gapless player
 assert.equal(nodes.at(-1).gain.value, expected)
 playerState.songList[1]._chorusPrefetch = { url: 'https://audio.test/new.mp3', level: '128', trackInfo: { loudness: { volume: -20, gain: 0, peak: 0.2 } } }
 await player.namespace.getSongUrl(2, 1, false, false)
 assert.equal(playerState.currentMusic.__hmLoudnessMetadata.volume, -20)
 const nodeCount = nodes.length
 player.namespace.play('https://audio.test/missing.mp3', true)
+assert.equal(playerState.loudnessNormalizationActive, false) // clear immediately, before the next track loads
 assert.equal(playerState.currentMusic.__hmLoudnessMetadata, null)
 playerState.currentMusic.emit('load'); await settle()
 assert.equal(nodes.length, nodeCount) // the next track cannot inherit a previous track's attenuation
+assert.equal(playerState.loudnessNormalizationActive, false)
 player.namespace.play(track.url, true, null, null, { trackInfo: track })
 active = playerState.currentMusic
 active.emit('loaderror', 1, 'CORS rejected')
@@ -255,6 +263,7 @@ assert.notEqual(fallback, active)
 assert.equal(fallback.__hmAudioProcessingUnavailable, true)
 fallback.emit('load'); await settle()
 assert.equal(fallback.playing(), true)
+assert.equal(playerState.loudnessNormalizationActive, false) // CORS fallback cannot claim normalization
 player.namespace.play(track.url, true, null, null, { trackInfo: track })
 active = playerState.currentMusic
 player.namespace.pauseMusic()
@@ -278,6 +287,7 @@ assert.equal(nodes[compressionStart].gain.value, 1)
 const streamCompressor = nodes[compressionStart + 3]
 const streamMakeup = nodes[compressionStart + 4]
 assert.equal(streamCompressor.threshold.value, -18)
+assert.equal(playerState.loudnessNormalizationActive, false) // compression alone is not normalization
 assert.equal(streamCompressor.ratio.value, 2)
 assert.ok(streamMakeup.connections.includes(nodes[compressionStart + 1]))
 active.volume(0.1)
@@ -308,6 +318,7 @@ player.namespace.startGaplessTarget({ id: 1, index: 0, song: playerState.songLis
 await settle()
 assert.equal(playerState.currentMusic._compressionLevel, 1)
 assert.equal(playerState.currentMusic._loudnessGain.gain.value, expected)
+assert.equal(playerState.loudnessNormalizationActive, true)
 playerState.currentMusic.unload()
 playerState.dynamicCompression = 3
 player.namespace.play('https://audio.test/no-metadata.mp3', true)
@@ -317,6 +328,34 @@ assert.notEqual(playerState.currentMusic, active)
 assert.equal(playerState.currentMusic.__hmAudioProcessingUnavailable, true)
 playerState.currentMusic.emit('load'); await settle()
 assert.equal(playerState.currentMusic.playing(), true)
+playerState.currentMusic.unload()
+
+// The badge must not be restored by stale async processing after a setting change or track replacement.
+playerState.dynamicCompression = 0
+player.namespace.play(track.url, false, null, null, { trackInfo: track })
+active = playerState.currentMusic
+active.emit('load'); await settle()
+assert.equal(playerState.loudnessNormalizationActive, true)
+audioContext.state = 'suspended'
+resume = new Promise(resolve => { audioContext.releaseResume = resolve })
+processingWatcher.callback()
+assert.equal(playerState.loudnessNormalizationActive, false)
+playerState.loudnessNormalization = false
+processingWatcher.callback()
+audioContext.releaseResume(); await settle()
+assert.equal(playerState.loudnessNormalizationActive, false)
+playerState.loudnessNormalization = true
+processingWatcher.callback(); await settle()
+assert.equal(playerState.loudnessNormalizationActive, true)
+audioContext.state = 'suspended'
+resume = new Promise(resolve => { audioContext.releaseResume = resolve })
+processingWatcher.callback()
+player.namespace.play('https://audio.test/no-metadata.mp3', false)
+audioContext.releaseResume(); await settle()
+assert.equal(playerState.loudnessNormalizationActive, false)
+playerState.currentMusic.emit('load'); await settle()
+assert.equal(playerState.loudnessNormalizationActive, false)
+resume = null
 playerState.currentMusic.unload()
 
 const settingsSource = await readFile('src/views/Settings.vue', 'utf8')

@@ -4,6 +4,8 @@ import { changeProgress, musicVideoCheck } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
+import { vDelayedTooltip } from '../utils/delayedTooltip';
+import loudnessBadge from '../assets/img/loudness-badge.png';
 
 const playerStore = usePlayerStore();
 const {
@@ -1003,12 +1005,22 @@ watch([playing, lyricShow], ([p, show]) => {
             </div>
         </Transition>
 
-        <span class="song-quality" v-if="currentSong && currentSong.type == 'local'">
-            {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}kbps
-        </span>
-        <span class="song-quality" v-if="currentSong && currentSong.level && currentSong.level.sr && currentSong.level.br">
-            {{ currentSong.level.sr / 1000 }}KHz/{{ currentSong.level.bitsPerSample || 16 }}Bits/{{ Math.round(currentSong.level.br / 1000) }}kbps/{{ (currentSong.actualLevel || currentSong.quality || '').toUpperCase() }}
-        </span>
+        <div class="song-quality" v-if="currentSong">
+            <img
+                v-if="currentMusic && playerStore.loudnessNormalization && playerStore.loudnessNormalizationActive"
+                class="loudness-badge"
+                :src="loudnessBadge"
+                alt="响度均衡生效中"
+                v-delayed-tooltip="'响度均衡生效中'"
+                draggable="false"
+            />
+            <span v-if="currentSong.type == 'local'">
+                {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}kbps
+            </span>
+            <span v-else-if="currentSong.level && currentSong.level.sr && currentSong.level.br">
+                {{ currentSong.level.sr / 1000 }}KHz/{{ currentSong.level.bitsPerSample || 16 }}Bits/{{ Math.round(currentSong.level.br / 1000) }}kbps/{{ (currentSong.actualLevel || currentSong.quality || '').toUpperCase() }}
+            </span>
+        </div>
         <div class="border border1"></div>
         <div class="border border2"></div>
         <div class="border border3"></div>
@@ -1334,11 +1346,20 @@ watch([playing, lyricShow], ([p, show]) => {
         }
     }
     .song-quality {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        white-space: nowrap;
         font: 1.5vh Bender-Bold;
         color: black;
         position: absolute;
         bottom: -0.9vh;
         right: 1.5vh;
+        .loudness-badge {
+            width: 7em;
+            height: 1.75em;
+            object-fit: cover;
+        }
     }
 
     $boderPosition: -0.75 + vh;
