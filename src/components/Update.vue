@@ -9,7 +9,8 @@
     windowApi.toRegister("https://github.com/Arihara-Satoru/Hydrogen-Music/releases")
   }
   const close = () => {
-    show.value = !show.value
+    otherStore.ignoredUpdateVersion = otherStore.updateInfo?.version || ''
+    show.value = false
     setTimeout(() => {
         otherStore.toUpdate = false
         otherStore.updateInfo = null
@@ -45,9 +46,9 @@
                         <div class="version">{{ otherStore.updateInfo?.version }}</div>
                     </div>
                     <div class="update-option">
-                        <div class="to-update" @click="toUpdate()">前往GitHub更新</div>
+                        <button type="button" class="to-update" @click="toUpdate()">前往GitHub更新</button>
                         <button type="button" class="view-changes" @click="showReleaseNotes = true">查看新增内容</button>
-                        <div class="close" @click="close()">不要了，走了</div>
+                        <button type="button" class="close" title="忽略本次更新，有新版本时再提醒" @click="close()">不要了，走了</button>
                         <svg t="1676132470655" class="close-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2020" width="200" height="200"><path d="M745.610572 75.641771l-496.221642 0c-28.741601 0-51.259454 25.084305-51.259454 57.107649l0 789.362029 74.170257 0 0-772.299421 445.333648 0-331.506183 29.153994 0 766.881015 336.575642-27.442002 0 3.706415 74.170257 0L796.873096 132.74942C796.875143 100.725052 774.35729 75.641771 745.610572 75.641771zM428.767344 533.386076c-11.995195 0-21.719674-9.724479-21.719674-21.719674 0-11.995195 9.724479-21.719674 21.719674-21.719674 11.995195 0 21.719674 9.724479 21.719674 21.719674C450.487018 523.661597 440.763562 533.386076 428.767344 533.386076z" fill="#ffffff" p-id="2021"></path></svg>
                     </div>
                 </div>
@@ -262,27 +263,18 @@
                     .to-update, .view-changes, .close{
                         padding: 0.8vh;
                         font: 2vh SourceHanSansCN-Bold;
-                        color: rgba(255, 255, 255, 0.95);
-                        border: 1px solid white;
-                        background: transparent;
+                        color: rgba(255, 255, 255, 0.95) !important;
+                        border: 1px solid white !important;
+                        border-radius: 0;
+                        background: transparent !important;
                         &:hover{
-                            background-color: rgba(255, 255, 255, 0.95);
-                            color: black;
+                            background-color: rgba(255, 255, 255, 0.95) !important;
+                            color: black !important;
                             cursor: pointer;
                         }
                     }
                     .view-changes, .close{
                         margin-left: 16px;
-                    }
-                    .view-changes{
-                        background: transparent !important;
-                        border-color: white !important;
-                        color: rgba(255, 255, 255, 0.95) !important;
-
-                        &:hover{
-                            background: rgba(255, 255, 255, 0.95) !important;
-                            color: black !important;
-                        }
                     }
                     .close-icon{
                         margin-left: 8px;

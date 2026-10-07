@@ -79,10 +79,12 @@ onUnmounted(() => {
 });
 
 disposeCheckUpdate = windowApi.checkUpdate((updateInfo) => {
-    otherStore.toUpdate = true;
-    otherStore.updateInfo = typeof updateInfo === 'string'
+    const info = typeof updateInfo === 'string'
         ? { version: updateInfo }
         : updateInfo;
+    if (!info?.version || info.version === otherStore.ignoredUpdateVersion) return;
+    otherStore.updateInfo = info;
+    otherStore.toUpdate = true;
 });
 
 // 双击标题栏最大化窗口的处理函数

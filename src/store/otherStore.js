@@ -128,7 +128,12 @@ export const useOtherStore = defineStore('otherStore', {
           searchRequestToken: 0,
           toUpdate: false,
           updateInfo: null,
+          ignoredUpdateVersion: '',
         }
+    },
+    persist: {
+        storage: localStorage,
+        pick: ['ignoredUpdateVersion'],
     },
     actions: {
         // setRem() {
