@@ -1,5 +1,4 @@
 <script setup>
-  import { ref } from 'vue'
   import { dialogCancel, dialogConfirm } from '../utils/dialog'
   import { useOtherStore } from '../store/otherStore';
   import { storeToRefs } from 'pinia';
@@ -7,20 +6,18 @@
   const otherStore =  useOtherStore()
   const { dialogShow, dialogHeader, dialogText, dialogInput } = storeToRefs(otherStore)
 
-  const isActive = ref(false)
-  const onAfterEnter = () => isActive.value = true
-  const onAfterLeave = () => isActive.value = false
 </script>
 
 <template>
   <div class="global-dialog" v-show="dialogShow"></div>
-  <Transition name="dialog-fade" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
-      <div class="dialog-container" :class="{'dialog-container-active': isActive}" v-if="dialogShow">
+  <Transition name="dialog-fade">
+      <div class="dialog-container" v-if="dialogShow">
           <div class="dialog">
+              <div class="dialog-layout">
               <div class="dialog-header">
                   <span class="header-title">{{dialogHeader}}</span>
               </div>
-              <div class="dialog-content">
+               <div class="dialog-content">
                   <span class="content-text">{{dialogText}}</span>
                   <label v-if="dialogInput" class="dialog-input">
                       {{ dialogInput.label }}
@@ -29,9 +26,10 @@
               </div>
               <div class="dialog-option">
                   <div class="option-cancel" @click="dialogCancel()">取消</div>
-                  <div class="option-confirm" @click="dialogConfirm()">确认</div>
+                   <div class="option-confirm" @click="dialogConfirm()">确认</div>
+               </div>
               </div>
-          </div>
+           </div>
           <span class="dialog-style dialog-style1"></span>
           <span class="dialog-style dialog-style2"></span>
           <span class="dialog-style dialog-style3"></span>
@@ -54,8 +52,11 @@
   }
     .dialog-container{
         z-index: 1000;
-        width: 0;
-        height: 0;
+         --dialog-width: 300px;
+         --dialog-height: 150px;
+         width: var(--dialog-width);
+         height: var(--dialog-height);
+         padding: 15px 20px;
         background-image: url('../assets/img/halftone.png');
         background-size: 40%;
         background-repeat: repeat;
@@ -65,12 +66,20 @@
         left: 50%;
         transform: translate(-50%, -50%);
 
-        &-active {
-          width: 300Px;height: 150Px;padding: 15Px 20px;
-        }
-        .dialog{
-            width: 100%;
-            height: 100%;
+         .dialog{
+             position: relative;
+             width: 100%;
+             height: 100%;
+             overflow: hidden;
+         }
+         .dialog-layout {
+             // 内容锚定中心，外框改变尺寸时只裁切，不带着文字平移。
+             position: absolute;
+             top: 50%;
+             left: 50%;
+             transform: translate(-50%, -50%);
+             width: calc(var(--dialog-width) - 40px);
+             height: calc(var(--dialog-height) - 30px);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -151,7 +160,7 @@
         }
     }
   .dialog-fade-enter-active {
-    animation: dialog-container-in 0.4s entry.$prepare-duration forwards;
+    animation: dialog-container-in 0.4s entry.$prepare-duration both;
   }
   .dialog-fade-leave-active {
     animation: dialog-container-in 0.4s reverse;
@@ -159,8 +168,8 @@
 
   @keyframes dialog-container-in {
     0%{width: 0;height: 0;padding: 0;}
-    50%{width: 300Px;height: 0;padding: 0;}
-    100%{width: 300Px;height: 150Px;padding: 15Px 20px;}
+    50%{width: var(--dialog-width);height: 0;padding: 0;}
+    100%{width: var(--dialog-width);height: var(--dialog-height);padding: 15px 20px;}
   }
 
   @media (prefers-reduced-motion: reduce) {
