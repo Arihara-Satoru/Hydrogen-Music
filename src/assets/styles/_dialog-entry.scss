@@ -1,0 +1,18 @@
+// 150ms 等待 + 两次亮灭各 50ms，随后由原有角标衔接弹窗展开。
+$prepare-duration: 350ms;
+
+@mixin cue {
+    opacity: 0;
+    animation: dialog-entry-cue $prepare-duration steps(1, end) forwards;
+}
+
+@mixin keyframes {
+    @keyframes dialog-entry-cue {
+        0% { opacity: 0; }
+        42.857% { opacity: 1; }
+        57.143% { opacity: 0; }
+        71.429% { opacity: 1; }
+        85.714% { opacity: 0; }
+        100% { opacity: 1; }
+    }
+}

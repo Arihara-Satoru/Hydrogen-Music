@@ -41,6 +41,8 @@
 </template>
 
 <style scoped lang="scss">
+  @use '../assets/styles/dialog-entry' as entry;
+  @include entry.keyframes;
   .global-dialog{
     width: 100%;
     height: 100%;
@@ -128,21 +130,7 @@
           height: 9Px;
           background-color: rgb(247, 247, 247);
           position: absolute;
-          opacity: 0;
-          animation: dialog-style-in 0.4s forwards;
-          @keyframes dialog-style-in {
-            0%{opacity: 0;}
-            10%{opacity: 1;}
-            20%{opacity: 0;}
-            30%{opacity: 1;}
-            40%{opacity: 0;}
-            50%{opacity: 1;}
-            60%{opacity: 0;}
-            70%{opacity: 1;}
-            80%{opacity: 0;}
-            90%{opacity: 0;}
-            100%{opacity: 1;}
-          }
+           @include entry.cue;
         }
         $position: -4Px;
         .dialog-style1{
@@ -162,11 +150,8 @@
           left: $position;
         }
     }
-</style>
-
-<style lang="scss">
   .dialog-fade-enter-active {
-    animation: dialog-container-in 0.4s 0.15s forwards;
+    animation: dialog-container-in 0.4s entry.$prepare-duration forwards;
   }
   .dialog-fade-leave-active {
     animation: dialog-container-in 0.4s reverse;
@@ -176,6 +161,14 @@
     0%{width: 0;height: 0;padding: 0;}
     50%{width: 300Px;height: 0;padding: 0;}
     100%{width: 300Px;height: 150Px;padding: 15Px 20px;}
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dialog-fade-enter-active, .dialog-fade-leave-active,
+    .dialog-container .dialog-style {
+      animation-duration: 0.01ms;
+      animation-delay: 0ms;
+    }
   }
 
 </style>

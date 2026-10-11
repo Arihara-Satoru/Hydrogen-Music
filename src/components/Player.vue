@@ -902,7 +902,7 @@ const addToPlaylist = () => {
         </div>
 
         <Teleport to="body">
-            <transition name="song-info-metro" :duration="{ enter: 900, leave: 700 }" @after-enter="onSongInfoAfterEnter" @after-leave="onSongInfoAfterLeave">
+            <transition name="song-info-metro" :duration="{ enter: 950, leave: 700 }" @after-enter="onSongInfoAfterEnter" @after-leave="onSongInfoAfterLeave">
                 <div ref="songInfoLayer" v-if="songInfoShow && currentSong" class="song-info-layer" tabindex="-1" @click.self="closeSongInfo" @keydown.esc="closeSongInfo">
                     <div class="song-info-dialog" :class="{ 'song-info-dialog-active': songInfoShowDelay }" role="dialog" aria-modal="true" aria-label="歌曲信息">
                         <div class="song-info-content">
@@ -943,6 +943,8 @@ const addToPlaylist = () => {
 </template>
 
 <style scoped lang="scss">
+@use '../assets/styles/dialog-entry' as entry;
+@include entry.keyframes;
 .player-container {
     position: relative;
     z-index: 99;
@@ -1623,7 +1625,7 @@ const addToPlaylist = () => {
     top: 15px;
     right: 15px;
     opacity: 0;
-    animation: song-info-close-in 0.1s 0.6s forwards;
+    animation: song-info-close-in 0.1s 0.65s forwards;
 
     &:hover {
         cursor: pointer;
@@ -1645,8 +1647,7 @@ const addToPlaylist = () => {
     height: 9px;
     background-color: rgba(247, 247, 247, 0.9);
     position: absolute;
-    opacity: 0;
-    animation: song-info-corner-in 0.4s forwards;
+    @include entry.cue;
 }
 
 .song-info-corner1 { top: -4px; left: -4px; }
@@ -1656,7 +1657,7 @@ const addToPlaylist = () => {
 
 .song-info-metro-enter-active {
     .song-info-dialog {
-        animation: song-info-dialog-in 0.6s 0.3s both;
+        animation: song-info-dialog-in 0.6s entry.$prepare-duration both;
     }
 }
 
@@ -1693,9 +1694,13 @@ const addToPlaylist = () => {
     to { opacity: 1; }
 }
 
-@keyframes song-info-corner-in {
-    0%, 20%, 40%, 60%, 80%, 90% { opacity: 0; }
-    10%, 30%, 50%, 70%, 100% { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+    .song-info-corner, .song-info-close,
+    .song-info-metro-enter-active .song-info-dialog,
+    .song-info-metro-leave-active .song-info-dialog {
+        animation-duration: 0.01ms;
+        animation-delay: 0ms;
+    }
 }
 </style>
 
