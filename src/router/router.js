@@ -31,6 +31,15 @@ const hasDifferentLibraryId = (to, from) => String(to?.params?.id || '') != Stri
 
 const routes = [
     {
+        path: '/together',
+        name: 'together',
+        component: () => import('../views/ListenTogether.vue'),
+        beforeEnter: () => {
+            if (!userStore.togetherPage) return { name: 'mymusic' }
+            return isLogin() ? undefined : { name: 'login' }
+        },
+    },
+    {
         path: '/account',
         name: 'personalcenter',
         component: () => import('../views/PersonalCenter.vue'),

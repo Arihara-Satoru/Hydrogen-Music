@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { getTogetherPersonalSnapshot } from '../utils/togetherBridge';
 
 function normalizePersistedVolume(value) {
     const volume = Number(value)
@@ -31,6 +32,12 @@ const persistedPlayerStorage = {
         return normalizePlayerStorePayload(key, localStorage.getItem(key))
     },
     setItem(key, value) {
+        const personal = getTogetherPersonalSnapshot()
+        if (key === 'playerStore' && personal) {
+            const payload = JSON.parse(value)
+            for (const field of ['progress', 'listInfo', 'songId', 'currentIndex', 'time', 'quality', 'shuffleIndex']) payload[field] = personal[field]
+            value = JSON.stringify(payload)
+        }
         localStorage.setItem(key, value)
     },
     removeItem(key) {

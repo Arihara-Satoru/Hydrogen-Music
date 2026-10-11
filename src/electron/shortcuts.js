@@ -40,11 +40,8 @@ async function createApplicationMenu(win, app, songInfo) {
     
     // 添加音乐控制项
     musicSubmenu.push(
-        {
-            label: '播放/暂停',
-            accelerator: 'Space',
-            click: () => { win.webContents.send('music-playing-control') }
-        },
+        // Bare Space is handled in the renderer so typing and native controls
+        // receive it before the playback shortcut is considered.
         {
             label: '播放/暂停',
             accelerator: 'F5',
@@ -161,7 +158,6 @@ async function createApplicationMenu(win, app, songInfo) {
                 submenu: [
                     {
                         label: '播放/暂停',
-                        accelerator: 'Space',
                         click: () => { if (win) win.webContents.send('music-playing-control') }
                     }
                 ]

@@ -5,10 +5,13 @@ import { confirmAccountLogout } from '../utils/accountSession'
 import { isLogin } from '../utils/authority'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
+import { useListenTogetherStore } from '../store/listenTogetherStore'
 
 const router = useRouter()
 const userStore = useUserStore()
 const playerStore = usePlayerStore()
+const togetherStore = useListenTogetherStore()
+const togetherLink = ref(null)
 const routerContainer = ref(null)
 const homeLink = ref(null)
 const cloudLink = ref(null)
@@ -53,6 +56,7 @@ const toDom = maybeComp => {
 
 const resolveActiveEl = () => {
     const name = router.currentRoute.value.name
+    if (name === 'together' && userStore.togetherPage && togetherLink.value) return toDom(togetherLink.value)
     // Determine active link element by current route
     if (name === 'homepage' && userStore.homePage && homeLink.value) return toDom(homeLink.value)
     if (name === 'clouddisk' && userStore.cloudDiskPage && cloudLink.value) return toDom(cloudLink.value)
@@ -126,7 +130,7 @@ watch(
     () => updateTracker()
 )
 watch(
-    () => [userStore.homePage, userStore.cloudDiskPage, userStore.personalFMPage, userStore.sirenPage],
+    () => [userStore.homePage, userStore.cloudDiskPage, userStore.personalFMPage, userStore.togetherPage, userStore.sirenPage],
     () => updateTracker(),
     { deep: true }
 )
@@ -145,7 +149,7 @@ watch(
                 <div
                     class="header-router"
                     data-tour="navigation"
-                    :class="{ 'router-closed': !userStore.homePage && !userStore.cloudDiskPage && !userStore.personalFMPage && !userStore.sirenPage }"
+                    :class="{ 'router-closed': !userStore.homePage && !userStore.cloudDiskPage && !userStore.personalFMPage && !userStore.togetherPage && !userStore.sirenPage }"
                     ref="routerContainer"
                 >
                     <div class="primary-nav">
@@ -178,6 +182,15 @@ watch(
                             to="/mymusic"
                         >
                             我的音乐
+                        </router-link>
+                        <router-link
+                            ref="togetherLink"
+                            class="button-together"
+                            :style="{ color: router.currentRoute.value.name === 'together' ? 'black' : '#353535' }"
+                            to="/together"
+                            v-if="userStore.togetherPage"
+                        >
+                            一起听<span v-if="togetherStore.room" class="together-dot" aria-label="已加入房间"></span>
                         </router-link>
                     </div>
                     <div class="header-router-right">
@@ -422,6 +435,12 @@ main {
     &::-webkit-scrollbar {
         display: none;
     }
+}
+.together-dot { width: 5px; height: 5px; margin-left: 5px; border-radius: 50%; background: var(--text); }
+@media (max-width: 1180px) {
+    .home-header .header-router { margin-left: 0; }
+    .home-header .header-router .primary-nav a,
+    .home-header .header-router .header-router-right a { margin-right: 22px; font-size: 16px; }
 }
 </style>
 

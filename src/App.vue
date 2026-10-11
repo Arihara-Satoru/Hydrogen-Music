@@ -9,6 +9,9 @@ import MusicWidget from './components/MusicWidget.vue';
 import { destroyDesktopLyric, initDesktopLyric } from './utils/desktopLyric';
 import { destroyLyricRuntime, initLyricRuntime } from './composables/usePlayerRuntime';
 import { destroyListenTimeReporter, initListenTimeReporter } from './utils/listenTimeReporter';
+import { initTogetherSession, destroyTogetherSession } from './utils/listenTogetherSession';
+import { installSpacePlaybackShortcut } from './utils/playbackKeyboard.mjs';
+import { pauseMusic, startMusic } from './utils/player';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -42,6 +45,7 @@ const currentCoverUrl = computed(() => {
 });
 const onboardingScope = computed(() => playerStore.widgetState ? '' : 'player');
 let disposeCheckUpdate = null;
+let disposeSpaceShortcut = null;
 
 watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
     if (customColor) applyCustomTheme(customColor);
@@ -54,9 +58,14 @@ watch(() => playerStore.currentMusic, currentMusic => {
 });
 
 onMounted(() => {
+    disposeSpaceShortcut = installSpacePlaybackShortcut(window, () => {
+        if (playerStore.playing) pauseMusic();
+        else startMusic({ userInitiated: true });
+    });
     initLyricRuntime();
     initDesktopLyric();
     initListenTimeReporter();
+    initTogetherSession();
 
     // 塞壬唱片开启时，空闲预加载所有专辑歌曲时长
     if (userStore.sirenPage) {
@@ -70,10 +79,13 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    disposeSpaceShortcut?.();
+    disposeSpaceShortcut = null;
     clearDynamicTheme();
     destroyDesktopLyric();
     destroyLyricRuntime();
     destroyListenTimeReporter();
+    destroyTogetherSession();
     disposeCheckUpdate?.();
     disposeCheckUpdate = null;
 });

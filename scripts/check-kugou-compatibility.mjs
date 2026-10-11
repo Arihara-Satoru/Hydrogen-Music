@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises'
 import { createContext, SourceTextModule, SyntheticModule } from 'node:vm'
 
 // Run with node --experimental-vm-modules scripts/check-kugou-compatibility.mjs.
-const context = createContext({ console, Date, Math })
+const storage = new Map()
+const context = createContext({ console, Date, Math, localStorage: {
+  getItem: key => storage.get(key) ?? null,
+  setItem: (key, value) => storage.set(key, String(value)),
+  removeItem: key => storage.delete(key),
+} })
 const requests = []
 let responder
 const mock = exports => new SyntheticModule(Object.keys(exports), function () {

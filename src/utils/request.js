@@ -151,7 +151,7 @@ request.interceptors.response.use(function (response) {
       }
     }
 
-    const suppressGlobalNotice = url === '/comment/music/send'
+    const suppressGlobalNotice = url.startsWith('/listen/together/') || url === '/comment/music/send'
       || url === '/search'
       || url === '/comment/floor/send'
       || url === '/get/verify/info'

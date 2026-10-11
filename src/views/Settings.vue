@@ -1767,6 +1767,31 @@ const clearFmRecent = () => {
               </div>
             </div>
             <div class="option">
+              <div class="option-name">开启一起听页面</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  role="switch"
+                  tabindex="0"
+                  aria-label="开启一起听页面"
+                  :aria-checked="userStore.togetherPage"
+                  @click="userStore.togetherPage = !userStore.togetherPage"
+                  @keydown.enter.prevent="userStore.togetherPage = !userStore.togetherPage"
+                  @keydown.space.prevent="userStore.togetherPage = !userStore.togetherPage"
+                >
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': userStore.togetherPage }"
+                  >
+                    {{ userStore.togetherPage ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div class="toggle-on" v-show="userStore.togetherPage"></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
               <div class="option-name">开启塞壬唱片页面</div>
               <div class="option-operation">
                 <div

@@ -155,7 +155,10 @@ for (const value of [undefined, null, false, 'true', '2', -1, 4, 1.5, Infinity, 
 for (const level of [0, 1, 2, 3]) assert.equal(context.normalizeMusicSettings({ dynamicCompression: level }).dynamicCompression, level)
 
 // Exercise the real player entry points so metadata cannot get lost in a sibling playback path.
-const playerStoreModule = await load('src/store/playerStore.js', { pinia: mock({ defineStore: (_id, options) => options.state }) })
+const playerStoreModule = await load('src/store/playerStore.js', {
+    pinia: mock({ defineStore: (_id, options) => options.state }),
+    '../utils/togetherBridge': mock({ getTogetherPersonalSnapshot: () => null }),
+})
 const playerState = playerStoreModule.namespace.usePlayerStore()
 assert.equal(playerState.dynamicCompression, 0)
 assert.equal(playerState.loudnessNormalizationActive, false)
@@ -195,6 +198,7 @@ for (const [, imported, key] of playerSource.matchAll(/^import\s+([\s\S]+?)\s+fr
     playerDependencies[key] = mock(Object.fromEntries(names.map(name => [name, async () => ({})])))
 }
 Object.assign(playerDependencies, {
+    './togetherBridge': mock({ interceptTogetherControl: () => false, isTogetherPlayback: () => false }),
     vue: mock({ markRaw: value => value, watch: (source, callback) => { watchers.push({ source, callback }) } }),
     pinia: mock({ storeToRefs: store => store === playerState ? refs : {} }),
     howler: mock({ Howl, Howler: { unload: noop } }),

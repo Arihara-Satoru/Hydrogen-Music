@@ -23,6 +23,7 @@ import { createDecodedAudioPlayer } from "./webAudioGapless";
 import { calculateLoudnessGain, prepareHowlAudioProcessing } from "./loudnessNormalization.mjs";
 import { pickMusicVideoPoolEntry } from "./musicVideoPool.mjs";
 import { createOtherAudioPauseController } from "./otherAudioPause.mjs";
+import { interceptTogetherControl, isTogetherPlayback } from './togetherBridge';
 import {
   PLAYBACK_TICK_FAST_INTERVAL_MS,
   subscribePlaybackTick,
@@ -347,6 +348,7 @@ function setCurrentSongChorusCache(song, segment) {
 }
 
 function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
+  if (interceptTogetherControl('ended')) return;
   if (tryStartGaplessNextFromEnd()) return;
 
   // FM 模式保持原有事件分发逻辑，避免影响漫游链路。
@@ -454,6 +456,7 @@ function clearGaplessPreload({ invalidate = true, unload = true } = {}) {
 }
 
 function getGaplessPreloadCandidate() {
+  if (isTogetherPlayback()) return null;
   if (playMode.value == 2 || chorusMode.value) return null;
 
   const next = getNextSongInfo();
@@ -810,7 +813,7 @@ function startGaplessTransitionMonitor() {
     disposeGaplessTransitionTicker();
     disposeGaplessTransitionTicker = null;
   }
-  if (playMode.value == 2 || chorusMode.value) return;
+  if (isTogetherPlayback() || playMode.value == 2 || chorusMode.value) return;
 
   disposeGaplessTransitionTicker = subscribePlaybackTick(
     maybeStartGaplessNextBeforeEnd,
@@ -823,6 +826,7 @@ function startGaplessTransitionMonitor() {
 }
 
 async function prefetchNextSongUrl() {
+  if (isTogetherPlayback()) return;
   if (!chorusMode.value) return;
   const next = getNextSongInfo();
   if (!next) return;
@@ -930,6 +934,7 @@ function activateChorusPlayback(segment, currentSong) {
 }
 
 export async function playCurrentSongChorus(options = {}) {
+  if (interceptTogetherControl('unsupported')) return;
   const { showNotice = true, suppressUnsupportedNotice = false } = options;
   const currentSong = songList.value?.[currentIndex.value];
   if (!currentSong) {
@@ -986,6 +991,7 @@ export async function playCurrentSongChorus(options = {}) {
 }
 
 export async function toggleChorusMode(forceValue = null) {
+  if (interceptTogetherControl('unsupported')) return;
   const nextValue =
     typeof forceValue === "boolean" ? forceValue : !chorusMode.value;
   chorusMode.value = nextValue;
@@ -1165,6 +1171,7 @@ function syncExternalPlaybackState() {
 }
 
 export function applyPlayMode(mode, options = {}) {
+  if (interceptTogetherControl('unsupported')) return playMode.value;
   const inFM = Object.prototype.hasOwnProperty.call(options, "inFM")
     ? options.inFM
     : isPersonalFMContext();
@@ -1607,6 +1614,7 @@ function getPlaybackProgressSignature(payload) {
 }
 
 function persistPlaybackProgress() {
+  if (isTogetherPlayback()) return;
   if (
     !Array.isArray(songList.value) ||
     songList.value.length === 0 ||
@@ -1623,6 +1631,7 @@ function persistPlaybackProgress() {
 }
 
 async function refreshStreamAndResume(eventType, error) {
+  if (interceptTogetherControl('stream-error')) return;
   const now = Date.now();
   if (refreshingStream || now - lastRefreshAttempt < 500) return;
   const currentSong = songList.value && songList.value[currentIndex.value];
@@ -1691,6 +1700,44 @@ async function refreshStreamAndResume(eventType, error) {
   }
 }
 
+// Room sessions invalidate pending personal URL requests before taking over.
+// This also clears gapless/chorus work which may otherwise fire after joining.
+export function stopTogetherPlayback() {
+  playbackRequestToken++;
+  playbackPauseToken++;
+  streamRefreshToken++;
+  stopProgressSampling();
+  clearGaplessPreload();
+  clearChorusPlaybackState();
+  clearChorusPrefetchData();
+  currentMusic.value?.unload?.();
+  currentMusic.value = null;
+  playing.value = false;
+  lyric.value = null;
+  lyricsObjArr.value = null;
+  currentLyricIndex.value = -1;
+  unloadMusicVideo();
+  syncExternalPlaybackState();
+}
+
+export function playTogetherTrack(song, url, position, autoplay) {
+  stopTogetherPlayback();
+  songList.value = [song];
+  currentIndex.value = 0;
+  playerChangeSong.value = false;
+  quality.value = null;
+  songId.value = song.id;
+  progress.value = position;
+  time.value = song.dt / 1000;
+  play(url, autoplay, position, null, { roomSync: true });
+  const playback = currentMusic.value;
+  void getLyric(song).then(result => {
+    if (currentMusic.value !== playback) return;
+    lyric.value = result;
+    restorePlayerLyricAfterSongChange();
+  }).catch(() => {});
+}
+
 export function play(
   url,
   autoplay,
@@ -1698,6 +1745,7 @@ export function play(
   preloadedPlayer = null,
   playOptions = {},
 ) {
+  if (isTogetherPlayback() && !playOptions.roomSync) return;
   const shouldAutoplay =
     autoplay === true &&
     otherAudioPauseController.requestPlayback({
@@ -1808,7 +1856,7 @@ export function play(
     playback.__hmLoudnessMetadata = playOptions.trackInfo?.loudness || null;
     void applyPlaybackAudioProcessing(playback, shouldAutoplay);
     if (currentMusic.value !== playback) return;
-    playback.loop?.(playMode.value == 2);
+    playback.loop?.(!isTogetherPlayback() && playMode.value == 2);
     playback.volume?.(keepPreviousPlayback ? 0 : volume.value);
     playback.on?.("play", () => handlePlaybackStart(playback));
     playback.on?.("pause", () => handlePlaybackPause(playback));
@@ -1840,7 +1888,7 @@ export function play(
       "weba",
       "oga",
     ],
-    loop: playMode.value == 2,
+    loop: !isTogetherPlayback() && playMode.value == 2,
     volume: volume.value,
     xhr: {
       method: "GET",
@@ -1921,6 +1969,7 @@ export function findSongIndexById(
 }
 
 export function getPlaybackPlaylistRoute(info) {
+  if (info?.type === 'together') return { name: 'together' };
   const sourceRoute = info?.sourceRoute;
   const routeName = String(sourceRoute?.name || info?.type || "").replace(
     /^~/,
@@ -1983,6 +2032,7 @@ export function setId(id, index) {
 }
 
 export function addToList(listType, songlist, listMeta = null) {
+  if (interceptTogetherControl('external')) return;
   // 移除之前的 fmReset 事件，以保留FM状态
   // if (listInfo.value && listInfo.value.type === 'personalfm' && listType !== 'personalfm') {
   //     ...
@@ -2033,6 +2083,7 @@ export function addToList(listType, songlist, listMeta = null) {
 }
 
 export function localMusicHandle(list, isToNext) {
+  if (interceptTogetherControl('external')) return;
   let addList = [];
   list.forEach((song) => {
     let ar = [];
@@ -2128,6 +2179,7 @@ export function loadMusicVideo(id) {
 }
 
 export function addSong(id, index, autoplay, isLocal, playbackOptions = {}) {
+  if (interceptTogetherControl('external')) return;
   const requestToken = ++playbackRequestToken;
   // 主动切歌：从头开始播放，不恢复上次进度
   loadLast = false;
@@ -2725,6 +2777,7 @@ export async function getSongUrl(
 }
 
 export function startMusic(options = {}) {
+  if (!options.roomSync && interceptTogetherControl('resume')) return;
   const currentSong = songList.value?.[currentIndex.value];
   const list = Array.isArray(songList.value) ? songList.value : [];
   if (!currentSong) {
@@ -2813,6 +2866,17 @@ export function startMusic(options = {}) {
   }
 }
 export function pauseMusic(options = {}) {
+  if (!options.roomSync && interceptTogetherControl(options.reason === 'other-audio' ? 'local-pause' : 'pause')) return;
+  if (options.roomSync) {
+    // Cancel load-time autoplay too; a fade event may never fire while loading.
+    playbackPauseToken++;
+    stopProgressSampling();
+    currentMusic.value?.pause?.();
+    playing.value = false;
+    musicVideoDOM.value?.pause?.();
+    syncExternalPlaybackState();
+    return;
+  }
   if (options?.reason !== "other-audio") {
     otherAudioPauseController.handleManualPause();
   }
@@ -2843,6 +2907,7 @@ export function pauseMusic(options = {}) {
 }
 
 export function playLast(options = {}) {
+  if (interceptTogetherControl('previous')) return;
   // FM模式下的特殊逻辑：触发自定义事件播放上一首FM歌曲
   if (listInfo.value && listInfo.value.type === "personalfm") {
     // FM模式下的特殊逻辑
@@ -2861,6 +2926,7 @@ export function playLast(options = {}) {
     addSong(previous.id, previous.index, true, undefined, options);
 }
 export function playNext(options = {}) {
+  if (interceptTogetherControl('next')) return;
   // FM模式下的特殊逻辑：触发自定义事件播放下一首FM歌曲
   if (listInfo.value && listInfo.value.type === "personalfm") {
     // FM模式下的特殊逻辑
@@ -2890,7 +2956,8 @@ const clearLycAnimation = () => {
     clearTimeout(forbidDelayTimer);
   }, 600);
 };
-export function changeProgress(toTime) {
+export function changeProgress(toTime, options = {}) {
+  if (!options.roomSync && interceptTogetherControl('seek', toTime)) return;
   if (!currentMusic.value || typeof currentMusic.value.seek !== "function")
     return;
 
@@ -2909,7 +2976,7 @@ export function changeProgress(toTime) {
     progress.value = targetTime;
     pendingPlayback.once?.("load", () => {
       if (currentMusic.value !== pendingPlayback) return;
-      changeProgress(targetTime);
+      changeProgress(targetTime, options);
     });
     return;
   }
@@ -2951,6 +3018,7 @@ export function changePlayMode() {
 }
 
 export function playAll(listType, list, listMeta = null) {
+  if (interceptTogetherControl('external')) return;
   const targetList = Array.isArray(list) ? list : [];
   if (targetList.length === 0) return;
 
@@ -3443,6 +3511,7 @@ function updateFavoritePlaylistIfViewing(targetSongId, like) {
 }
 
 export function addToNext(nextSong, autoplay) {
+  if (interceptTogetherControl('external')) return;
   // FM页面已离开但播放器状态仍是personalfm时，playNext会被FM分支拦截导致无法播放
   // 在“立即播放”场景下自动退出FM上下文，确保后续走普通切歌逻辑
   if (listInfo.value && listInfo.value.type === "personalfm" && autoplay) {
@@ -3551,6 +3620,7 @@ export function addToNextLocal(song, autoplay) {
   addToNext(localMusicHandle([song], true), autoplay);
 }
 export function savePlaylist() {
+  if (isTogetherPlayback()) return;
   const snapshot = buildPlaybackSnapshotPayload();
   lastPersistedProgressSignature = getPlaybackProgressSignature(snapshot);
   windowApi.saveLastPlaylist(JSON.stringify(snapshot));
@@ -3778,9 +3848,17 @@ windowApi.musicProcessControl((event, mode) => {
 });
 syncExternalPlaybackState();
 windowApi.changeTrayMusicPlaymode(playMode.value);
-windowApi.beforeQuit(() => {
+windowApi.beforeQuit(async () => {
   //关闭之前清除下载管理中的状态
   windowApi.downloadPause("shutdown");
+  if (isTogetherPlayback()) {
+    const { leaveTogetherRoom, resetTogetherSession } = await import('./listenTogetherSession');
+    await Promise.race([
+      leaveTogetherRoom().catch(() => {}),
+      new Promise(resolve => setTimeout(resolve, 1500)),
+    ]);
+    resetTogetherSession();
+  }
   const snapshot = buildPlaybackSnapshotPayload();
   windowApi.exitApp(JSON.stringify(snapshot));
 });

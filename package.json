@@ -19,6 +19,8 @@
     "check:comment-api": "node --experimental-vm-modules scripts/check-comment-api.mjs",
     "check:comment-panel": "node scripts/check-comment-panel.mjs",
     "check:listening-features": "node --experimental-vm-modules scripts/check-listening-features.mjs",
+    "check:listen-together": "node --experimental-vm-modules scripts/check-listen-together.mjs",
+    "check:playback-keyboard": "node scripts/check-playback-keyboard.mjs",
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
     "check:desktop-lyric-window": "node scripts/check-desktop-lyric-window.mjs",

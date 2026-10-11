@@ -8,6 +8,7 @@ import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
 import { runDailyVipAutoClaim } from './dailyVipClaim'
 import { dialogOpen, noticeOpen } from './dialog'
+import { leaveTogetherRoom, resetTogetherSession } from './listenTogetherSession'
 
 const userStore = useUserStore(pinia)
 
@@ -211,6 +212,7 @@ export async function applyLoginSession(data) {
 
 export async function logoutCurrentAccountSession() {
     const token = nextAccountSessionToken()
+    await leaveTogetherRoom().catch(() => resetTogetherSession())
 
     if (isLogin()) {
         try {
