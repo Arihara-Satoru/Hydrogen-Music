@@ -139,8 +139,10 @@ function normalizeMusicSettings(music = {}) {
   normalized.autoPlayOnStartup = normalized.autoPlayOnStartup === true;
   normalized.pauseOnOtherAudio = normalized.pauseOnOtherAudio === true;
   normalized.loudnessNormalization = normalized.loudnessNormalization === true;
+  // 保留原档位值；新增轻度为 4，旧较强（3）合并到当前较强（2）。
   normalized.dynamicCompression = normalized.dynamicCompression === true
-    ? 1 : [1, 2, 3].includes(normalized.dynamicCompression) ? normalized.dynamicCompression : 0;
+    ? 1 : normalized.dynamicCompression === 3
+      ? 2 : [1, 2, 4].includes(normalized.dynamicCompression) ? normalized.dynamicCompression : 0;
   // 兼容历史版本：读取后清理旧迁移标记字段。
   delete normalized.levelMigratedToLosslessV1;
   delete normalized.gaplessPlayback;

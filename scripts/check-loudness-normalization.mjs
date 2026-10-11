@@ -124,7 +124,7 @@ assert.equal(bufferCompressor.ratio.value, 2)
 assert.ok(nodes[bufferStart + 1].connections.includes(bufferCompressor))
 assert.ok(nodes.at(-1).connections.includes(nodes[bufferStart]))
 const bufferNodeCount = nodes.length
-for (const [level, threshold, ratio, makeup] of [[2, -22, 3, 0.43], [3, -26, 4, 0.33], [1, -18, 2, 0.6]]) {
+for (const [level, threshold, ratio, makeup] of [[2, -22, 3, 0.43], [4, -14, 1.5, 0.8], [1, -18, 2, 0.6]]) {
     bufferPlayer.setAudioProcessing(expected, level)
     assert.equal(bufferCompressor.threshold.value, threshold)
     assert.equal(bufferCompressor.ratio.value, ratio)
@@ -132,7 +132,7 @@ for (const [level, threshold, ratio, makeup] of [[2, -22, 3, 0.43], [3, -26, 4, 
     assert.equal(nodes.length, bufferNodeCount) // strength changes reuse nodes
     assert.equal(nodes.at(-1).connections.length, 1) // no duplicate output connections
 }
-assert.throws(() => gapless.namespace.configureDynamicCompression(audioContext, 4), /无效/)
+assert.throws(() => gapless.namespace.configureDynamicCompression(audioContext, 5), /无效/)
 bufferPlayer.setAudioProcessing(expected, 0)
 assert.ok(nodes[bufferStart + 1].connections.includes(nodes[bufferStart]))
 assert.equal(nodes.at(-1).connections.length, 0) // complete bypass
@@ -146,13 +146,15 @@ context.normalizeMusicLevel = value => value
 runInContext(settingsFunction, context)
 assert.equal(context.normalizeMusicSettings({ loudnessNormalization: true }).loudnessNormalization, true)
 assert.equal(context.normalizeMusicSettings({ dynamicCompression: true }).dynamicCompression, 1)
+assert.equal(context.normalizeMusicSettings({ dynamicCompression: 3 }).dynamicCompression, 2)
+assert.equal(context.normalizeMusicSettings(context.normalizeMusicSettings({ dynamicCompression: 3 })).dynamicCompression, 2)
 for (const value of [undefined, null, false, 'true', 1]) {
     assert.equal(context.normalizeMusicSettings({ loudnessNormalization: value }).loudnessNormalization, false)
 }
-for (const value of [undefined, null, false, 'true', '2', -1, 4, 1.5, Infinity, [], {}]) {
+for (const value of [undefined, null, false, 'true', '2', -1, 5, 1.5, Infinity, [], {}]) {
     assert.equal(context.normalizeMusicSettings({ dynamicCompression: value }).dynamicCompression, 0)
 }
-for (const level of [0, 1, 2, 3]) assert.equal(context.normalizeMusicSettings({ dynamicCompression: level }).dynamicCompression, level)
+for (const level of [0, 1, 2, 4]) assert.equal(context.normalizeMusicSettings({ dynamicCompression: level }).dynamicCompression, level)
 
 // Exercise the real player entry points so metadata cannot get lost in a sibling playback path.
 const playerStoreModule = await load('src/store/playerStore.js', {
@@ -298,7 +300,7 @@ active.volume(0.1)
 assert.equal(nodes[compressionStart + 1].gain.value, 0.1)
 assert.equal(streamCompressor.threshold.value, -18) // slider volume cannot change the compression threshold
 const streamNodeCount = nodes.length
-for (const [level, threshold, ratio, makeup] of [[2, -22, 3, 0.43], [3, -26, 4, 0.33]]) {
+for (const [level, threshold, ratio, makeup] of [[2, -22, 3, 0.43], [4, -14, 1.5, 0.8]]) {
     playerState.dynamicCompression = level
     processingWatcher.callback(); await settle()
     assert.equal(playerState.currentMusic, active)
@@ -313,18 +315,18 @@ playerState.dynamicCompression = 0
 processingWatcher.callback(); await settle()
 assert.equal(streamMakeup.connections.length, 0)
 assert.ok(nodes[compressionStart].connections.includes(nodes[compressionStart + 1]))
-playerState.dynamicCompression = 1
+playerState.dynamicCompression = 4
 processingWatcher.callback(); await settle()
 assert.equal(nodes[compressionStart + 3], streamCompressor) // reuse the node across toggles
 playerState.loudnessNormalization = true
 const compressedEntry = await player.namespace.preloadGaplessSong()
 player.namespace.startGaplessTarget({ id: 1, index: 0, song: playerState.songList[0] }, compressedEntry)
 await settle()
-assert.equal(playerState.currentMusic._compressionLevel, 1)
+assert.equal(playerState.currentMusic._compressionLevel, 4)
 assert.equal(playerState.currentMusic._loudnessGain.gain.value, expected)
 assert.equal(playerState.loudnessNormalizationActive, true)
 playerState.currentMusic.unload()
-playerState.dynamicCompression = 3
+playerState.dynamicCompression = 2
 player.namespace.play('https://audio.test/no-metadata.mp3', true)
 active = playerState.currentMusic
 active.emit('loaderror', 1, 'CORS rejected')
@@ -364,8 +366,8 @@ playerState.currentMusic.unload()
 
 const settingsSource = await readFile('src/views/Settings.vue', 'utf8')
 const compressionOptions = runInContext(settingsSource.match(/const dynamicCompressionOptions = (\[[\s\S]*?\]);/)[1], context)
-assert.deepEqual(Array.from(compressionOptions, option => option.label), ['关闭', '轻度（推荐）', '适中', '较强'])
-assert.deepEqual(Array.from(compressionOptions, option => option.value), [0, 1, 2, 3])
+assert.deepEqual(Array.from(compressionOptions, option => option.label), ['关闭', '轻度', '适中（推荐）', '较强'])
+assert.deepEqual(Array.from(compressionOptions, option => option.value), [0, 4, 1, 2])
 const selectorProps = { options: compressionOptions, modelValue: 0 }
 context.defineProps = () => selectorProps
 context.defineEmits = () => (_event, value) => { selectorProps.modelValue = value }
@@ -381,10 +383,12 @@ const press = key => { let prevented = false; selector.handleKeydown({ key, prev
 assert.equal(selector.current.value.label, '关闭')
 assert.equal(press('Enter'), true); assert.equal(selector.option.value, true)
 press('ArrowDown'); press('Enter')
-assert.equal(selectorProps.modelValue, 1); assert.equal(selector.current.value.label, '轻度（推荐）')
+assert.equal(selectorProps.modelValue, 4); assert.equal(selector.current.value.label, '轻度')
 assert.equal(selector.option.value, false)
+press('ArrowDown'); press('Enter')
+assert.equal(selectorProps.modelValue, 1); assert.equal(selector.current.value.label, '适中（推荐）')
 press('End'); assert.equal(selector.activeIndex.value, 3); press(' ')
-assert.equal(selectorProps.modelValue, 3)
+assert.equal(selectorProps.modelValue, 2)
 press('Home'); assert.equal(selector.activeIndex.value, 0); press('Escape')
 assert.equal(selector.option.value, false)
 press('Enter'); assert.equal(press('Tab'), false); assert.equal(selector.option.value, false)

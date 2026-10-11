@@ -162,9 +162,9 @@ const loudnessNormalization = ref(false);
 const dynamicCompression = ref(0);
 const dynamicCompressionOptions = [
   { label: "关闭", value: 0 },
-  { label: "轻度（推荐）", value: 1 },
-  { label: "适中", value: 2 },
-  { label: "较强", value: 3 },
+  { label: "轻度", value: 4 },
+  { label: "适中（推荐）", value: 1 },
+  { label: "较强", value: 2 },
 ];
 const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);

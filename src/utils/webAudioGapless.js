@@ -15,9 +15,9 @@ export function getAudioContext() {
 }
 
 const compressionPresets = {
+    4: { threshold: -14, knee: 4, ratio: 1.5, makeup: 0.8 },
     1: { threshold: -18, knee: 6, ratio: 2, makeup: 0.6 },
     2: { threshold: -22, knee: 8, ratio: 3, makeup: 0.43 },
-    3: { threshold: -26, knee: 10, ratio: 4, makeup: 0.33 },
 }
 
 export function configureDynamicCompression(context, level, compression = null) {
