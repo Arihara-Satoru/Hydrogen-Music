@@ -22,7 +22,8 @@ import { setTheme, getSavedTheme } from "@/utils/theme";
 import { getDynamicThemeColor } from "@/utils/dynamicTheme";
 import { resolveImageUrl } from "@/utils/imageUtils";
 import { confirmAccountLogout } from "@/utils/accountSession";
-import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
+import { dailyVipClaimState, retryDailyVipClaim } from "@/utils/dailyVipClaim";
+import { extractVipInfo, getCurrentVipLevel } from "@/utils/vipStatus.mjs";
 import { applyCustomFontStyle } from "@/utils/setFont";
 import { refreshListenGradeInfo } from "@/utils/listenTimeReporter";
 import {
@@ -88,11 +89,33 @@ const profileVipText = computed(() => {
   if (user.bookvipValid) parts.push(`书包会员 ${user.bookvipValid}`);
   return parts.length ? parts.join(" · ") : "普通用户";
 });
+const vipInfo = ref(null);
+const vipInfoLoading = ref(false);
+const vipInfoError = ref("");
+const vipRetrying = ref(false);
+let vipRequestSerial = 0;
+let vipRetrySerial = 0;
+const currentVipLevel = computed(() => getCurrentVipLevel(vipInfo.value));
+const vipLevelText = computed(() =>
+  vipInfoLoading.value && !vipInfo.value ? "加载中…" : currentVipLevel.value.label,
+);
+const vipClaimRunning = computed(() =>
+  dailyVipClaimState.running && dailyVipClaimState.userId === String(currentUser.value.userId || currentUser.value.userid || ""),
+);
+const vipRetryDisabled = computed(() => vipRetrying.value || vipInfoLoading.value || dailyVipClaimState.running);
+const vipRetryText = computed(() => {
+  if (vipRetrying.value) return "重试中…";
+  if (vipClaimRunning.value) {
+    if (dailyVipClaimState.status === "upgrading") return "升级中…";
+    if (dailyVipClaimState.status === "claiming") return "领取中…";
+    return "检查中…";
+  }
+  return "重试领取";
+});
 const profileDetailList = computed(() => [
   {
-    label: "个性签名",
-    value:
-      currentUser.value.description || currentUser.value.signature || "未填写",
+    label: "酷狗 ID",
+    value: currentUser.value.userId || currentUser.value.userid || "暂不可用",
   },
   { label: "听歌等级", value: listenGradeText.value },
   { label: "累计听歌", value: listenDurationText.value },
@@ -105,10 +128,9 @@ const profileDetailList = computed(() => [
   { label: "职业", value: currentUser.value.occupation || "未填写" },
   { label: "会员状态", value: profileVipText.value },
   {
-    label: "今日 VIP",
-    value: getDailyVipClaimText(
-      currentUser.value.userId || currentUser.value.userid || "",
-    ),
+    label: "当前 VIP 等级",
+    value: vipLevelText.value,
+    isVipLevel: true,
   },
   {
     label: "粉丝",
@@ -119,7 +141,6 @@ const profileDetailList = computed(() => [
   { label: "历史访客", value: currentUser.value.hvisitors ?? "未填写" },
 ]);
 
-const vipInfo = ref(null);
 const loginDevices = ref([]);
 const devicesLoading = ref(false);
 const devicesError = ref("");
@@ -278,22 +299,61 @@ const normalizeSearchAssistLimit = (value) => {
 };
 
 const loadVipInfo = async () => {
-  const requestUserId = userStore.user?.userId;
+  const requestUserId = userStore.user?.userId || userStore.user?.userid;
+  const requestSerial = ++vipRequestSerial;
   if (!requestUserId || !isLogin()) {
     vipInfo.value = null;
+    vipInfoLoading.value = false;
+    vipInfoError.value = "";
     return;
   }
 
+  vipInfoLoading.value = true;
+  vipInfoError.value = "";
   try {
     const result = await getVipInfo();
-    if (userStore.user?.userId != requestUserId) return;
-    vipInfo.value = result?.data || null;
+    if (requestSerial !== vipRequestSerial || !isLogin() || (userStore.user?.userId || userStore.user?.userid) != requestUserId) return;
+    vipInfo.value = extractVipInfo(result);
+    if (!vipInfo.value) vipInfoError.value = "会员等级暂不可用，请稍后重试";
   } catch (error) {
-    if (userStore.user?.userId != requestUserId) return;
+    if (requestSerial !== vipRequestSerial || !isLogin() || (userStore.user?.userId || userStore.user?.userid) != requestUserId) return;
     console.error("加载 VIP 信息失败:", error);
     vipInfo.value = null;
+    vipInfoError.value = "会员等级加载失败，请稍后重试";
+  } finally {
+    if (requestSerial === vipRequestSerial) vipInfoLoading.value = false;
   }
 };
+
+const retryVipClaim = async () => {
+  if (!isLogin() || vipRetryDisabled.value || currentVipLevel.value.isHighest) return;
+  const requestUserId = userStore.user?.userId || userStore.user?.userid;
+  const requestSerial = ++vipRetrySerial;
+  vipRetrying.value = true;
+  try {
+    await retryDailyVipClaim();
+  } catch (error) {
+    console.error("重试领取 VIP 失败:", error);
+    if (requestSerial === vipRetrySerial && (userStore.user?.userId || userStore.user?.userid) == requestUserId) {
+      noticeOpen("重试领取 VIP 失败，请稍后再试", 2);
+    }
+  } finally {
+    if (requestSerial === vipRetrySerial && isLogin() && (userStore.user?.userId || userStore.user?.userid) == requestUserId) {
+      await loadVipInfo();
+    }
+    if (requestSerial === vipRetrySerial) vipRetrying.value = false;
+  }
+};
+
+watch(
+  () => dailyVipClaimState.running,
+  (running, previousRunning) => {
+    if (previousRunning && !running && !vipRetrying.value
+      && dailyVipClaimState.userId === String(currentUser.value.userId || currentUser.value.userid || "")) {
+      void loadVipInfo();
+    }
+  },
+);
 
 const loadListenGradeInfo = async () => {
   const requestUserId = userStore.user?.userId;
@@ -474,11 +534,16 @@ onUnmounted(() => {
 });
 
 watch(
-  () => userStore.user?.userId ?? null,
+  () => userStore.user?.userId || userStore.user?.userid || null,
   (nextUserId, previousUserId) => {
     if (nextUserId === previousUserId) return;
+    vipRequestSerial += 1;
+    vipRetrySerial += 1;
+    vipInfo.value = null;
+    vipInfoLoading.value = false;
+    vipInfoError.value = "";
+    vipRetrying.value = false;
     if (!nextUserId) {
-      vipInfo.value = null;
       loginDevices.value = [];
       devicesError.value = "";
       deviceRequestSerial += 1;
@@ -1049,7 +1114,7 @@ const clearFmRecent = () => {
         :style="
           profileAvatarUrl
             ? {
-                backgroundImage: `linear-gradient(var(--settings-profile-overlay), var(--settings-profile-overlay)), url(${currentUser.backgroundUrl || profileAvatarUrl})`,
+                backgroundImage: `linear-gradient(105deg, color-mix(in srgb, var(--panel) 98%, transparent), var(--settings-profile-overlay)), url(${currentUser.backgroundUrl || profileAvatarUrl})`,
               }
             : {}
         "
@@ -1076,11 +1141,13 @@ const clearFmRecent = () => {
               </div>
             </div>
           </div>
-          <div class="logout" @click="userLogout()">
-            <span>退出</span>
+          <div class="profile-actions">
+            <button class="profile-action profile-edit" type="button" @click="router.push('/account')">
+              编辑资料与管理关注 / 私信
+            </button>
+            <button class="profile-action logout" type="button" @click="userLogout()">退出</button>
           </div>
         </div>
-        <button class="device-refresh" type="button" @click="router.push('/account')">编辑资料与管理关注 / 私信</button>
         <div class="profile-details">
           <div
             class="profile-item"
@@ -1088,7 +1155,20 @@ const clearFmRecent = () => {
             :key="item.label"
           >
             <span class="profile-label">{{ item.label }}</span>
-            <span class="profile-value">{{ item.value }}</span>
+            <div class="profile-value-row">
+              <span class="profile-value" :aria-live="item.isVipLevel ? 'polite' : undefined">{{ item.value }}</span>
+              <button
+                v-if="item.isVipLevel && !currentVipLevel.isHighest"
+                class="vip-retry"
+                type="button"
+                :disabled="vipRetryDisabled"
+                title="重新检查并领取当天 VIP，然后升级为畅听 VIP"
+                @click.stop="retryVipClaim"
+              >
+                {{ vipRetryText }}
+              </button>
+            </div>
+            <span v-if="item.isVipLevel && vipInfoError" class="profile-vip-status" role="status">{{ vipInfoError }}</span>
           </div>
         </div>
       </div>
@@ -1984,66 +2064,72 @@ const clearFmRecent = () => {
     }
     .settings-title {
       font-family: SourceHanSansCN-Bold;
-      color: black;
+      font-size: 32px;
+      line-height: 1.2;
+      margin: 4px 0 20px;
+      color: var(--text);
       text-align: left;
     }
     .settings-user-info {
-      padding: 20px 40px;
+      container: account-profile / inline-size;
+      padding: 24px;
       width: 100%;
-      min-height: 220px;
-      background-color: rgba(255, 255, 255, 0.42);
+      background-color: var(--panel);
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
       backdrop-filter: blur(10px);
-      border: 1px solid rgba(0, 0, 0, 0.05);
-      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
+      border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      text-align: left;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      gap: 18px;
+      gap: 20px;
       .user-top {
-        display: flex;
-        flex-direction: row;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 20px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 20px 24px;
       }
       .user {
         min-width: 0;
         display: flex;
-        flex-direction: row;
         align-items: center;
-        gap: 15px;
+        gap: 16px;
         .user-head {
-          width: 70px;
-          height: 70px;
+          flex: 0 0 64px;
+          width: 64px;
+          height: 64px;
           border-radius: 50%;
           overflow: hidden;
           img {
             width: 100%;
             height: 100%;
+            object-fit: cover;
           }
         }
         .user-info {
           min-width: 0;
+          text-align: left;
           .user-name {
-            font: 20px Source Han Sans;
-            font-weight: bold;
-            color: black;
+            font: 20px / 1.4 SourceHanSansCN-Bold, sans-serif;
+            color: var(--text);
+            overflow-wrap: anywhere;
           }
           .user-alias {
             margin-top: 4px;
-            font: 12px SourceHanSansCN-Bold;
-            color: rgba(0, 0, 0, 0.72);
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--muted-text) !important;
           }
           .user-signature {
             margin-top: 6px;
-            max-width: 520px;
-            font: 13px SourceHanSansCN-Bold;
-            color: rgba(0, 0, 0, 0.62);
-            line-height: 1.5;
-            word-break: break-word;
+            max-width: 64ch;
+            font-size: 13px;
+            line-height: 1.65;
+            color: var(--muted-text) !important;
+            overflow-wrap: anywhere;
           }
           .user-vip {
             margin-top: 8px;
@@ -2054,41 +2140,125 @@ const clearFmRecent = () => {
           }
         }
       }
-      .profile-details {
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px 18px;
-        .profile-item {
-          padding: 10px 12px;
-          min-height: 60px;
+      .profile-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .profile-action,
+      .vip-retry {
+        flex: 0 0 auto;
+        min-height: 36px;
+        padding: 0 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        border-radius: 0;
+        background: var(--panel);
+        color: var(--text);
+        font: 12px / 1 SourceHanSansCN-Bold, sans-serif;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.16s, border-color 0.16s, opacity 0.16s;
+        &:hover:not(:disabled) {
           background-color: var(--layer);
-          border: 1px solid rgba(0, 0, 0, 0.04);
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          gap: 4px;
-          .profile-label {
-            font: 12px SourceHanSansCN-Bold;
-            color: rgba(0, 0, 0, 0.55);
-          }
-          .profile-value {
-            font: 14px SourceHanSansCN-Bold;
-            color: black;
-            word-break: break-word;
-          }
+          border-color: var(--text) !important;
+        }
+        &:focus-visible {
+          outline: 2px solid var(--text) !important;
+          outline-offset: 3px;
+          opacity: 1;
+        }
+        &:active:not(:disabled) {
+          transform: translateY(1px);
+        }
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.45;
         }
       }
       .logout {
-        font: 14px SourceHanSansCN-Bold;
-        font-weight: bold;
-        color: black;
-        transition: 0.2s;
-        &:hover {
-          cursor: pointer;
+        background: transparent;
+      }
+      .vip-retry {
+        min-height: 32px;
+      }
+      .profile-details {
+        width: 100%;
+        max-width: 1120px;
+        padding-top: 12px;
+        border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+        gap: 8px;
+        .profile-item {
+          min-width: 0;
+          padding: 8px 12px;
+          min-height: 48px;
+          background-color: color-mix(in srgb, var(--panel) 88%, transparent);
+          display: grid;
+          grid-template-columns: max-content minmax(0, 1fr);
+          align-items: center;
+          gap: 8px;
+          text-align: left;
+          .profile-label {
+            font-size: 12px;
+            font-weight: 500;
+            line-height: 18px;
+            color: var(--muted-text) !important;
+            white-space: nowrap;
+          }
+          .profile-value {
+            flex: 1 1 auto;
+            min-width: 0;
+            font: 14px / 22px SourceHanSansCN-Bold, sans-serif;
+            color: var(--text);
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            overflow-wrap: anywhere;
+          }
+          .profile-value-row {
+            min-width: 0;
+            min-height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+          }
+          .vip-retry {
+            padding: 0 8px;
+          }
+          .profile-vip-status {
+            grid-column: 1 / -1;
+            font-size: 12px;
+            color: var(--muted-text) !important;
+            line-height: 1.5;
+            text-align: left;
+          }
         }
-        &:active {
-          transform: scale(0.95);
+      }
+      @container account-profile (max-width: 760px) {
+        .user-top {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .profile-actions {
+          margin-left: 80px;
+        }
+      }
+      @container account-profile (max-width: 420px) {
+        .profile-actions {
+          margin-left: 0;
+        }
+      }
+      @media (max-width: 640px) {
+        padding: 20px 16px;
+        gap: 20px;
+        .user {
+          gap: 12px;
+          .user-head {
+            flex-basis: 56px;
+            width: 56px;
+            height: 56px;
+          }
         }
       }
     }

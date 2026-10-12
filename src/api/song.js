@@ -93,15 +93,9 @@ export function checkMusic(id) {
     return Promise.resolve({ success: true, message: 'ok' });
 }
 
-/**
- * 获取音乐播放URL
- * @param {string|number} id - 音乐ID
- * @param {string} level - 播放音质等级：standard/higher/exhigh/lossless/hires/jyeffect/sky/dolby/jymaster
- * @param {object} requestParams - 额外透传给 /song/url/v1 的请求参数（如 ua、cookie）
- */
 function extractPlayableUrl(value) {
     if (!value) return ''
-    if (typeof value === 'string') return value
+    if (typeof value === 'string') return /^https?:\/\//i.test(value.trim()) ? value.trim() : ''
     if (Array.isArray(value)) {
         for (const item of value) {
             const url = extractPlayableUrl(item)
@@ -110,12 +104,10 @@ function extractPlayableUrl(value) {
         return ''
     }
     if (typeof value !== 'object') return ''
-    const direct = value.url || value.play_url || value.playurl || value.music_url || value.downurl
-    if (direct) return extractPlayableUrl(direct)
-    if (Array.isArray(value.backupdownurl) && value.backupdownurl[0]) return value.backupdownurl[0]
-    if (Array.isArray(value.tracker_url) && value.tracker_url[0]) return value.tracker_url[0]
-    // 部分响应结构将有效地址嵌套在 data 字段内，递归兜底
-    if (value.data) return extractPlayableUrl(value.data)
+    for (const key of ['url', 'play_url', 'playurl', 'playUrl', 'music_url', 'downurl', 'backupdownurl', 'tracker_url', 'backup_url', 'backupUrl', 'backupUrls', 'data', 'info']) {
+        const url = extractPlayableUrl(value[key])
+        if (url) return url
+    }
     return ''
 }
 
@@ -151,8 +143,8 @@ const STREAM_QUALITY_ALIASES = {
 }
 
 function normalizeStreamQuality(item, fallback = '') {
-    const quality = String(item?.quality || '').toLowerCase()
-    return STREAM_QUALITY_ALIASES[quality] || quality || STREAM_QUALITY_BY_LEVEL[Number(item?.level)] || fallback
+    const quality = String(item?.quality || item?.level || '').toLowerCase()
+    return STREAM_QUALITY_ALIASES[quality] || STREAM_QUALITY_BY_LEVEL[Number(quality)] || quality || fallback
 }
 
 function inferStreamQuality(body, requestedQuality, type) {
@@ -192,7 +184,13 @@ function selectStreamByQuality(body, preferredQuality) {
         }
     }).filter(Boolean)
 
-    return playable.find(item => item.level === preferredQuality) || playable[0] || null
+    const levels = ['high', 'flac', '320', '128']
+    const preferredIndex = levels.indexOf(preferredQuality)
+    for (const level of levels.slice(preferredIndex < 0 ? 0 : preferredIndex)) {
+        const stream = playable.find(item => item.level === level)
+        if (stream) return stream
+    }
+    return playable.find(item => !levels.includes(item.level)) || null
 }
 
 function isHashLike(value) {
@@ -202,41 +200,91 @@ function isHashLike(value) {
 function buildSongUrlParams(input, quality, requestParams = {}) {
     const source = input && typeof input === 'object' ? input : {}
     const primitiveValue = input && typeof input !== 'object' ? String(input) : ''
-    const hash = String(
-        source?.hash ||
-        source?.FileHash ||
-        source?.file_hash ||
-        source?.deprecated?.hash ||
-        source?.audio_info?.hash_128 ||
-        source?.audio_info?.hash_320 ||
-        (isHashLike(primitiveValue) ? primitiveValue : '')
-    ).trim()
-    const albumAudioId = source?.album_audio_id || source?.mixsongid || source?.mixsong_id || (!isHashLike(primitiveValue) ? primitiveValue : '')
+    const hash = input && typeof input === 'object' ? resolveSongHash(source) : isHashLike(primitiveValue) ? primitiveValue.trim() : ''
+    const albumAudioId = source?.album_audio_id || source?.albumAudioId || source?.mixsongid || source?.mixsong_id || source?.mixSongId || source?.MixSongID || source?.base?.album_audio_id || (!isHashLike(primitiveValue) ? primitiveValue : '')
+    const albumId = source?.album_id || source?.albumid || source?.albumId || source?.AlbumID || source?.al?.id || source?.album?.id || source?.album_info?.album_id || source?.base?.album_id
 
     const params = { ...requestParams, quality }
     if (hash) params.hash = hash
     if (albumAudioId) params.album_audio_id = albumAudioId
+    if (albumId) params.album_id = albumId
     return params
 }
 
+function normalizeMusicUrlResponse(raw, quality) {
+    const responseBody = raw?.body || raw || {}
+    const body = responseBody?.data || responseBody
+    const url = extractPlayableUrl(body)
+    const urlExtension = url.match(/\.(flac|mp3|m4a|aac|ogg|opus|wav|ape)(?:[?#]|$)/i)?.[1]
+    const type = String(body?.extname || body?.extName || body?.ext || urlExtension || 'mp3').toLowerCase()
+    return { data: [{ url: url || null, level: inferStreamQuality(body, quality, type), type, ...extractStreamMeta(body) }] }
+}
+
+function createPlaybackError(response, fallbackMessage) {
+    const body = response?.body || response || {}
+    const code = body?.error_code ?? body?.err_code ?? body?.errcode ?? body?.code
+    const message = body?.msg || body?.message || body?.errmsg || body?.error_msg || body?.error || fallbackMessage
+    const error = new Error(`${message}${code && Number(code) !== 200 ? `（错误码 ${code}）` : ''}`)
+    error.response = { data: body }
+    return error
+}
+
+function isPlaybackResponseFailure(response) {
+    const body = response?.body || response || {}
+    const errorCode = body?.error_code ?? body?.err_code ?? body?.errcode ?? 0
+    return Number(body?.status) === 0 || Number(errorCode) !== 0
+}
+
+let playbackAuthTimestamp = 0
+
+/** 获取用户播放授权。显式传递 auth，避免依赖浏览器保存跨域 Cookie。 */
+export async function getMusicPlaybackAuth() {
+    // 本地 HTTP 后端按 URL 缓存响应，授权请求必须避开上一账号的缓存。
+    playbackAuthTimestamp = Math.max(Date.now(), playbackAuthTimestamp + 1)
+    const raw = await get('/user/verify', { timestamp: playbackAuthTimestamp })
+    const body = raw?.body || raw || {}
+    const auth = body?.data?.auth
+    if (Number(body?.status) !== 1 || isPlaybackResponseFailure(raw) || typeof auth !== 'string' || !auth.trim()) {
+        throw createPlaybackError(raw, '获取用户播放授权失败')
+    }
+    return auth.trim()
+}
+
+/**
+ * 获取授权音源：后端聚合 /song/auth 与 /song/url/auth，支持 flac/high。
+ * requestParams.auth 必须来自当前账号的 /user/verify 响应。
+ */
+export async function getMusicUrlAuth(input, quality = 'flac', requestParams = {}) {
+    if (typeof requestParams.auth !== 'string' || !requestParams.auth.trim()) {
+        throw new TypeError('获取授权音源需要用户播放授权 auth')
+    }
+    const raw = await get('/song/url/auth/merge', buildSongUrlParams(input, quality, {
+        ...requestParams,
+        auth: requestParams.auth.trim(),
+    }))
+    if (isPlaybackResponseFailure(raw)) throw createPlaybackError(raw, '获取歌曲播放授权失败')
+    const result = normalizeMusicUrlResponse(raw, quality)
+    if (!result.data[0].url) throw createPlaybackError(raw, '当前音质未返回播放地址')
+    return result
+}
+
+/** 获取旧版播放地址，作为 Auth 链路不可用时的兼容兜底。 */
 export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
     const raw = await get('/song/url', buildSongUrlParams(input, quality, requestParams))
-    const body = raw?.body || raw?.data || raw || {}
-    const url = extractPlayableUrl(body)
-    const type = String(body?.extname || body?.extName || body?.ext || 'mp3').toLowerCase()
-    return { data: [{ url: url || null, level: inferStreamQuality(body, quality, type), type, ...extractStreamMeta(body) }] }
+    return normalizeMusicUrlResponse(raw, quality)
 }
 
 /**
  * 获取音乐播放URL（新接口，支持 VIP 凭证）
- * 当 /song/url 无法返回有效地址时降级使用此接口。
+ * 当 Auth 和旧版单音质接口均无法返回有效地址时使用此接口。
  * @param {object|string} input - 歌曲对象或 ID
  * @param {string} quality - 音质
  * @param {object} requestParams - 额外参数
  */
 export async function getMusicUrlNew(input, quality = 'flac', requestParams = {}) {
     const raw = await get('/song/url/new', buildSongUrlParams(input, quality, requestParams))
-    const body = raw?.body || raw?.data || raw || {}
+    const responseBody = raw?.body || raw || {}
+    const body = responseBody?.data || responseBody
     const stream = selectStreamByQuality(body, quality)
     return { data: [stream || { url: null, level: quality, type: quality === 'flac' || quality === 'high' ? 'flac' : 'mp3' }] }
 }
@@ -248,8 +296,10 @@ function resolveSongHash(input) {
             || input?.FileHash
             || input?.file_hash
             || input?.deprecated?.hash
+            || input?.audio_info?.hash
             || input?.audio_info?.hash_128
             || input?.audio_info?.hash_320
+            || input?.base?.hash
             || input?.hash_128
             || input?.hash_high
             || input?.hash_flac
@@ -268,8 +318,7 @@ export function getSongPrivilegeLite(input) {
     const hash = resolveSongHash(input)
     if (!isHashLike(hash)) return Promise.resolve(null)
 
-    const source = input && typeof input === 'object' ? input : {}
-    const albumId = source?.album_id || source?.albumid || source?.albumId || source?.al?.id || source?.album?.id
+    const albumId = buildSongUrlParams(input).album_id
     return get('/privilege/lite', {
         hash,
         ...(albumId ? { album_id: albumId } : {}),

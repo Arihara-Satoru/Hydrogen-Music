@@ -63,7 +63,7 @@ export function getVipInfo() {
       params: {
         timestamp: new Date().getTime(),
       }
-    });
+    }).then(ensureAccountFeatureResponse);
   }
 
 function withTimestamp(params = {}) {
@@ -330,4 +330,16 @@ export function claimYouthDailyVip(receiveDay) {
             receive_day: receiveDay,
         }),
     })
+}
+
+/**
+ * 将已领取的概念版一天 VIP 升级为畅听 VIP。
+ * 该接口需要先成功领取当天 VIP；自动流程每天只尝试一次，用户可手动重试。
+ */
+export function upgradeYouthDailyVip() {
+    return request({
+        url: '/youth/day/vip/upgrade',
+        method: 'post',
+        params: withTimestamp(),
+    }).then(ensureAccountFeatureResponse)
 }

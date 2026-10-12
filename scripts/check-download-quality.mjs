@@ -174,6 +174,8 @@ assert.equal(stream.type, 'mp3')
 let requestedLevels = []
 let resolverMode = 'missing-until-128'
 const resolverSongModule = syntheticModule('mock:resolver-song', {
+  getMusicPlaybackAuth: async () => { throw new Error('Auth unavailable in legacy fallback fixture') },
+  getMusicUrlAuth: async () => { throw new Error('Unexpected Auth URL request') },
   getMusicUrl: async (_song, level) => {
     requestedLevels.push(level)
     if (resolverMode === 'downgraded-flac') {

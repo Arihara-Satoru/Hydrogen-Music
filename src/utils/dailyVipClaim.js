@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { claimYouthDailyVip, getServerNow, getYouthVipMonthRecord } from '../api/user'
+import { claimYouthDailyVip, getServerNow, getYouthVipMonthRecord, upgradeYouthDailyVip } from '../api/user'
 import { getCookie, isLogin } from './authority'
 import { noticeOpen } from './dialog'
 
@@ -24,6 +24,10 @@ let rolloverTimer = null
 
 function getCurrentUserId() {
     return String(getCookie('userid') || '').trim()
+}
+
+function isCurrentAccount(userId, token) {
+    return isLogin() && getCurrentUserId() === userId && getCookie('token') === token
 }
 
 function getStorageKey(userId) {
@@ -215,6 +219,7 @@ function hasClaimDayInPayload(payload, claimDay) {
 }
 
 function isClaimedText(text) {
+    if (/未领取|没有领取|未领过|未曾领取/i.test(text)) return false
     return /已领取|已经领取|今日已领|今天已领|重复领取|领取过|already\s*claimed|claimed\s*today/i.test(text)
 }
 
@@ -227,15 +232,27 @@ function isSuccessResponse(result) {
     const status = pickNumber(payload?.status, payload?.data?.status, result?.status, result?.data?.status)
     const code = pickNumber(payload?.code, payload?.data?.code, result?.code, result?.data?.code)
     const success = payload?.success ?? payload?.data?.success ?? result?.success ?? result?.data?.success
+    const errorCode = pickNumber(payload?.error_code, payload?.data?.error_code, result?.error_code, result?.data?.error_code)
     const text = normalizeText(
         payload?.msg || payload?.message || payload?.desc || payload?.data?.msg || payload?.data?.message
         || result?.msg || result?.message || result?.desc || result?.data?.msg || result?.data?.message
     )
 
+    if (Number.isFinite(errorCode) && errorCode !== 0) return false
     if (success === true) return true
     if (status === 1 || status === 200) return true
     if (code === 0 || code === 200) return true
     return /成功|领取成功|操作成功/i.test(text) && !/失败|error|错误/i.test(text)
+}
+
+function hasVipUpgradeAttempt(record) {
+    return record?.vipUpgradeAttempted === true || record?.vipUpgradeStatus === 'success'
+}
+
+function isClaimRecordComplete(record, claimDay) {
+    return record?.claimDay === claimDay
+        && ['success', 'already'].includes(record?.status)
+        && hasVipUpgradeAttempt(record)
 }
 
 function storeClaimResult(userId, claimDay, status, message, extra = {}) {
@@ -246,12 +263,74 @@ function storeClaimResult(userId, claimDay, status, message, extra = {}) {
         message: message || '',
         source: extra.source || '',
         serverTime: extra.serverTime || 0,
+        vipUpgradeAttempted: extra.vipUpgradeAttempted === true,
+        vipUpgradeStatus: extra.vipUpgradeStatus || 'not-attempted',
+        vipUpgradeMessage: extra.vipUpgradeMessage || '',
+        vipUpgradeAttemptedAt: extra.vipUpgradeAttemptedAt || 0,
         updatedAt: Date.now(),
     }
 
     writeStoredRecord(userId, record)
     updateState(record)
     return record
+}
+
+function storeVipUpgradeResult(record, status, message) {
+    const nextRecord = {
+        ...record,
+        vipUpgradeAttempted: true,
+        vipUpgradeStatus: status,
+        vipUpgradeMessage: message || '',
+        vipUpgradeAttemptedAt: Date.now(),
+        updatedAt: Date.now(),
+    }
+    writeStoredRecord(record.userId, nextRecord)
+    updateState(nextRecord)
+    return nextRecord
+}
+
+async function upgradeClaimedVip(record, source, serverTime, token) {
+    const userId = record?.userId || getCurrentUserId()
+    const claimDay = record?.claimDay || ''
+    if (!userId || !claimDay || hasVipUpgradeAttempt(record)) return record
+    if (!isCurrentAccount(userId, token)) return null
+
+    updateState({
+        running: true,
+        status: 'upgrading',
+        userId,
+        claimDay,
+        message: '正在升级概念版畅听 VIP',
+        source,
+        serverTime,
+    })
+
+    try {
+        const result = await upgradeYouthDailyVip()
+        const payload = extractResponsePayload(result)
+        const message = normalizeText(
+            payload?.msg || payload?.message || payload?.desc || payload?.data?.msg || payload?.data?.message
+            || result?.msg || result?.message || result?.desc || result?.data?.msg || result?.data?.message
+        )
+
+        if (!isCurrentAccount(userId, token)) return null
+
+        if (isSuccessResponse(result)) {
+            const upgradedRecord = storeVipUpgradeResult({ ...record, userId }, 'success', message || '概念版畅听 VIP 升级成功')
+            noticeOpen('概念版畅听 VIP 升级成功', 2)
+            return upgradedRecord
+        }
+
+        const failedRecord = storeVipUpgradeResult({ ...record, userId }, 'failed', message || '概念版畅听 VIP 升级失败')
+        noticeOpen(`概念版 VIP 升级失败：${failedRecord.vipUpgradeMessage}`, 2)
+        return failedRecord
+    } catch (error) {
+        const failureMessage = normalizeText(error?.response?.data?.msg || error?.response?.data?.message || error?.message) || '未知错误'
+        if (isLoginErrorText(failureMessage) || !isCurrentAccount(userId, token)) return null
+        const failedRecord = storeVipUpgradeResult({ ...record, userId }, 'failed', failureMessage)
+        noticeOpen(`概念版 VIP 升级失败：${failureMessage}`, 2)
+        return failedRecord
+    }
 }
 
 async function resolveClaimDay() {
@@ -284,10 +363,12 @@ async function precheckClaimed(claimDay) {
  * - 只对登录用户生效
  * - 同一用户当天领取成功后不再重复请求
  * - 领取失败保留记录，下次登录或启动时可重试
+ * - 手动重试可绕过当天尝试记录，重新检查领取并升级
  * @param {string} source - 触发来源，便于调试和状态展示
+ * @param {object} options
  * @returns {Promise<object|null>}
  */
-export function runDailyVipAutoClaim(source = 'startup') {
+export function runDailyVipAutoClaim(source = 'startup', { force = false } = {}) {
     if (claimPromise) return claimPromise
 
     claimPromise = (async () => {
@@ -304,11 +385,21 @@ export function runDailyVipAutoClaim(source = 'startup') {
             return null
         }
 
+        const token = getCookie('token')
+        updateState({
+            running: true,
+            status: 'checking',
+            userId,
+            claimDay: '',
+            message: '正在检查今日 VIP 领取状态',
+            source,
+        })
         const { claimDay, serverTime } = await resolveClaimDay()
+        if (!isCurrentAccount(userId, token)) return null
         scheduleNextDailyVipClaim(serverTime)
         const storedRecord = readStoredRecord(userId)
 
-        if (storedRecord?.claimDay === claimDay && ['success', 'already'].includes(storedRecord?.status)) {
+        if (!force && isClaimRecordComplete(storedRecord, claimDay)) {
             updateState({
                 running: false,
                 ...storedRecord,
@@ -317,11 +408,17 @@ export function runDailyVipAutoClaim(source = 'startup') {
                 source,
             })
             return {
+                ...storedRecord,
                 status: storedRecord.status,
                 claimDay,
                 message: storedRecord.message || '',
                 skipped: true,
             }
+        }
+
+        // 兼容旧版本已经领取成功但尚未调用 upgrade 的记录；只补一次升级请求。
+        if (!force && storedRecord?.claimDay === claimDay && ['success', 'already'].includes(storedRecord?.status)) {
+            return upgradeClaimedVip({ ...storedRecord, userId }, source, serverTime, token)
         }
 
         updateState({
@@ -336,7 +433,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
 
         try {
             const alreadyClaimed = await precheckClaimed(claimDay)
-            if (!isLogin() || getCurrentUserId() !== userId) {
+            if (!isCurrentAccount(userId, token)) {
                 updateState({
                     running: false,
                     status: 'idle',
@@ -353,8 +450,9 @@ export function runDailyVipAutoClaim(source = 'startup') {
                     source,
                     serverTime,
                 })
+                const upgradedRecord = await upgradeClaimedVip(record, source, serverTime, token)
                 return {
-                    ...record,
+                    ...(upgradedRecord || record),
                     alreadyClaimed: true,
                 }
             }
@@ -372,7 +470,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
                 || result?.msg || result?.message || result?.desc || result?.data?.msg || result?.data?.message
             )
 
-            if (isLoginErrorText(message) || !isLogin() || getCurrentUserId() !== userId) {
+            if (isLoginErrorText(message) || !isCurrentAccount(userId, token)) {
                 updateState({
                     running: false,
                     status: 'idle',
@@ -390,7 +488,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
                     serverTime,
                 })
                 noticeOpen('今日 VIP 领取成功', 2)
-                return record
+                return upgradeClaimedVip(record, source, serverTime, token)
             }
 
             if (isClaimedText(message)) {
@@ -399,7 +497,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
                     serverTime,
                 })
                 noticeOpen('今日 VIP 已领取', 2)
-                return record
+                return upgradeClaimedVip(record, source, serverTime, token)
             }
 
             const failureMessage = message || '今日 VIP 领取失败'
@@ -411,7 +509,7 @@ export function runDailyVipAutoClaim(source = 'startup') {
             return record
         } catch (error) {
             const failureMessage = normalizeText(error?.response?.data?.msg || error?.response?.data?.message || error?.message) || '未知错误'
-            if (isLoginErrorText(failureMessage) || !isLogin()) {
+            if (isLoginErrorText(failureMessage) || !isCurrentAccount(userId, token)) {
                 updateState({
                     running: false,
                     status: 'idle',
@@ -422,23 +520,28 @@ export function runDailyVipAutoClaim(source = 'startup') {
                 })
                 return null
             }
+            if (isClaimedText(failureMessage)) {
+                const record = storeClaimResult(userId, claimDay, 'already', failureMessage, { source, serverTime })
+                return upgradeClaimedVip(record, source, serverTime, token)
+            }
             const record = storeClaimResult(userId, claimDay, 'failed', failureMessage, {
                 source,
                 serverTime,
             })
             noticeOpen(`今日 VIP 领取失败：${failureMessage}`, 2)
             return record
-        } finally {
-            updateState({
-                running: false,
-                source,
-            })
         }
     })().finally(() => {
         claimPromise = null
+        updateState({ running: false, source })
     })
 
     return claimPromise
+}
+
+/** 用户主动重试领取和升级；并发点击仍复用正在执行的任务。 */
+export function retryDailyVipClaim() {
+    return runDailyVipAutoClaim('manual-retry', { force: true })
 }
 
 /**
@@ -454,6 +557,9 @@ export function getDailyVipClaimText(userId = getCurrentUserId()) {
         if (dailyVipClaimState.running || dailyVipClaimState.status === 'checking' || dailyVipClaimState.status === 'claiming') {
             return '自动检查中'
         }
+        if (dailyVipClaimState.vipUpgradeStatus === 'failed') {
+            return 'VIP 升级失败'
+        }
         if (dailyVipClaimState.status === 'success' || dailyVipClaimState.status === 'already') {
             return '今日已领取'
         }
@@ -466,6 +572,7 @@ export function getDailyVipClaimText(userId = getCurrentUserId()) {
     if (!storedRecord) return '未领取'
 
     if (storedRecord.status === 'success' || storedRecord.status === 'already') {
+        if (storedRecord.vipUpgradeStatus === 'failed') return 'VIP 升级失败'
         return '今日已领取'
     }
 
