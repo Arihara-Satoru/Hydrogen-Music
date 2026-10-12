@@ -356,6 +356,16 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   const settingsStore = new Store({ name: "settings" });
   const lastPlaylistStore = new Store({ name: "lastPlaylist" });
   const lastPlaybackProgressStore = new Store({ name: "lastPlaybackProgress" });
+  const updateController = require("./appUpdater").getAppUpdater(win, app);
+  ipcMain.removeHandler("get-app-update-state");
+  ipcMain.handle("get-app-update-state", () => updateController.getState());
+  ipcMain.removeHandler("save-playback-for-update");
+  ipcMain.handle("save-playback-for-update", (event, requestId, playlist) => {
+    if (event.sender !== win.webContents || !updateController.isSaveRequest(requestId)) return false;
+    if (!saveStoredPlaylistPayload(playlist)) return false;
+    updateController.playbackSaved(requestId);
+    return true;
+  });
   const musicVideoStore = new Store({ name: "musicVideo" });
   const localMusicStore = new Store({ name: "localMusic" });
   const otherAudioMonitor = replaceOtherAudioMonitor({
@@ -1595,9 +1605,10 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
 
   // 处理应用更新相关的 IPC 事件
   ipcMain.on("check-for-update", async () => {
-    if (manualUpdateCheckRunning) return;
+    if (manualUpdateCheckRunning || updateController.busy() || updateController.getState().status === 'ready') return;
     manualUpdateCheckRunning = true;
     setManualUpdateCheckInProgress(true);
+    updateController.checking();
 
     let settings;
     try {
@@ -1606,6 +1617,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       manualUpdateCheckRunning = false;
       setManualUpdateCheckInProgress(false);
       win.webContents.send("update-error", error?.message || "读取更新设置失败");
+      updateController.fail(error);
       return;
     }
     // 设置页关闭更新后，统一拦截所有手动检查入口，避免出现“开关关闭但仍然请求更新”的状态。
@@ -1613,6 +1625,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       manualUpdateCheckRunning = false;
       setManualUpdateCheckInProgress(false);
       win.webContents.send("update-error", "应用更新已关闭，请先在设置中开启");
+      updateController.fail(new Error("应用更新已关闭，请先在设置中开启"));
       return;
     }
 
@@ -1655,13 +1668,16 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
             pageUrl,
           );
           win.webContents.send("manual-update-available", latest, pageUrl);
+          updateController.available({ version: latest });
         } else {
           console.log("手动检查更新完成（macOS），当前已是最新版本");
           win.webContents.send("update-not-available");
+          updateController.latest();
         }
       } catch (error) {
         console.error("手动检查更新失败（macOS）:", error);
         win.webContents.send("update-error", error.message || "检查更新失败");
+        updateController.fail(error);
       } finally {
         manualUpdateCheckRunning = false;
         setManualUpdateCheckInProgress(false);
@@ -1704,30 +1720,30 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     autoUpdater.once("update-not-available", handleUpdateNotAvailable);
     autoUpdater.once("error", handleUpdateError);
     try {
-      autoUpdater.checkForUpdates().catch(handleUpdateError);
+      const result = await autoUpdater.checkForUpdates();
+      if (!result) {
+        const error = new Error("开发环境无法检查安装包更新，请使用打包后的应用");
+        updateController.fail(error);
+        handleUpdateError(error);
+      }
     } catch (error) {
+      updateController.fail(error);
       handleUpdateError(error);
     }
   });
 
-  ipcMain.on("download-update", () => {
-    const { autoUpdater } = require("electron-updater");
-    console.log("开始下载更新...");
-    autoUpdater.downloadUpdate().catch((error) => {
-      console.error("下载更新失败:", error);
-      win.webContents.send("update-error", error.message);
-    });
+  ipcMain.on("download-update", (event) => {
+    if (event.sender !== win.webContents) return;
+    void updateController.download();
   });
 
-  ipcMain.on("install-update", () => {
-    const { autoUpdater } = require("electron-updater");
-    console.log("开始安装更新并重启应用...");
-    autoUpdater.quitAndInstall();
+  ipcMain.on("install-update", (event) => {
+    if (event.sender !== win.webContents) return;
+    void updateController.install();
   });
 
-  ipcMain.on("cancel-update", () => {
-    console.log("用户取消了更新");
-    // 可以在这里添加取消更新的逻辑，例如停止下载等
-    win.setProgressBar(-1); // 隐藏进度条
+  ipcMain.on("cancel-update", (event) => {
+    if (event.sender !== win.webContents) return;
+    updateController.cancel();
   });
 };

@@ -3868,7 +3868,7 @@ windowApi.musicProcessControl((event, mode) => {
 });
 syncExternalPlaybackState();
 windowApi.changeTrayMusicPlaymode(playMode.value);
-windowApi.beforeQuit(async () => {
+windowApi.beforeQuit(async (_event, options) => {
   //关闭之前清除下载管理中的状态
   windowApi.downloadPause("shutdown");
   if (isTogetherPlayback()) {
@@ -3880,6 +3880,10 @@ windowApi.beforeQuit(async () => {
     resetTogetherSession();
   }
   const snapshot = buildPlaybackSnapshotPayload();
+  if (options?.updateRequestId) {
+    await windowApi.savePlaybackForUpdate(options.updateRequestId, JSON.stringify(snapshot));
+    return;
+  }
   windowApi.exitApp(JSON.stringify(snapshot));
 });
 

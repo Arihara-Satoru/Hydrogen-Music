@@ -2,13 +2,13 @@
   import { ref } from 'vue'
   import { useOtherStore } from '../store/otherStore';
   import UpdateReleaseNotes from './UpdateReleaseNotes.vue';
+  import { useAppUpdate } from '../composables/useAppUpdate';
   const otherStore = useOtherStore()
   const show = ref(true)
   const showReleaseNotes = ref(false)
-  const toUpdate = () => {
-    windowApi.toRegister("https://github.com/Arihara-Satoru/Hydrogen-Music/releases")
-  }
+  const { state, busy, start: toUpdate, label, cancel, openRelease } = useAppUpdate()
   const close = () => {
+    if (busy.value) return
     otherStore.ignoredUpdateVersion = otherStore.updateInfo?.version || ''
     show.value = false
     setTimeout(() => {
@@ -46,10 +46,18 @@
                         <div class="version">{{ otherStore.updateInfo?.version }}</div>
                     </div>
                     <div class="update-option">
-                        <button type="button" class="to-update" @click="toUpdate()">前往GitHub更新</button>
+                        <button type="button" class="to-update" :disabled="busy" @click="toUpdate()">{{ label }}</button>
+                        <button v-if="state.status === 'downloading'" type="button" class="close" @click="cancel">取消下载</button>
+                        <button v-if="state.status === 'error' && state.canDownload" type="button" class="close" @click="openRelease">前往 GitHub 下载</button>
                         <button type="button" class="view-changes" @click="showReleaseNotes = true">查看新增内容</button>
-                        <button type="button" class="close" title="忽略本次更新，有新版本时再提醒" @click="close()">不要了，走了</button>
+                        <button type="button" class="close" :disabled="busy" title="忽略本次更新，有新版本时再提醒" @click="close()">不要了，走了</button>
                         <svg t="1676132470655" class="close-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2020" width="200" height="200"><path d="M745.610572 75.641771l-496.221642 0c-28.741601 0-51.259454 25.084305-51.259454 57.107649l0 789.362029 74.170257 0 0-772.299421 445.333648 0-331.506183 29.153994 0 766.881015 336.575642-27.442002 0 3.706415 74.170257 0L796.873096 132.74942C796.875143 100.725052 774.35729 75.641771 745.610572 75.641771zM428.767344 533.386076c-11.995195 0-21.719674-9.724479-21.719674-21.719674 0-11.995195 9.724479-21.719674 21.719674-21.719674 11.995195 0 21.719674 9.724479 21.719674 21.719674C450.487018 523.661597 440.763562 533.386076 428.767344 533.386076z" fill="#ffffff" p-id="2021"></path></svg>
+                    </div>
+                    <div class="update-status" role="status" aria-live="polite">
+                        <template v-if="state.status === 'error'">更新失败：{{ state.error }}</template>
+                        <template v-else-if="state.status === 'installing'">正在保存播放状态，随后安装并重新打开应用…</template>
+                        <template v-else-if="state.canAutoInstall">下载完成后将自动安装并重启应用</template>
+                        <progress v-if="state.status === 'downloading'" :value="state.progress" max="100" :aria-label="`更新下载进度 ${state.progress}%`"></progress>
                     </div>
                 </div>
             </div>
@@ -248,6 +256,8 @@
                     }
                 }
                 .update-option{
+                    flex-wrap: wrap;
+                    gap: 8px 0;
                     margin-top: 2.8vh;
                     display: flex;
                     flex-direction: row;
@@ -261,13 +271,14 @@
                         100%{transform: translateY(0);opacity: 1;}
                     }
                     .to-update, .view-changes, .close{
+                        &:disabled { opacity: 0.5; cursor: default; }
                         padding: 0.8vh;
                         font: 2vh SourceHanSansCN-Bold;
                         color: rgba(255, 255, 255, 0.95) !important;
                         border: 1px solid white !important;
                         border-radius: 0;
                         background: transparent !important;
-                        &:hover{
+                        &:hover:not(:disabled){
                             background-color: rgba(255, 255, 255, 0.95) !important;
                             color: black !important;
                             cursor: pointer;
@@ -281,6 +292,16 @@
                         width: 3.6vh;
                         height: 3.6vh;
                     }
+                }
+                .update-status {
+                    margin-top: 12px;
+                    max-width: 52vw;
+                    color: rgba(255, 255, 255, 0.8);
+                    font-size: 13px;
+                    overflow-wrap: anywhere;
+                    max-height: 10vh;
+                    overflow-y: auto;
+                    progress { display: block; width: 100%; margin-top: 8px; accent-color: white; }
                 }
             }
         }

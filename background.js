@@ -543,8 +543,7 @@ const createWindow = (winstate = createMainWindowState()) => {
       }
       // 配置自动更新器
       const { autoUpdater } = require("electron-updater");
-      autoUpdater.autoDownload = false;
-      autoUpdater.autoInstallOnAppQuit = false;
+      const updateController = require("./src/electron/appUpdater").getAppUpdater(win, app);
 
       // 监听更新可用事件
       autoUpdater.on("update-available", (info) => {
@@ -572,33 +571,6 @@ const createWindow = (winstate = createMainWindowState()) => {
         win.webContents.send("update-not-available", info.version);
       });
 
-      // 监听更新下载进度
-      autoUpdater.on("download-progress", (progressObj) => {
-        const percent = Math.round(progressObj.percent);
-        console.log(`更新下载进度: ${percent}%`);
-        win.webContents.send("update-download-progress", percent);
-        win.setProgressBar(percent / 100);
-      });
-
-      // 监听更新下载完成
-      autoUpdater.on("update-downloaded", (info) => {
-        console.log("更新下载完成:", info.version);
-        win.setProgressBar(-1); // 隐藏进度条
-        win.webContents.send("update-downloaded", info.version);
-      });
-
-      // 监听更新错误
-      autoUpdater.on("error", (error) => {
-        console.error("更新错误:", error);
-        win.setProgressBar(-1); // 隐藏进度条
-        // 手动检查阶段的错误由手动流程通知，这里避免重复
-        if (manualUpdateCheckInProgress) {
-          manualUpdateCheckInProgress = false;
-        } else {
-          win.webContents.send("update-error", error.message);
-        }
-      });
-
       // 自动检查更新（非 macOS）；当用户显式关闭更新时不再启动检查。
       getElectronStore()
         .then((Store) => {
@@ -610,11 +582,15 @@ const createWindow = (winstate = createMainWindowState()) => {
             console.log("已关闭应用更新，跳过启动时自动检查");
             return;
           }
-          autoUpdater.checkForUpdatesAndNotify();
+          if (!updateController.busy()) {
+            autoUpdater.checkForUpdates().catch(updateController.fail);
+          }
         })
         .catch((error) => {
           console.error("读取更新设置失败，继续尝试自动检查更新:", error);
-          autoUpdater.checkForUpdatesAndNotify();
+          if (!updateController.busy()) {
+            autoUpdater.checkForUpdates().catch(updateController.fail);
+          }
         });
     }
   };

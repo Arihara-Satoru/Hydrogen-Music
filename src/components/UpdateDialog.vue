@@ -15,7 +15,8 @@
                     
                     <!-- 发现新版本 -->
                     <div v-else-if="updateStatus === 'available'" class="update-content">
-                        <span class="content-text">发现新版本 v{{ newVersion }}</span>
+                        <span class="content-text">发现新版本 v{{ state.version || newVersion }}</span>
+                        <span v-if="state.canAutoInstall" class="content-text">下载完成后将自动安装并重启应用</span>
                     </div>
                     
                     <!-- 下载中 -->
@@ -27,6 +28,10 @@
                     </div>
                     
                     <!-- 准备安装 -->
+                    <div v-else-if="updateStatus === 'cancelling' || updateStatus === 'installing'" class="update-content" role="status">
+                        <span class="content-text">{{ updateStatus === 'cancelling' ? '正在取消下载…' : '正在保存播放状态，随后安装并重启…' }}</span>
+                        <div class="spinner"></div>
+                    </div>
                     <div v-else-if="updateStatus === 'ready'" class="update-content">
                         <span class="content-text">更新已下载完成，重启应用以应用更新</span>
                     </div>
@@ -46,7 +51,7 @@
                     <template v-if="updateStatus === 'available'">
                         <div class="option-cancel" @click="closeDialog">稍后提醒</div>
                         <div class="option-confirm" @click="startDownload" :class="{ disabled: isDownloading }">
-                            {{ isDownloading ? '下载中...' : (manualDownloadUrl ? '前往下载' : '立即更新') }}
+                            {{ label }}
                         </div>
                     </template>
                     
@@ -65,7 +70,10 @@
                     <template v-else-if="updateStatus === 'error'">
                         <div class="option-cancel" @click="closeDialog">取消</div>
                         <div class="option-confirm" @click="retryUpdate">重试</div>
+                        <div class="option-confirm" @click="openRelease">前往下载</div>
                     </template>
+
+                    <template v-else-if="updateStatus === 'cancelling' || updateStatus === 'installing'"></template>
                     
                     <!-- 其他状态的单个确定按钮 -->
                     <template v-else>
@@ -82,9 +90,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useAppUpdate } from '../composables/useAppUpdate'
 
-const props = defineProps({
+defineProps({
     visible: {
         type: Boolean,
         default: false
@@ -95,16 +104,14 @@ const props = defineProps({
     }
 })
 
-const emit = defineEmits(['close', 'download', 'install', 'cancel', 'retry'])
+const emit = defineEmits(['close'])
 
-const updateStatus = ref('checking') // checking, available, downloading, ready, latest, error
-const downloadProgress = ref(0)
-const isDownloading = ref(false)
-// 若为 mac 手动更新流程，这里存 GitHub Release 页链接
-const manualDownloadUrl = ref('')
-const errorMessage = ref('')
+const { state, busy, start, label, cancel, openRelease } = useAppUpdate()
+const updateStatus = computed(() => state.value.status === 'idle' ? 'checking' : state.value.status)
+const downloadProgress = computed(() => state.value.progress)
+const isDownloading = computed(() => state.value.status === 'downloading')
+const errorMessage = computed(() => state.value.error)
 const isActive = ref(false)
-const updateListenerDisposers = []
 
 const title = computed(() => {
     switch (updateStatus.value) {
@@ -114,6 +121,8 @@ const title = computed(() => {
         case 'ready': return '准备安装'
         case 'latest': return '当前已是最新'
         case 'error': return '更新失败'
+        case 'cancelling': return '取消下载'
+        case 'installing': return '安装更新'
         default: return '应用更新'
     }
 })
@@ -122,80 +131,26 @@ const onAfterEnter = () => isActive.value = true
 const onAfterLeave = () => isActive.value = false
 
 const closeDialog = () => {
-    if (updateStatus.value === 'downloading') return
+    if (busy.value) return
     emit('close')
 }
 
 const startDownload = () => {
-    // mac 手动更新：跳转到下载页
-    if (manualDownloadUrl.value) {
-        try { windowApi?.toRegister?.(manualDownloadUrl.value) } catch (_) {}
-        emit('close')
-        return
-    }
-    updateStatus.value = 'downloading'
-    isDownloading.value = true
-    emit('download')
+    start()
 }
 
 const cancelDownload = () => {
-    updateStatus.value = 'available'
-    isDownloading.value = false
-    downloadProgress.value = 0
-    emit('cancel')
+    cancel()
 }
 
 const installUpdate = () => {
-    emit('install')
+    start()
 }
 
 const retryUpdate = () => {
-    updateStatus.value = 'checking'
-    errorMessage.value = ''
-    emit('retry')
+    if (state.value.version && state.value.canDownload) start()
+    else windowApi.checkForUpdate()
 }
-
-// 监听更新事件
-const setupUpdateListeners = () => {
-    if (typeof windowApi !== 'undefined') {
-        // 手动更新检查结果（用于设置页面的手动检查）
-        updateListenerDisposers.push(windowApi.manualUpdateAvailable((version, url) => {
-            updateStatus.value = 'available'
-            if (url) manualDownloadUrl.value = url
-        }))
-        
-        // 更新不可用
-        updateListenerDisposers.push(windowApi.updateNotAvailable(() => {
-            updateStatus.value = 'latest'
-        }))
-        
-        // 下载进度
-        updateListenerDisposers.push(windowApi.updateDownloadProgress((progress) => {
-            downloadProgress.value = progress
-        }))
-        
-        // 下载完成
-        updateListenerDisposers.push(windowApi.updateDownloaded(() => {
-            updateStatus.value = 'ready'
-            isDownloading.value = false
-        }))
-        
-        // 更新错误
-        updateListenerDisposers.push(windowApi.updateError((error) => {
-            updateStatus.value = 'error'
-            errorMessage.value = error
-            isDownloading.value = false
-        }))
-    }
-}
-
-onMounted(() => {
-    setupUpdateListeners()
-})
-
-onUnmounted(() => {
-    updateListenerDisposers.forEach(dispose => dispose?.())
-})
 </script>
 
 <style scoped lang="scss">
@@ -263,6 +218,9 @@ onUnmounted(() => {
                     color: rgba(255, 255, 255, 0.9);
                     text-align: center;
                     line-height: 1.4;
+                    overflow-wrap: anywhere;
+                    max-height: 90px;
+                    overflow-y: auto;
                 }
             }
         }

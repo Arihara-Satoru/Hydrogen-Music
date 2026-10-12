@@ -952,23 +952,6 @@ const checkForUpdates = () => {
   windowApi.checkForUpdate();
 };
 
-// 更新对话框事件处理
-const handleUpdateDownload = () => {
-  windowApi.downloadUpdate();
-};
-
-const handleUpdateInstall = () => {
-  windowApi.installUpdate();
-};
-
-const handleUpdateCancel = () => {
-  windowApi.cancelUpdate();
-};
-
-const handleUpdateRetry = () => {
-  windowApi.checkForUpdate();
-};
-
 const closeUpdateDialog = () => {
   showUpdateDialog.value = false;
 };
@@ -1985,10 +1968,6 @@ const clearFmRecent = () => {
       :visible="showUpdateDialog"
       :new-version="newVersion"
       @close="closeUpdateDialog"
-      @download="handleUpdateDownload"
-      @install="handleUpdateInstall"
-      @cancel="handleUpdateCancel"
-      @retry="handleUpdateRetry"
     />
   </div>
 </template>

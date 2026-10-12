@@ -330,6 +330,14 @@ contextBridge.exposeInMainWorld("windowApi", {
     ipcRenderer.invoke("get-local-music-lyric", filePath, options),
   copyTxt,
   checkUpdate,
+  getAppUpdateState: () => ipcRenderer.invoke("get-app-update-state"),
+  onAppUpdateState: (callback) => {
+    const listener = (_event, state) => callback?.(state);
+    ipcRenderer.on("app-update-state", listener);
+    return () => ipcRenderer.removeListener("app-update-state", listener);
+  },
+  savePlaybackForUpdate: (requestId, playlist) =>
+    ipcRenderer.invoke("save-playback-for-update", requestId, playlist),
   manualUpdateAvailable,
   updateNotAvailable,
   updateDownloadProgress,

@@ -99,6 +99,9 @@
 
     // ── 更新 ──
     checkUpdate: checkUpdatePreview,
+    getAppUpdateState: noopResolve({ status: 'idle', canAutoInstall: false, canDownload: false, revision: 0 }),
+    onAppUpdateState: noop,
+    savePlaybackForUpdate: noopResolve(false),
     manualUpdateAvailable: noop,
     updateNotAvailable: noop,
     updateDownloadProgress: noop,
