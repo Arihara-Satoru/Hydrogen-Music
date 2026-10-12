@@ -284,6 +284,8 @@ contextBridge.exposeInMainWorld("windowApi", {
     ipcRenderer.invoke("get-image-base64", filePath),
   getCloudMusicMetadata: (options) =>
     ipcRenderer.invoke("cloud-music:metadata", options),
+  getRemoteAudioMetadata: (options) =>
+    ipcRenderer.invoke("remote-audio:metadata", options),
   getCoverPalette: (imageUrl) => ipcRenderer.invoke("cover-palette", imageUrl),
   toFileUrl,
   playOrPauseMusic,

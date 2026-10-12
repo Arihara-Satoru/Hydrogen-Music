@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createContext, SourceTextModule, SyntheticModule } from 'node:vm'
+import { reactive } from 'vue'
 
-const context = createContext({ console, setTimeout: () => 0 })
+const context = createContext({ console, reactive, setTimeout: () => 0 })
 
 function syntheticModule(identifier, exports) {
   return new SyntheticModule(Object.keys(exports), function setExports() {
@@ -27,6 +28,11 @@ assert.equal(formatAudioInfo({ type: 'mp3', bitsPerSample: 16 }).bitDepth, '不�
 assert.equal(formatAudioInfo({ container: 'MPEG' }).bitDepth, '不适用')
 assert.equal(formatAudioInfo({ type: 'm4a', lossless: false }).bitDepth, '不适用')
 assert.equal(formatAudioInfo({ type: 'm4a', lossless: true, bitsPerSample: 24 }).bitDepth, '24 bit')
+assert.equal(formatAudioInfo({ type: 'ogg', codec: 'Vorbis I' }).bitDepth, '不适用')
+assert.equal(formatAudioInfo({ container: 'Ogg', codec: 'Opus', bitsPerSample: 16 }).bitDepth, '不适用')
+assert.equal(formatAudioInfo({ type: 'ogg', codec: 'FLAC', lossless: true, bitsPerSample: 24 }).bitDepth, '24 bit')
+assert.equal(formatAudioInfo(buildLevelInfoFromStream({ type: 'm4a', lossless: false })).bitDepth, '不适用')
+assert.equal(formatDownloadQuality({ type: 'ogg', codec: 'Vorbis I' }, 'flac').downgraded, true)
 const wavInfo = formatAudioInfo({ container: 'WAVE', sampleRate: 48000, bitsPerSample: 24, bitrate: 2304000 })
 assert.equal(wavInfo.format, 'WAV')
 assert.equal(wavInfo.sampleRate, '48 kHz')
@@ -48,8 +54,8 @@ assert.equal(formatDownloadQuality({ container: 'WAVE', bitrate: 2304000 }).text
 // Exercise the shared setter, including partial metadata and stream values overriding list metadata.
 const playerSource = await readFile(resolve('src/utils/player.js'), 'utf8')
 const setterModule = new SourceTextModule(`
-  import { buildLevelInfoFromStream } from './quality';
-  const songList = { value: [{ bitrate: 128 }] }, currentIndex = { value: 0 };
+  import { buildLevelInfoFromStream, isLossyStream } from './quality';
+  const songList = reactive({ value: [{ bitrate: 128 }] }), currentIndex = { value: 0 };
   ${playerSource.slice(playerSource.indexOf('const levelFieldMap ='), playerSource.indexOf('const cloudAudioExtensions ='))}
   ${playerSource.slice(playerSource.indexOf('export function setSongLevel('), playerSource.indexOf('export async function getLocalLyric('))}
   export { songList };
@@ -70,6 +76,30 @@ setSongLevel('wav', { type: 'wav' })
 assert.equal(formatAudioInfo(songList.value[0].level).sampleRate, '未知')
 assert.equal(formatAudioInfo(songList.value[0].level).bitrate, '未知')
 assert.ok(!playerSource.includes('Howler.ctx?.sampleRate'), 'output sample rate must not be reported as source metadata')
+
+const headerRequests = []
+context.windowApi = {
+  getRemoteAudioMetadata: ({ url }) => new Promise(resolve => headerRequests.push({ url, resolve })),
+}
+setSongLevel('320', { type: 'ogg', url: 'https://audio.test/first.ogg', br: 327000 })
+setSongLevel('flac', { type: 'flac', url: 'https://audio.test/second.flac' })
+headerRequests[0].resolve({ sampleRate: 44100, container: 'Ogg', codec: 'Vorbis I', lossless: false })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(songList.value[0].level.type, 'flac', 'stale header must not overwrite the next quality')
+assert.equal(songList.value[0].level.sr, undefined)
+headerRequests[1].resolve({ sampleRate: 96000, bitsPerSample: 24, container: 'FLAC', lossless: true })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(formatAudioInfo(songList.value[0].level).sampleRate, '96 kHz')
+assert.equal(formatAudioInfo(songList.value[0].level).bitDepth, '24 bit')
+setSongLevel('320', { type: 'ogg', url: 'https://audio.test/first.ogg', br: 327000 })
+headerRequests[2].resolve({ sampleRate: 44100, bitrate: 320000, container: 'Ogg', codec: 'Vorbis I', lossless: false })
+await new Promise(resolve => setImmediate(resolve))
+assert.equal(formatAudioInfo(songList.value[0].level).sampleRate, '44.1 kHz')
+assert.equal(formatAudioInfo(songList.value[0].level).bitDepth, '不适用')
+assert.equal(songList.value[0].level.br, 327000, 'nominal header bitrate must preserve full-stream API bitrate')
+setSongLevel('flac', { type: 'flac', sr: 96000, bitsPerSample: 24, url: 'https://audio.test/complete.flac' })
+assert.equal(headerRequests.length, 3, 'complete source metadata needs no extra network request')
+delete context.windowApi
 
 let apiResponse = null
 const baseModule = syntheticModule('mock:base', {

@@ -12,7 +12,7 @@ import { useLibraryStore } from "../store/libraryStore";
 import { useOtherStore } from "../store/otherStore";
 import { storeToRefs } from "pinia";
 import { markRaw, watch } from "vue";
-import { buildLevelInfoFromStream, getPreferredQuality } from "./quality";
+import { buildLevelInfoFromStream, getPreferredQuality, isLossyStream } from "./quality";
 import { resolveTrackByQualityPreference } from "./musicUrlResolver";
 import { getSongDisplayName } from "./songName";
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from "./siren";
@@ -706,7 +706,7 @@ async function hydrateGaplessStartedSongAssets(
 
   if (isSirenSong(targetSong)) {
     const ext = entry?.level || getSirenAudioExtension(entry?.url || "");
-    setSongLevel(ext, { type: ext });
+    setSongLevel(ext, { type: ext, url: entry?.url });
     try {
       const sirenPlayback = await resolveSirenSongPlayback(targetSong);
       if (songId.value !== targetSongId) return;
@@ -1682,7 +1682,7 @@ async function refreshStreamAndResume(eventType, error) {
     try {
       if (isSirenSong(currentSong)) {
         const ext = getSirenAudioExtension(nextStreamUrl);
-        setSongLevel(ext, { type: ext });
+        setSongLevel(ext, { type: ext, url: nextStreamUrl });
       } else if (trackInfo) {
         setSongLevel(trackInfo.level, trackInfo);
       }
@@ -2305,6 +2305,27 @@ export function setSongLevel(level, streamInfo = null) {
   currentSong.actualLevel = normalizedLevel;
   // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
   currentSong.quality = normalizedLevel;
+  void loadRemoteAudioInfo(currentSong, streamInfo);
+}
+
+async function loadRemoteAudioInfo(targetSong, streamInfo) {
+  const url = streamInfo?.url;
+  const levelInfo = targetSong?.level;
+  if (!url || !levelInfo || typeof windowApi === "undefined" || !windowApi?.getRemoteAudioMetadata) return;
+  if (levelInfo.sr && (isLossyStream(levelInfo) || levelInfo.bitsPerSample)) return;
+
+  try {
+    const metadata = await windowApi.getRemoteAudioMetadata({ url });
+    // A quality change or re-selection of the same song invalidates the old header request.
+    if (!metadata || targetSong.level !== levelInfo) return;
+    const headerInfo = buildLevelInfoFromStream(metadata);
+    // A short VBR header may only expose nominal bitrate; keep the API's full-stream value.
+    if (levelInfo.br) delete headerInfo.br;
+    Object.assign(levelInfo, headerInfo);
+    targetSong.extname = levelInfo.type || "";
+  } catch (error) {
+    console.warn("读取在线音频参数失败:", error);
+  }
 }
 export async function getLocalLyric(filePath) {
   const lyric = await windowApi.getLocalMusicLyric(filePath);
@@ -2545,7 +2566,7 @@ export async function getSongUrl(
 
     if (isSirenSong(targetSong)) {
       const ext = directPreloadedEntry.level || getSirenAudioExtension(directPreloadedEntry.url);
-      setSongLevel(ext, { type: ext });
+      setSongLevel(ext, { type: ext, url: directPreloadedEntry.url });
       if (!isCurrentRequest()) return;
       play(
         directPreloadedEntry.url,
@@ -2646,8 +2667,7 @@ export async function getSongUrl(
       );
 
       const ext = preloadedEntry?.level || getSirenAudioExtension(sirenPlayback.streamUrl);
-      // ponytail: 塞壬接口只提供音源地址；在线参数保持未知，下载完成后从文件读取。
-      setSongLevel(ext, { type: ext });
+      setSongLevel(ext, { type: ext, url: sirenPlayback.streamUrl });
 
       try {
         const sirenLyric = await getSirenLyricPayload(sirenPlayback.lyricUrl);

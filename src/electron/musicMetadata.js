@@ -17,4 +17,9 @@ async function parseStream(...args) {
     return mod.parseStream(...args)
 }
 
-module.exports = { parseFile, parseStream }
+async function parseBuffer(...args) {
+    const mod = await getMusicMetadata()
+    return mod.parseBuffer(...args)
+}
+
+module.exports = { parseFile, parseStream, parseBuffer }

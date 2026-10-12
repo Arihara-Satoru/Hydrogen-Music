@@ -19,6 +19,7 @@ export function buildLevelInfoFromStream(streamInfo = {}) {
         streamInfo.size,
     ].map(value => ['number', 'string'].includes(typeof value) ? Number(value) : NaN)
     const type = String(streamInfo.type || streamInfo.extname || streamInfo.container || '').trim().toLowerCase()
+    const codec = String(streamInfo.codec || '').trim().toLowerCase()
     return {
         ...Object.fromEntries(Object.entries({
             sr,
@@ -27,7 +28,15 @@ export function buildLevelInfoFromStream(streamInfo = {}) {
             size,
         }).filter(([, value]) => Number.isFinite(value) && value > 0)),
         ...(type ? { type: type === 'wave' ? 'wav' : type } : {}),
+        ...(codec ? { codec } : {}),
+        ...(typeof streamInfo.lossless === 'boolean' ? { lossless: streamInfo.lossless } : {}),
     }
+}
+
+export function isLossyStream(streamInfo = {}) {
+    const { type, codec, lossless } = buildLevelInfoFromStream(streamInfo)
+    return lossless === false || ['mp3', 'mpeg', 'aac', 'opus', 'vorbis'].includes(type)
+        || /vorbis|opus|\baac\b|mpeg.*layer/i.test(codec || '')
 }
 
 export function formatAudioInfo(streamInfo = {}) {
@@ -35,7 +44,7 @@ export function formatAudioInfo(streamInfo = {}) {
     return {
         format: type ? type.toUpperCase() : '未知',
         sampleRate: sr ? `${Number((sr / 1000).toFixed(3))} kHz` : '未知',
-        bitDepth: streamInfo.lossless === false || ['mp3', 'mpeg', 'aac', 'opus', 'vorbis'].includes(type)
+        bitDepth: isLossyStream(streamInfo)
             ? '不适用' : bitsPerSample ? `${bitsPerSample} bit` : '未知',
         bitrate: br ? `${Math.round(br / 1000)} kbps` : '未知',
     }
@@ -47,7 +56,7 @@ export function formatDownloadQuality(streamInfo = {}, preferredQuality = '') {
     if (info.type === 'mp3' && info.br) actualLevel = info.br >= 256000 ? '320' : '128'
     if (['flac', 'wav'].includes(info.type) && !['flac', 'high'].includes(actualLevel)) actualLevel = 'flac'
     const actualIndex = QUALITY_LEVELS.indexOf(actualLevel)
-    const downgraded = ((streamInfo.lossless === false || ['mp3', 'mpeg', 'aac', 'opus', 'vorbis'].includes(info.type))
+    const downgraded = (isLossyStream(streamInfo)
         && ['flac', 'high'].includes(preferredQuality))
         || (actualIndex >= 0 && QUALITY_LEVELS.indexOf(preferredQuality) > actualIndex)
     const audio = formatAudioInfo(streamInfo)

@@ -179,6 +179,8 @@ async function createMusicFileNode(filePath, fileName, progressReporter, parseWi
             bitrate: metadata.format.bitrate,
             bitsPerSample: metadata.format.bitsPerSample,
             container: metadata.format.container,
+            codec: metadata.format.codec,
+            lossless: metadata.format.lossless,
             duration: metadata.format.duration,
             sampleRate: metadata.format.sampleRate,
         }

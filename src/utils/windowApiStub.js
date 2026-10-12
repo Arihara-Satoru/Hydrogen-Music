@@ -89,6 +89,7 @@
     toFileUrl: (path) => path || "",
     getLocalMusicImage: noopResolve(""),
     getCloudMusicMetadata: noopResolve(null),
+    getRemoteAudioMetadata: noopResolve(null),
     getCoverPalette: noopResolve(null),
     getLocalMusicLyric: noopResolve(""),
 
