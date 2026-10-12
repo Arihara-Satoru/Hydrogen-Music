@@ -143,7 +143,7 @@ function checkUpdate(callback) {
   return () => ipcRenderer.removeListener("check-update", listener);
 }
 function manualUpdateAvailable(callback) {
-  const listener = (_event, version, url) => callback?.(version, url);
+  const listener = (_event, version, url, updateInfo) => callback?.(version, url, updateInfo);
   ipcRenderer.on("manual-update-available", listener);
   return () => ipcRenderer.removeListener("manual-update-available", listener);
 }

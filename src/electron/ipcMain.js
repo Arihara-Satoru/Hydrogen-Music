@@ -1667,8 +1667,13 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
             latest,
             pageUrl,
           );
-          win.webContents.send("manual-update-available", latest, pageUrl);
-          updateController.available({ version: latest });
+          const updateInfo = {
+            version: latest,
+            releaseNotes: data.body || "",
+            releaseDate: data.published_at || "",
+          };
+          updateController.available(updateInfo);
+          win.webContents.send("manual-update-available", latest, pageUrl, updateInfo);
         } else {
           console.log("手动检查更新完成（macOS），当前已是最新版本");
           win.webContents.send("update-not-available");
@@ -1701,7 +1706,11 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     const handleUpdateAvailable = (info) => {
       if (!manualUpdateCheckRunning) return;
       console.log("手动检查更新完成，发现新版本:", info.version);
-      win.webContents.send("manual-update-available", info.version);
+      win.webContents.send("manual-update-available", info.version, undefined, {
+        version: info.version,
+        releaseNotes: info.releaseNotes || "",
+        releaseDate: info.releaseDate || "",
+      });
       cleanupManualUpdateListeners();
     };
     const handleUpdateNotAvailable = () => {

@@ -45,6 +45,7 @@ const currentCoverUrl = computed(() => {
 });
 const onboardingScope = computed(() => playerStore.widgetState ? '' : 'player');
 let disposeCheckUpdate = null;
+let disposeManualUpdateAvailable = null;
 let disposeSpaceShortcut = null;
 
 watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
@@ -88,6 +89,8 @@ onUnmounted(() => {
     destroyTogetherSession();
     disposeCheckUpdate?.();
     disposeCheckUpdate = null;
+    disposeManualUpdateAvailable?.();
+    disposeManualUpdateAvailable = null;
 });
 
 disposeCheckUpdate = windowApi.checkUpdate((updateInfo) => {
@@ -96,6 +99,13 @@ disposeCheckUpdate = windowApi.checkUpdate((updateInfo) => {
         : updateInfo;
     if (!info?.version || info.version === otherStore.ignoredUpdateVersion) return;
     otherStore.updateInfo = info;
+    otherStore.toUpdate = true;
+});
+
+// 用户主动检查时仍显示之前忽略的版本，并复用启动更新的完整界面。
+disposeManualUpdateAvailable = windowApi.manualUpdateAvailable((version, _url, updateInfo) => {
+    if (!version) return;
+    otherStore.updateInfo = { ...updateInfo, version };
     otherStore.toUpdate = true;
 });
 

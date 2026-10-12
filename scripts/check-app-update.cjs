@@ -38,6 +38,9 @@ async function main() {
   ]) assert.equal(getUpdateCapabilities({ ...environment, ...patch }).canAutoInstall, false);
 
   const success = fixture();
+  success.updater.emit('update-available', { version: '9.0.0', releaseNotes: '- 更新入口统一', releaseDate: '2026-10-12' });
+  assert.equal(success.controller.getState().releaseNotes, '- 更新入口统一');
+  assert.equal(success.controller.getState().releaseDate, '2026-10-12');
   const download = success.controller.download();
   success.controller.download();
   await tick();

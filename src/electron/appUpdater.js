@@ -37,7 +37,7 @@ function createUpdateController({ updater, createToken, capabilities, send, setP
   const busy = () => Boolean(downloadTask || installTask || state.status === 'installing');
   const available = (info) => {
     if (busy()) return;
-    publish({ status: 'available', version: info.version, progress: 0, error: '' });
+    publish({ status: 'available', version: info.version, releaseNotes: info.releaseNotes || '', releaseDate: info.releaseDate || '', progress: 0, error: '' });
   };
   updater.on('update-available', available);
   updater.on('update-not-available', () => {

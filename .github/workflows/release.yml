@@ -144,7 +144,8 @@ jobs:
           REPOSITORY_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
 
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
-            TARGET="${TAG}"
+            # Rebuilding an existing version must include the commits used for its new packages.
+            TARGET="${GITHUB_SHA}"
             PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
           else
             TARGET="HEAD"

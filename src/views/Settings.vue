@@ -14,10 +14,11 @@ import { normalizeLoginDevices } from "@/utils/loginDevices";
 import { getKugouApiDeviceIdentity } from "@/utils/request";
 import { useUserStore } from "@/store/userStore";
 import { usePlayerStore } from "@/store/playerStore";
+import { useOtherStore } from "@/store/otherStore";
+import { useAppUpdate } from "@/composables/useAppUpdate";
 import Selector from "../components/Selector.vue";
 import FontSelector from "../components/FontSelector.vue";
 import ListeningSettings from "../components/ListeningSettings.vue";
-import UpdateDialog from "../components/UpdateDialog.vue";
 import { setTheme, getSavedTheme } from "@/utils/theme";
 import { getDynamicThemeColor } from "@/utils/dynamicTheme";
 import { resolveImageUrl } from "@/utils/imageUtils";
@@ -40,6 +41,7 @@ import {
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const otherStore = useOtherStore();
 const restartOnboarding = () => window.dispatchEvent(new Event("hydrogen:restart-onboarding"));
 const currentUser = computed(() => userStore.user || {});
 const listenGradeLoading = ref(false);
@@ -287,10 +289,16 @@ const shortcutCharacter = [
 ];
 
 // 更新相关状态
-const showUpdateDialog = ref(false);
-const newVersion = ref("");
-let updateListenersInitialized = false;
-let disposeManualUpdateAvailable = null;
+const { state: appUpdateState } = useAppUpdate();
+const checkingUpdate = ref(false);
+watch(() => appUpdateState.value, (state) => {
+  if (!checkingUpdate.value) return;
+  if (state.status === 'available') checkingUpdate.value = false;
+  else if (state.status === 'latest' || state.status === 'error') {
+    checkingUpdate.value = false;
+    noticeOpen(state.status === 'latest' ? '当前版本已是最新版本' : `检查更新失败：${state.error}`, 4);
+  }
+});
 
 const normalizeSearchAssistLimit = (value) => {
   const num = Number.parseInt(value, 10);
@@ -494,8 +502,6 @@ onActivated(() => {
   void loadLoginDevices();
   void loadSystemFonts();
 
-  // 设置更新事件监听器
-  setupUpdateListeners();
 });
 
 // 当从“首页/子页”切换到“主播放器界面”（widgetState: true -> false）时，
@@ -517,19 +523,7 @@ watch(
   },
 );
 
-// 设置更新监听器
-const setupUpdateListeners = () => {
-  if (updateListenersInitialized) return;
-  updateListenersInitialized = true;
-  // 监听手动更新检查结果（不显示大窗弹出）
-  disposeManualUpdateAvailable = windowApi.manualUpdateAvailable((version) => {
-    newVersion.value = version;
-    // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
-  });
-};
-
 onUnmounted(() => {
-  disposeManualUpdateAvailable?.();
   disposeShortcutRegistrationFailures?.();
 });
 
@@ -943,17 +937,30 @@ const toGithub = () => {
 };
 
 // 检查更新功能
-const checkForUpdates = () => {
+const checkForUpdates = async () => {
   if (!appUpdateEnabled.value) {
     noticeOpen("应用更新已关闭，请先在设置中开启", 2);
     return;
   }
-  showUpdateDialog.value = true;
-  windowApi.checkForUpdate();
-};
-
-const closeUpdateDialog = () => {
-  showUpdateDialog.value = false;
+  if (checkingUpdate.value) return;
+  checkingUpdate.value = true;
+  try {
+    const state = await windowApi.getAppUpdateState();
+    if (['downloading', 'cancelling', 'ready', 'installing'].includes(state.status) && state.version) {
+      otherStore.updateInfo = {
+        version: state.version,
+        releaseNotes: state.releaseNotes || '',
+        releaseDate: state.releaseDate || '',
+      };
+      otherStore.toUpdate = true;
+      checkingUpdate.value = false;
+      return;
+    }
+    windowApi.checkForUpdate();
+  } catch (error) {
+    checkingUpdate.value = false;
+    noticeOpen(`检查更新失败：${error?.message || '无法读取更新状态'}`, 4);
+  }
 };
 
 // ponytail: only known rebuildable localStorage caches live here; add new cache keys/prefixes when a feature persists more cache data.
@@ -1953,8 +1960,8 @@ const clearFmRecent = () => {
         </div>
         <div class="version">V{{ version }}</div>
         <div class="update-check">
-          <button class="check-update-btn" @click="checkForUpdates">
-            检查更新
+          <button class="check-update-btn" :disabled="checkingUpdate" @click="checkForUpdates">
+            {{ checkingUpdate ? '正在检查…' : '检查更新' }}
           </button>
         </div>
         <div class="app-author" @click="toGithub()">
@@ -1963,12 +1970,6 @@ const clearFmRecent = () => {
       </div>
     </div>
 
-    <!-- 更新对话框 -->
-    <UpdateDialog
-      :visible="showUpdateDialog"
-      :new-version="newVersion"
-      @close="closeUpdateDialog"
-    />
   </div>
 </template>
 
