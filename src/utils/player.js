@@ -39,6 +39,7 @@ const {
   playing,
   progress,
   volume,
+  playbackRate,
   quality,
   playMode,
   songList,
@@ -148,6 +149,34 @@ function normalizePlaybackVolume(value) {
   return Math.max(0, Math.min(1, parsed));
 }
 
+export function normalizePlaybackRateValue(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.round(Math.max(0.5, Math.min(2, parsed)) * 100) / 100;
+}
+
+function getEffectivePlaybackRate() {
+  if (isTogetherPlayback()) return 1;
+  return normalizePlaybackRateValue(playbackRate?.value);
+}
+
+function applyPlaybackRate(playback = currentMusic.value) {
+  if (!playback) return 1;
+  const targetRate = getEffectivePlaybackRate();
+  try {
+    playback.rate?.(targetRate);
+  } catch (_) {}
+  return targetRate;
+}
+
+export function setPlaybackRate(rate) {
+  if (interceptTogetherControl('unsupported')) return getEffectivePlaybackRate();
+  const normalizedRate = normalizePlaybackRateValue(rate);
+  if (playbackRate) playbackRate.value = normalizedRate;
+  applyPlaybackRate();
+  return normalizedRate;
+}
+
 watch(volume, (v) => {
   const normalizedVolume = normalizePlaybackVolume(v);
   if (normalizedVolume !== v) {
@@ -157,6 +186,21 @@ watch(volume, (v) => {
   window.playerApi?.setVolume?.(normalizedVolume);
   currentMusic.value?.volume?.(normalizedVolume);
 });
+if (playbackRate) {
+  watch(playbackRate, (r) => {
+    const normalizedRate = normalizePlaybackRateValue(r);
+    if (normalizedRate !== r) {
+      playbackRate.value = normalizedRate;
+      return;
+    }
+    applyPlaybackRate();
+    if (musicVideoDOM.value?.media) {
+      try {
+        musicVideoDOM.value.media.playbackRate = getEffectivePlaybackRate();
+      } catch (_) {}
+    }
+  });
+}
 watch([loudnessNormalization, dynamicCompression], () => {
   const playback = currentMusic.value;
   if (!playback) return;
@@ -798,7 +842,7 @@ function maybeStartGaplessNextBeforeEnd(snapshot) {
   const seek = clampPlaybackProgress(snapshot.seek, duration);
   if (duration <= 0 || seek <= 0) return;
 
-  const remaining = duration - seek;
+  const remaining = (duration - seek) / getEffectivePlaybackRate();
   if (remaining <= 0) return;
   if (remaining <= GAPLESS_PRELOAD_LEAD_SECONDS) void preloadGaplessSong();
   if (remaining > GAPLESS_EARLY_START_SECONDS) return;
@@ -881,7 +925,7 @@ function startChorusMonitor(endTime) {
 
     const currentSeek = Number(currentMusic.value.seek());
     if (!Number.isFinite(currentSeek)) return;
-    if (currentSeek < safeEndTime - 0.15) return;
+    if (currentSeek < safeEndTime - 0.15 * getEffectivePlaybackRate()) return;
 
     try {
       currentMusic.value.seek(safeEndTime);
@@ -1857,6 +1901,7 @@ export function play(
     void applyPlaybackAudioProcessing(playback, shouldAutoplay);
     if (currentMusic.value !== playback) return;
     playback.loop?.(!isTogetherPlayback() && playMode.value == 2);
+    playback.rate?.(getEffectivePlaybackRate());
     playback.volume?.(keepPreviousPlayback ? 0 : volume.value);
     playback.on?.("play", () => handlePlaybackStart(playback));
     playback.on?.("pause", () => handlePlaybackPause(playback));
@@ -1889,6 +1934,7 @@ export function play(
       "oga",
     ],
     loop: !isTogetherPlayback() && playMode.value == 2,
+    rate: getEffectivePlaybackRate(),
     volume: volume.value,
     xhr: {
       method: "GET",
@@ -1921,6 +1967,7 @@ export function play(
     prepareHowlAudioProcessing(playback);
   }
   playback.once("load", async () => {
+    applyPlaybackRate(playback);
     applyLoadedState(playback);
     await applyPlaybackAudioProcessing(playback, shouldAutoplay && pauseToken === playbackPauseToken);
     if (currentMusic.value === playback && shouldAutoplay && pauseToken === playbackPauseToken) playback.play();
@@ -3749,6 +3796,11 @@ export function musicVideoCheck(seek, update) {
         const vt = timing.videoTiming + seek - timing.start;
         if (musicVideoDOM.value) {
           musicVideoDOM.value.currentTime = vt;
+          if (musicVideoDOM.value.media) {
+            try {
+              musicVideoDOM.value.media.playbackRate = getEffectivePlaybackRate();
+            } catch (_) {}
+          }
         }
         currentTiming = timing;
         videoIsPlaying.value = true;

@@ -5,7 +5,7 @@ import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
@@ -69,6 +69,7 @@ const {
     playing,
     progress,
     volume,
+    playbackRate,
     playMode,
     currentIndex,
     songList,
@@ -270,6 +271,48 @@ const safeVolume = computed({
         volume.value = normalizeSliderVolume(value);
     },
 });
+
+const PLAYBACK_RATE_PRESETS = Object.freeze([0.5, 0.75, 1, 1.25, 1.5, 2]);
+const showSpeedControl = ref(false);
+
+function normalizeSliderRate(value) {
+    const currentRate = Number(value);
+    if (!Number.isFinite(currentRate) || currentRate <= 0) return 1;
+    return Math.round(Math.max(0.5, Math.min(2, currentRate)) * 100) / 100;
+}
+
+const isTogetherMode = computed(() => listInfo.value?.type === 'together');
+
+const safePlaybackRate = computed({
+    get: () => (isTogetherMode.value ? 1 : normalizeSliderRate(playbackRate.value)),
+    set: value => {
+        setPlaybackRate(normalizeSliderRate(value));
+    },
+});
+
+const isCustomSpeedActive = computed(() => Math.abs(safePlaybackRate.value - 1) >= 0.005);
+
+function formatPlaybackRateText(value) {
+    const rate = normalizeSliderRate(value);
+    const fixed = rate.toFixed(2).replace(/0$/, '');
+    return `${fixed}X`;
+}
+
+const formattedPlaybackRate = computed(() => formatPlaybackRateText(safePlaybackRate.value));
+
+const toggleSpeedControl = () => {
+    showSpeedControl.value = !showSpeedControl.value;
+};
+
+const resetPlaybackRate = () => {
+    setPlaybackRate(1);
+};
+
+const selectPlaybackRatePreset = preset => {
+    setPlaybackRate(preset);
+};
+
+const isPresetRateActive = preset => Math.abs(safePlaybackRate.value - preset) < 0.011;
 
 // 智能判断当前歌曲有哪些类型的歌词
 const hasOriginalLyric = computed(() => {
@@ -499,14 +542,89 @@ const addToPlaylist = () => {
                     </svg>
                 </div>
 
-                <div class="player-voluem">
+                <div class="player-voluem" data-tour="player-speed">
                     <div class="voluem">
-                        <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
+                        <vue-slider
+                            v-if="!showSpeedControl"
+                            class="volume-slider"
+                            v-model="safeVolume"
+                            :min="0"
+                            :max="1"
+                            :interval="0.01"
+                            :duration="0.3"
+                            tooltip="none"
+                        ></vue-slider>
+                        <vue-slider
+                            v-else
+                            class="volume-slider speed-slider"
+                            v-model="safePlaybackRate"
+                            :min="0.5"
+                            :max="2"
+                            :interval="0.05"
+                            :duration="0.2"
+                            :disabled="isTogetherMode"
+                            tooltip="none"
+                        ></vue-slider>
                     </div>
                     <div class="voluem-num">
-                        <span class="voluem-title">VOLUME</span>
-                        <span class="num">{{ Math.round(safeVolume * 100) }}</span>
+                        <div class="bar-mode-tabs">
+                            <span
+                                class="voluem-title mode-tab"
+                                :class="{ active: !showSpeedControl }"
+                                role="button"
+                                tabindex="0"
+                                aria-label="切换到音量调节"
+                                @click="showSpeedControl = false"
+                                @keydown.enter.prevent="showSpeedControl = false"
+                                @keydown.space.prevent="showSpeedControl = false"
+                            >VOLUME</span>
+                            <span class="mode-divider">/</span>
+                            <span
+                                class="speed-title mode-tab"
+                                :class="{ active: showSpeedControl, modified: isCustomSpeedActive }"
+                                role="button"
+                                tabindex="0"
+                                v-delayed-tooltip="showSpeedControl ? '双击恢复 1.0x 原速' : '切换调整播放倍速'"
+                                aria-label="切换到播放倍速调节"
+                                @click="toggleSpeedControl()"
+                                @dblclick.stop="resetPlaybackRate()"
+                                @keydown.enter.prevent="toggleSpeedControl()"
+                                @keydown.space.prevent="toggleSpeedControl()"
+                            >
+                                SPEED
+                                <i v-if="isCustomSpeedActive && !showSpeedControl" class="speed-badge">{{ formattedPlaybackRate }}</i>
+                            </span>
+                        </div>
+                        <span v-if="!showSpeedControl" class="num">{{ Math.round(safeVolume * 100) }}</span>
+                        <span
+                            v-else
+                            class="num speed-num"
+                            :class="{ 'is-resettable': isCustomSpeedActive }"
+                            v-delayed-tooltip="isCustomSpeedActive ? '点击恢复 1.0x 原速' : '当前播放倍速'"
+                            role="button"
+                            tabindex="0"
+                            aria-label="重置播放倍速为1.0倍"
+                            @click="resetPlaybackRate()"
+                            @keydown.enter.prevent="resetPlaybackRate()"
+                            @keydown.space.prevent="resetPlaybackRate()"
+                        >{{ formattedPlaybackRate }}</span>
                     </div>
+                    <Transition name="speed-presets-drop">
+                        <div v-if="showSpeedControl" class="speed-presets" role="group" aria-label="预设播放倍速">
+                            <button
+                                v-for="preset in PLAYBACK_RATE_PRESETS"
+                                :key="preset"
+                                type="button"
+                                class="speed-preset-chip"
+                                :class="{ active: isPresetRateActive(preset) }"
+                                :disabled="isTogetherMode"
+                                :aria-pressed="isPresetRateActive(preset)"
+                                @click="selectPlaybackRatePreset(preset)"
+                            >
+                                {{ formatPlaybackRateText(preset) }}
+                            </button>
+                        </div>
+                    </Transition>
                 </div>
             </div>
 
@@ -1272,6 +1390,7 @@ const addToPlaylist = () => {
                 }
             }
             .player-voluem {
+                position: relative;
                 .voluem {
                     width: 100%;
                     height: 1.3vh;
@@ -1300,6 +1419,133 @@ const addToPlaylist = () => {
                     align-items: center;
                     font: 1.5vh Bender-Bold;
                     color: black;
+
+                    .bar-mode-tabs {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.65vh;
+                        user-select: none;
+                    }
+
+                    .mode-divider {
+                        opacity: 0.32;
+                        font-size: 1.3vh;
+                        pointer-events: none;
+                    }
+
+                    .mode-tab {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.45vh;
+                        opacity: 0.42;
+                        cursor: pointer;
+                        transition: opacity 0.18s ease, transform 0.18s ease;
+                        position: relative;
+
+                        &.active {
+                            opacity: 1;
+                        }
+
+                        &.modified:not(.active) {
+                            opacity: 0.86;
+                        }
+
+                        &:hover {
+                            opacity: 0.92;
+                        }
+
+                        &:active {
+                            transform: scale(0.95);
+                        }
+                    }
+
+                    .speed-badge {
+                        font-style: normal;
+                        font: 1.15vh Bender-Bold;
+                        line-height: 1;
+                        padding: 0.15vh 0.45vh;
+                        background-color: var(--text);
+                        color: var(--bg) !important;
+                        letter-spacing: 0.02em;
+                    }
+
+                    .speed-num {
+                        transition: opacity 0.18s ease, transform 0.18s ease;
+
+                        &.is-resettable {
+                            cursor: pointer;
+                            text-decoration: underline;
+                            text-decoration-thickness: 1px;
+                            text-underline-offset: 2px;
+
+                            &:hover {
+                                opacity: 0.72;
+                            }
+
+                            &:active {
+                                transform: scale(0.94);
+                            }
+                        }
+                    }
+                }
+                .speed-presets {
+                    position: absolute;
+                    bottom: calc(100% + 0.55vh);
+                    left: 0;
+                    right: 0;
+                    z-index: 5;
+                    display: grid;
+                    grid-template-columns: repeat(6, minmax(0, 1fr));
+                    gap: 0.45vh;
+                    width: 100%;
+
+                    .speed-preset-chip {
+                        appearance: none;
+                        min-width: 0;
+                        height: 2.1vh;
+                        padding: 0;
+                        border: 0.5px solid var(--text) !important;
+                        border-radius: 0 !important;
+                        background-color: transparent !important;
+                        color: var(--text) !important;
+                        font: 1.18vh Bender-Bold;
+                        letter-spacing: 0.01em;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: pointer;
+                        opacity: 0.68;
+                        transition: opacity 0.16s ease, background-color 0.16s ease, color 0.16s ease, transform 0.14s ease;
+
+                        &:hover:not(:disabled) {
+                            opacity: 1;
+                            background-color: rgba(128, 128, 128, 0.14) !important;
+                        }
+
+                        &:active:not(:disabled) {
+                            transform: scale(0.94);
+                        }
+
+                        &.active {
+                            opacity: 1;
+                            background-color: var(--text) !important;
+                            color: var(--bg) !important;
+                        }
+
+                        &:disabled {
+                            opacity: 0.32;
+                            cursor: not-allowed;
+                        }
+                    }
+                }
+                .speed-presets-drop-enter-active,
+                .speed-presets-drop-leave-active {
+                    transition: opacity 0.18s cubic-bezier(0.3, 0.79, 0.55, 0.99), transform 0.18s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+                }
+                .speed-presets-drop-enter-from,
+                .speed-presets-drop-leave-to {
+                    opacity: 0;
+                    transform: translateY(0.4vh);
                 }
             }
         }

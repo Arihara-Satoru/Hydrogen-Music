@@ -74,6 +74,7 @@ class WebAudioBufferPlayer {
         this._state = 'loaded'
         this._playing = false
         this._loop = false
+        this._rate = 1
         this._offset = 0
         this._startedAt = 0
         this._events = new Map()
@@ -121,6 +122,20 @@ class WebAudioBufferPlayer {
             if (this._source) this._source.loop = value
         }
         return this._loop
+    }
+
+    rate(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return this._rate
+        const safeRate = Math.max(0.5, Math.min(2, Math.round(value * 100) / 100))
+        if (this._playing) {
+            this._offset = this._getCurrentOffset()
+            this._startedAt = this._context.currentTime
+        }
+        this._rate = safeRate
+        if (this._source?.playbackRate) {
+            this._source.playbackRate.setValueAtTime(safeRate, this._context.currentTime)
+        }
+        return this._rate
     }
 
     seek(value) {
@@ -225,15 +240,19 @@ class WebAudioBufferPlayer {
 
     _getCurrentOffset() {
         if (!this._playing) return this._offset
-        const elapsed = this._context.currentTime - this._startedAt
-        if (this._loop && this.duration() > 0) return elapsed % this.duration()
-        return this._clampOffset(elapsed)
+        const elapsed = Math.max(0, this._context.currentTime - this._startedAt) * this._rate
+        const current = this._offset + elapsed
+        if (this._loop && this.duration() > 0) return current % this.duration()
+        return this._clampOffset(current)
     }
 
     _createSource(token) {
         const source = this._context.createBufferSource()
         source.buffer = this._buffer
         source.loop = this._loop
+        if (source.playbackRate) {
+            source.playbackRate.setValueAtTime(this._rate, this._context.currentTime)
+        }
         source.connect(this._loudnessGain)
         source.onended = () => {
             if (token !== this._sourceToken || this._state === 'unloaded') return
@@ -252,7 +271,7 @@ class WebAudioBufferPlayer {
         const source = this._createSource(token)
         this._source = source
         this._offset = this._clampOffset(offset)
-        this._startedAt = this._context.currentTime - this._offset
+        this._startedAt = this._context.currentTime
         this._playing = true
         source.start(0, this._offset)
     }

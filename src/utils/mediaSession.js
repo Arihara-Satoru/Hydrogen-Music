@@ -36,7 +36,7 @@ export function initMediaSession() {
 
   const playerStore = usePlayerStore(pinia)
   const refs = storeToRefs(playerStore)
-  const { songList, currentIndex, playing, progress, time, localBase64Img, showSongTranslation } = refs
+  const { songList, currentIndex, playing, progress, time, playbackRate, localBase64Img, showSongTranslation } = refs
 
   // 平台与节流参数（封面仅换曲更新；进度略动态且限流）
   const POS_MIN_INTERVAL = 1000 // macOS 更保守，Windows/其他约 1s
@@ -75,7 +75,8 @@ export function initMediaSession() {
       lastTs = Date.now()
       if (typeof navigator.mediaSession.setPositionState !== 'function') return
       // 允许 duration 为 0 用于“换曲瞬间归零”，随后真正时长会在加载完成时刷新
-      navigator.mediaSession.setPositionState({ duration, position, playbackRate: 1.0 })
+      const safeRate = Number.isFinite(Number(playbackRate?.value)) && Number(playbackRate.value) > 0 ? Number(playbackRate.value) : 1.0
+      navigator.mediaSession.setPositionState({ duration, position, playbackRate: safeRate })
     } catch (_) {}
   }
 
@@ -158,8 +159,8 @@ export function initMediaSession() {
   // Static strategy
   // 1) 仅在曲目切换时设置元数据并进度归零
   watch([songList, currentIndex, showSongTranslation], () => updateMetadata(), { immediate: true })
-  // 2) 仅在播放状态切换时刷新一次位置（不走每秒更新）
-  watch(playing, () => { updatePlaybackState(); updatePositionThrottled({ force: true }) }, { immediate: true })
+  // 2) 仅在播放状态或倍速切换时刷新一次位置（不走每秒更新）
+  watch([playing, playbackRate], () => { updatePlaybackState(); updatePositionThrottled({ force: true }) }, { immediate: true })
 
   // 2.5) 轻量动态：进度限流更新
   // macOS：仅在爆发窗口内生效；Windows/其他：常规节流

@@ -757,6 +757,28 @@ html.dark.dynamic-theme .title-container .title-player {
   color: var(--muted-text) !important;
 }
 
+.dark .player .voluem-num .speed-badge {
+  background-color: var(--text) !important;
+  color: #000000 !important;
+}
+
+.dark .player .speed-presets .speed-preset-chip {
+  background-color: transparent !important;
+  color: var(--text) !important;
+  border-color: var(--text) !important;
+}
+
+.dark .player .speed-presets .speed-preset-chip:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.14) !important;
+  color: var(--text) !important;
+}
+
+.dark .player .speed-presets .speed-preset-chip.active {
+  background-color: var(--text) !important;
+  color: #000000 !important;
+  border-color: var(--text) !important;
+}
+
 .dark .player .music-author .author {
   color: var(--muted-text) !important;
 }

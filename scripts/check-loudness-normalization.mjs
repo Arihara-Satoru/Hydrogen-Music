@@ -78,7 +78,7 @@ const audioContext = {
         return node
     },
     decodeAudioData: async () => ({ duration: 10 }),
-    createBufferSource: () => ({ connect() {}, start() {}, stop() {}, disconnect() {} }),
+    createBufferSource: () => ({ playbackRate: { value: 1, setValueAtTime(value) { this.value = value } }, connect() {}, start() {}, stop() {}, disconnect() {} }),
 }
 context.window.AudioContext = function () { return audioContext }
 context.window.HTMLMediaElement = class {
@@ -139,6 +139,17 @@ assert.equal(nodes.at(-1).connections.length, 0) // complete bypass
 bufferPlayer.unload()
 assert.ok(nodes.slice(bufferStart).every(node => node.disconnected))
 
+const ratePlayer = await gapless.namespace.createDecodedAudioPlayer('https://audio.test/a.mp3')
+audioContext.currentTime = 0
+ratePlayer.rate(1.5)
+await ratePlayer.play()
+audioContext.currentTime = 2
+assert.equal(ratePlayer.seek(), 3)
+ratePlayer.rate(0.5)
+audioContext.currentTime = 4
+assert.equal(ratePlayer.seek(), 4)
+ratePlayer.unload()
+
 const mainSource = await readFile('src/electron/ipcMain.js', 'utf8')
 const settingsFunction = mainSource.match(/function normalizeMusicSettings\(music = \{\}\) \{[\s\S]*?\n\}/)[0]
 context.normalizeSearchAssistLimit = value => value
@@ -164,6 +175,10 @@ const playerStoreModule = await load('src/store/playerStore.js', {
 const playerState = playerStoreModule.namespace.usePlayerStore()
 assert.equal(playerState.dynamicCompression, 0)
 assert.equal(playerState.loudnessNormalizationActive, false)
+assert.equal(playerState.playbackRate, 1)
+assert.equal(playerStoreModule.namespace.normalizePlaybackRate(5), 2)
+assert.equal(playerStoreModule.namespace.normalizePlaybackRate(0.1), 0.5)
+assert.equal(playerStoreModule.namespace.normalizePlaybackRate('bad'), 1)
 Object.assign(playerState, { songList: [{ id: 1, name: 'Track' }, { id: 2, name: 'Next' }], songId: 1, loudnessNormalization: true })
 const refs = Object.fromEntries(Object.keys(playerState).map(key => [key, {
     get value() { return playerState[key] }, set value(value) { playerState[key] = value },
@@ -171,7 +186,7 @@ const refs = Object.fromEntries(Object.keys(playerState).map(key => [key, {
 const watchers = []
 class Howl {
     constructor(options) {
-        this.options = options; this._src = options.src; this._state = 'loading'; this._volume = options.volume
+        this.options = options; this._src = options.src; this._state = 'loading'; this._volume = options.volume; this._rate = options.rate ?? 1
         this._sounds = [{ _node: { volume: options.volume, _unlocked: true, load() {} } }]; this.events = new Map(); this.position = 0
         this.on('loaderror', options.onloaderror)
     }
@@ -179,6 +194,7 @@ class Howl {
     once(event, fn) { const once = (...args) => { this.events.set(event, this.events.get(event).filter(item => item !== once)); fn(...args) }; return this.on(event, once) }
     emit(event, ...args) { if (event === 'load') this._state = 'loaded'; for (const fn of [...(this.events.get(event) || [])]) fn(...args) }
     volume(value) { if (value !== undefined) { this._volume = value; this._sounds[0]._node.volume = value }; return this._volume }
+    rate(value) { if (value !== undefined) this._rate = value; return this._rate }
     seek(value) { if (value !== undefined) this.position = value; return this.position }
     duration() { return 10 }
     state() { return this._state }
@@ -236,6 +252,10 @@ assert.equal(nodes.at(-3).gain.value, 1)
 assert.equal(playerState.loudnessNormalizationActive, false)
 assert.equal(playerState.volume, 0.3)
 playerState.loudnessNormalization = true
+player.namespace.setPlaybackRate(1.25)
+assert.equal(playerState.playbackRate, 1.25)
+assert.equal(active.rate(), 1.25)
+player.namespace.setPlaybackRate(1)
 await player.namespace.refreshStreamAndResume('loaderror')
 active = playerState.currentMusic
 assert.equal(active.__hmLoudnessMetadata.volume, -9.9)

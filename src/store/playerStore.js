@@ -8,20 +8,38 @@ function normalizePersistedVolume(value) {
     return Math.max(0, Math.min(1, volume))
 }
 
+export function normalizePlaybackRate(value) {
+    const rate = Number(value)
+    if (!Number.isFinite(rate)) return 1
+    return Math.round(Math.max(0.5, Math.min(2, rate)) * 100) / 100
+}
+
 function normalizePlayerStorePayload(key, value) {
     if (key !== 'playerStore' || typeof value !== 'string' || !value) return value
 
     try {
         const parsed = JSON.parse(value)
-        if (!parsed || typeof parsed !== 'object' || parsed.volume === undefined) return value
+        if (!parsed || typeof parsed !== 'object') return value
 
-        const normalizedVolume = normalizePersistedVolume(parsed.volume)
-        if (normalizedVolume === parsed.volume) return value
+        const nextPayload = { ...parsed }
+        let changed = false
 
-        return JSON.stringify({
-            ...parsed,
-            volume: normalizedVolume,
-        })
+        if (parsed.volume !== undefined) {
+            const normalizedVolume = normalizePersistedVolume(parsed.volume)
+            if (normalizedVolume !== parsed.volume) {
+                nextPayload.volume = normalizedVolume
+                changed = true
+            }
+        }
+        if (parsed.playbackRate !== undefined) {
+            const normalizedRate = normalizePlaybackRate(parsed.playbackRate)
+            if (normalizedRate !== parsed.playbackRate) {
+                nextPayload.playbackRate = normalizedRate
+                changed = true
+            }
+        }
+
+        return changed ? JSON.stringify(nextPayload) : value
     } catch (_) {
         return value
     }
@@ -53,6 +71,7 @@ export const usePlayerStore = defineStore('playerStore', {
             playing: false,//是否正在播放
             progress: 0,//进度条
             volume: 0.3,//音量
+            playbackRate: 1,//播放倍速（0.5x - 2.0x）
             loudnessNormalization: false, // 上游响度数据可用时均衡音量
             loudnessNormalizationActive: false, // 当前音频已成功应用响度增益
             dynamicCompression: 0, // 实时动态压缩：0 关闭，4 轻度，1 适中（推荐），2 较强
@@ -105,6 +124,6 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     persist: {
         storage: persistedPlayerStorage,
-        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','musicVideoMode','lyricBlur','showSongTranslation','audioVisualizer','coverBlur','dynamicTheme','customThemeColor','chorusMode']
+        pick: ['progress','volume','playbackRate','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','musicVideoMode','lyricBlur','showSongTranslation','audioVisualizer','coverBlur','dynamicTheme','customThemeColor','chorusMode']
     },
 })

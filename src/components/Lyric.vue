@@ -562,6 +562,7 @@ function handleInterludeOnIndexChange(newIdx) {
     if (!Number.isFinite(nextLineTime)) return;
 
     const threshold = Number(lyricInterludeTime.value || 0);
+    const rate = Math.max(0.5, Math.min(2, Number(playerStore.playbackRate) || 1));
 
     // 先清理任何既有定时器
     clearInterludeTimers();
@@ -574,7 +575,7 @@ function handleInterludeOnIndexChange(newIdx) {
     if (pureGap >= threshold) {
         interludeIndex.value = newIdx;
         interludeAnimation.value = false;
-        const delayMs = Math.max(0, Math.round((estEnd - currentSeek) * 1000));
+        const delayMs = Math.max(0, Math.round(((estEnd - currentSeek) / rate) * 1000));
         interludeDeferStartTimer = setTimeout(() => {
             if (lycCurrentIndex.value !== newIdx) return;
             interludeAnimation.value = true;
@@ -625,7 +626,8 @@ function handleInterludeOnProgress() {
 
     const gap = nextLineTime - currentSeek; // 距离下一句开始的剩余秒
     const pureGapRemaining = nextLineTime - Math.max(currentSeek, estEnd); // 仅剩余的纯间奏秒数
-    if (gap < 1) {
+    const rate = Math.max(0.5, Math.min(2, Number(playerStore.playbackRate) || 1));
+    if (gap / rate < 1) {
         interludeAnimation.value = false;
         clearInterludeTimers();
         interludeOutTimer = setTimeout(() => {
@@ -634,7 +636,7 @@ function handleInterludeOnProgress() {
         }, 900);
         interludeRemainingTime.value = null;
     } else {
-        interludeRemainingTime.value = Math.max(0, Math.trunc(pureGapRemaining - 1));
+        interludeRemainingTime.value = Math.max(0, Math.trunc(pureGapRemaining / rate - 1));
     }
 }
 
