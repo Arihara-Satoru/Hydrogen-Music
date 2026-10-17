@@ -672,18 +672,18 @@ function normalizeMusicCommentCountResponse(response, lookupKey) {
 }
 
 /**
- * 获取音乐评论数。优先使用 hash，也可传评论中的 special_child_id。
+ * 获取音乐评论数。优先使用 special_child_id（汇总评论数），也可使用 hash。
  * @param {object|string|number} input - 歌曲对象、hash 或 special_child_id
  */
 export function getMusicCommentCount(input) {
     const source = input && typeof input === 'object' ? input : {}
     const primitive = input && typeof input !== 'object' ? `${input}` : ''
     const hash = source.hash || (/^[a-f\d]{32}$/i.test(primitive) ? primitive : '')
-    const specialId = source.special_child_id || source.specialChildId || source.special_id || source.specialId || (!hash ? primitive : '')
-    const lookupKey = `${hash || specialId || ''}`
+    const specialId = source.special_child_id || source.specialChildId || source.special_id || source.specialId || source.scid || source.Scid || (!hash ? primitive : '')
+    const lookupKey = `${specialId || hash || ''}`
     if (!lookupKey) throw new TypeError('获取歌曲评论数需要 hash 或 special_id')
 
-    return get('/comment/count', hash ? { hash } : { special_id: specialId })
+    return get('/comment/count', specialId ? { special_id: specialId } : { hash })
         .then(response => normalizeMusicCommentCountResponse(response, lookupKey))
 }
 

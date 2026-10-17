@@ -9,7 +9,7 @@ import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { getMusicCommentCount, getMusicComments } from '../api/song';
-import { getDjProgramComments } from '../api/dj';
+import { getDjProgramComments, getDjProgramCommentsNew } from '../api/dj';
 import { resolveImageUrl } from '../utils/imageUtils';
 const playerStore = usePlayerStore();
 
@@ -59,6 +59,12 @@ const currentTrack = computed(() => {
 const commentCount = ref(0);
 const commentCountRequestSerial = ref(0);
 
+const isNumericId = value => {
+    if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+    if (typeof value === 'string') return /^\d+$/.test(value.trim());
+    return false;
+};
+
 const commentTarget = computed(() => {
     const track = currentTrack.value;
     if (!track || track.type === 'local' || track.source === 'siren') return null;
@@ -80,7 +86,7 @@ const commentTarget = computed(() => {
         type: 'song',
         id: musicId,
         hash: track?.hash || track?.Hash || track?.FileHash || track?.file_hash || '',
-        specialId: track?.special_child_id || track?.specialChildId || track?.special_id || track?.specialId || '',
+        specialId: track?.special_child_id || track?.specialChildId || track?.special_id || track?.specialId || track?.scid || track?.Scid || '',
     };
 });
 
@@ -101,17 +107,51 @@ const fetchCommentCount = async target => {
         return;
     }
 
+    // 切换歌曲时立即清空旧评论数，避免请求等待期间残留上一首歌的数值
+    commentCount.value = 0;
+
     try {
         let response = null;
         if (target.type === 'dj') {
-            response = await getDjProgramComments(target.id, { limit: 1, offset: 0 });
+            try {
+                response = await getDjProgramCommentsNew({ id: target.id, pageSize: 1, pageNo: 1 });
+            } catch (_) {
+                response = await getDjProgramComments(target.id, { limit: 1, offset: 0 }).catch(() => null);
+            }
+        } else if (isNumericId(target.id)) {
+            // 歌曲评论聚合总数：优先按 mixsongid 获取完整聚合评论数
+            try {
+                response = await getMusicComments({
+                    id: target.id,
+                    limit: 1,
+                    offset: 0,
+                    show_classify: 0,
+                    show_hotword_list: 0,
+                });
+            } catch (_) {
+                response = null;
+            }
+
+            // 若按 mixsongid 获取失败，尝试降级到 comment/count
+            if ((!response || response.code !== 200) && (target.hash || target.specialId)) {
+                try {
+                    response = await getMusicCommentCount({
+                        hash: target.hash,
+                        special_child_id: target.specialId,
+                    });
+                } catch (_) {
+                    response = null;
+                }
+            }
         } else if (target.hash || target.specialId) {
-            response = await getMusicCommentCount({
-                hash: target.hash,
-                special_child_id: target.specialId,
-            });
-        } else {
-            response = await getMusicComments({ id: target.id, limit: 1, offset: 0 });
+            try {
+                response = await getMusicCommentCount({
+                    hash: target.hash,
+                    special_child_id: target.specialId,
+                });
+            } catch (_) {
+                response = null;
+            }
         }
 
         if (serial !== commentCountRequestSerial.value) return;
