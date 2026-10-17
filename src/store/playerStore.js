@@ -118,6 +118,7 @@ export const usePlayerStore = defineStore('playerStore', {
             customThemeColor: '', // 自定义全局背景颜色
             coverSize: 400,
             chorusMode: false, // 是否开启只听副歌模式
+            currentChorus: null, // 当前歌曲副歌信息 { startTime, endTime, duration, segments }
         }
     },
     actions: {

@@ -5,7 +5,7 @@ import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
@@ -92,6 +92,7 @@ const {
     coverBlur,
     showSongTranslation,
     chorusMode,
+    currentChorus,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -257,6 +258,144 @@ const sliderProgress = computed({
         const nextValue = Number(value);
         progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0;
     },
+});
+
+// 确保当前歌曲副歌信息就绪
+watch(
+    () => [currentSong.value?.id, currentSong.value?.hash, currentSong.value?.FileHash],
+    () => {
+        const song = currentSong.value;
+        if (!song) {
+            currentChorus.value = null;
+            return;
+        }
+        if (song.chorusSegment) {
+            currentChorus.value = song.chorusSegment;
+            return;
+        }
+        void loadSongChorus(song);
+    },
+    { immediate: true },
+);
+
+// 提取当前歌曲的所有副歌片段
+const chorusSegments = computed(() => {
+    if (!currentChorus.value) return [];
+    if (Array.isArray(currentChorus.value.segments) && currentChorus.value.segments.length > 0) {
+        return currentChorus.value.segments;
+    }
+    if (Number.isFinite(currentChorus.value.startTime) && Number.isFinite(currentChorus.value.endTime)) {
+        return [currentChorus.value];
+    }
+    return [];
+});
+
+const hasChorus = computed(() => chorusSegments.value.length > 0 && sliderDuration.value > 0);
+
+// 归一化为百分比坐标供进度条轨道渲染
+const normalizedChorusSegments = computed(() => {
+    const total = Number(sliderDuration.value);
+    if (!total || total <= 0) return [];
+    return chorusSegments.value.map((seg, idx) => {
+        const startPercent = Math.max(0, Math.min(100, (seg.startTime / total) * 100));
+        const endPercent = Math.max(0, Math.min(100, (seg.endTime / total) * 100));
+        const widthPercent = Math.max(0.6, endPercent - startPercent);
+        return {
+            ...seg,
+            index: idx,
+            startPercent,
+            endPercent,
+            widthPercent,
+        };
+    });
+});
+
+// 当前正在播放或即将到来的副歌片段
+const currentOrNextChorus = computed(() => {
+    if (!chorusSegments.value.length) return null;
+    const cur = Number(progress.value);
+    const active = chorusSegments.value.find(
+        seg => cur >= seg.startTime - 0.5 && cur <= seg.endTime + 0.5
+    );
+    if (active) return active;
+    const next = chorusSegments.value.find(seg => cur < seg.startTime - 0.5);
+    if (next) return next;
+    return chorusSegments.value[0];
+});
+
+// 当前进度是否处在任意副歌区间内
+const isCurrentlyInChorus = computed(() => {
+    const cur = Number(progress.value);
+    if (!Number.isFinite(cur) || cur <= 0) return false;
+    return chorusSegments.value.some(
+        seg => cur >= seg.startTime - 0.5 && cur <= seg.endTime + 0.5
+    );
+});
+
+// 当前正在播放的副歌片段
+const activeChorusSegment = computed(() => {
+    if (!chorusSegments.value.length) return null;
+    const cur = Number(progress.value);
+    const active = chorusSegments.value.find(
+        seg => cur >= seg.startTime - 0.5 && cur <= seg.endTime + 0.5
+    );
+    if (active) return active;
+    return currentOrNextChorus.value;
+});
+
+// 计算副歌徽标在时间栏上的动态对齐位置（对齐于当前副歌区间正上方）
+const chorusBadgeStyle = computed(() => {
+    if (!activeChorusSegment.value || !sliderDuration.value) {
+        return {
+            left: '50%',
+        };
+    }
+    const total = Number(sliderDuration.value);
+    const seg = activeChorusSegment.value;
+    const startPct = Math.max(0, Math.min(100, (seg.startTime / total) * 100));
+    const endPct = Math.max(0, Math.min(100, (seg.endTime / total) * 100));
+    const centerPct = (startPct + endPct) / 2;
+
+    // 保持安全边距，避免与左侧当前时间和右侧总时间文字重叠
+    const minCenter = 16;
+    const maxCenter = 84;
+    const safeCenter = Math.max(minCenter, Math.min(maxCenter, centerPct));
+
+    return {
+        left: `${safeCenter}%`,
+    };
+});
+
+// 检查某个特定片段当前是否正在播放
+const isProgressInSegment = (seg) => {
+    const cur = Number(progress.value);
+    return Number.isFinite(cur) && cur >= seg.startTime - 0.5 && cur <= seg.endTime + 0.5;
+};
+
+// 点击提示跳转至副歌
+const seekToChorusTarget = () => {
+    if (!currentOrNextChorus.value) return;
+    changeProgress(currentOrNextChorus.value.startTime);
+    if (!playing.value) {
+        startMusic();
+    }
+};
+
+const seekToSegment = (seg) => {
+    if (!seg) return;
+    changeProgress(seg.startTime);
+    if (!playing.value) {
+        startMusic();
+    }
+};
+
+const chorusTooltipText = computed(() => {
+    if (!currentOrNextChorus.value) return '';
+    const range = `${songTime2(currentOrNextChorus.value.startTime)} - ${songTime2(currentOrNextChorus.value.endTime)}`;
+    if (chorusMode.value) {
+        return `当前已开启只听副歌模式 (${range})`;
+    }
+    return `当前正在播放副歌 (${range}) · 点击从头播放副歌`;
 });
 function normalizeSliderVolume(value) {
     const currentVolume = Number(value);
@@ -434,6 +573,20 @@ const addToPlaylist = () => {
                 <div class="player-process">
                     <div class="process-time">
                         <span class="time-current">{{ songTime2(progress) }}</span>
+                        <!-- 副歌提示标签（仅在播放到副歌时对齐显示于副歌区间上方） -->
+                        <Transition name="chorus-badge-fade">
+                            <div
+                                v-if="hasChorus && isCurrentlyInChorus"
+                                class="chorus-badge is-in-chorus"
+                                :class="{ 'is-chorus-mode': chorusMode }"
+                                :style="chorusBadgeStyle"
+                                @click.stop="seekToChorusTarget"
+                                v-delayed-tooltip="chorusTooltipText"
+                            >
+                                <span class="chorus-badge-dot">●</span>
+                                <span class="chorus-badge-tag">// CHORUS</span>
+                            </div>
+                        </Transition>
                         <span class="time-end">{{ songTime2(time) }}</span>
                     </div>
                     <div class="process">
@@ -449,6 +602,37 @@ const addToPlaylist = () => {
                             :duration="0"
                             tooltip="none"
                         ></vue-slider>
+
+                        <!-- 进度条轨道上的副歌高亮区间与标记 -->
+                        <div v-if="hasChorus" class="chorus-track-overlay">
+                            <div
+                                v-for="seg in normalizedChorusSegments"
+                                :key="seg.index"
+                                class="chorus-track-segment"
+                                :class="{
+                                    'is-active': isProgressInSegment(seg),
+                                    'is-passed': Number(progress) > seg.endTime
+                                }"
+                                :style="{
+                                    left: `${seg.startPercent}%`,
+                                    width: `${seg.widthPercent}%`
+                                }"
+                            >
+                                <div class="chorus-segment-bar">
+                                    <span class="chorus-segment-label">
+                                        <span class="chorus-label-title">副歌</span>
+                                        <span class="chorus-label-time">{{ songTime2(seg.startTime) }}</span>
+                                    </span>
+                                </div>
+                                <div
+                                    class="chorus-pin"
+                                    @click.stop="seekToSegment(seg)"
+                                    v-delayed-tooltip="`跳转至副歌 ${songTime2(seg.startTime)}`"
+                                ></div>
+                                <div class="chorus-tick start-tick"></div>
+                                <div class="chorus-tick end-tick"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1352,22 +1536,223 @@ const addToPlaylist = () => {
             justify-content: space-between;
             .player-process {
                 .process-time {
+                    position: relative;
                     display: flex;
                     flex-direction: row;
                     justify-content: space-between;
                     align-items: center;
                     font: 1.5vh Bender-Bold;
                     color: black;
+
+                    .chorus-badge {
+                        position: absolute;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        padding: 0 7px;
+                        height: 1.7vh;
+                        font: 1.1vh Bender-Bold, sans-serif;
+                        letter-spacing: 0.8px;
+                        color: #111213;
+                        background: #f59e0b;
+                        border: 0.5px solid #f59e0b;
+                        cursor: pointer;
+                        user-select: none;
+                        white-space: nowrap;
+                        box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+                        z-index: 3;
+                        transition: opacity 0.2s ease, transform 0.2s ease, left 0.25s ease, box-shadow 0.2s ease;
+
+                        &:hover {
+                            box-shadow: 0 0 14px rgba(245, 158, 11, 0.65);
+                            transform: translateX(-50%) scale(1.05);
+                        }
+
+                        &:active {
+                            transform: translateX(-50%) scale(0.96);
+                        }
+
+                        .chorus-badge-dot {
+                            font-size: 0.85vh;
+                            color: #111213;
+                            display: inline-flex;
+                            align-items: center;
+                            line-height: 1;
+                            animation: chorus-pulse 1.2s infinite ease-in-out;
+                        }
+
+                        .chorus-badge-tag {
+                            font-size: 1.1vh;
+                            color: #111213;
+                            font-weight: 700;
+                            letter-spacing: 1px;
+                        }
+                    }
+
+                    .chorus-badge-fade-enter-active,
+                    .chorus-badge-fade-leave-active {
+                        transition: opacity 0.25s cubic-bezier(0.25, 1, 0.5, 1), transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+                    }
+
+                    .chorus-badge-fade-enter-from,
+                    .chorus-badge-fade-leave-to {
+                        opacity: 0;
+                        transform: translate(-50%, -4px) !important;
+                    }
+
+                    .chorus-badge-fade-enter-to,
+                    .chorus-badge-fade-leave-from {
+                        opacity: 1;
+                        transform: translate(-50%, 0) !important;
+                    }
                 }
+
                 .process {
                     width: 100%;
                     height: 1.3vh;
                     position: relative;
+
                     .music-progress {
                         width: 100% !important;
                         height: 1.3vh !important;
                         box-shadow: 0 0 0 0.5px var(--text);
                         transition: 0.2s;
+                    }
+
+                    .chorus-track-overlay {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        pointer-events: none;
+                        z-index: 2;
+
+                        .chorus-track-segment {
+                            position: absolute;
+                            top: 0;
+                            height: 100%;
+                            pointer-events: none;
+
+                            .chorus-segment-bar {
+                                width: 100%;
+                                height: 100%;
+                                position: relative;
+                                display: flex;
+                                align-items: center;
+                                justify-content: flex-start;
+                                padding-left: 4px;
+                                background-image: repeating-linear-gradient(
+                                    -45deg,
+                                    rgba(245, 158, 11, 0.28),
+                                    rgba(245, 158, 11, 0.28) 3px,
+                                    rgba(245, 158, 11, 0.08) 3px,
+                                    rgba(245, 158, 11, 0.08) 6px
+                                );
+                                border-top: 1.5px solid rgba(245, 158, 11, 0.85);
+                                border-bottom: 1.5px solid rgba(245, 158, 11, 0.85);
+                                box-sizing: border-box;
+                                overflow: hidden;
+                                transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+
+                                .chorus-segment-label {
+                                    font-family: Bender-Bold, sans-serif;
+                                    font-size: 0.85vh;
+                                    line-height: 1;
+                                    letter-spacing: 0.5px;
+                                    color: #d97706;
+                                    font-weight: 700;
+                                    pointer-events: none;
+                                    user-select: none;
+                                    text-shadow: 0 0 2px rgba(255, 255, 255, 0.6);
+                                    white-space: nowrap;
+                                    display: inline-flex;
+                                    align-items: center;
+                                    gap: 3px;
+                                    transition: color 0.2s ease;
+
+                                    .chorus-label-title {
+                                        font-weight: 700;
+                                    }
+
+                                    .chorus-label-time {
+                                        font-size: 0.75vh;
+                                        opacity: 0.9;
+                                        font-family: Bender-Bold, sans-serif;
+                                    }
+                                }
+                            }
+
+                            .chorus-pin {
+                                position: absolute;
+                                top: -6px;
+                                left: 0;
+                                transform: translateX(-50%);
+                                width: 0;
+                                height: 0;
+                                border-left: 4px solid transparent;
+                                border-right: 4px solid transparent;
+                                border-top: 5px solid #f59e0b;
+                                cursor: pointer;
+                                pointer-events: auto;
+                                z-index: 6;
+                                transition: transform 0.15s ease, filter 0.15s ease;
+
+                                &:hover {
+                                    transform: translateX(-50%) scale(1.35);
+                                    filter: drop-shadow(0 0 4px #f59e0b);
+                                }
+                            }
+
+                            .chorus-tick {
+                                position: absolute;
+                                top: -2px;
+                                bottom: -2px;
+                                width: 1.5px;
+                                background-color: #f59e0b;
+                                pointer-events: none;
+                                z-index: 3;
+
+                                &.start-tick {
+                                    left: 0;
+                                }
+                                &.end-tick {
+                                    right: 0;
+                                }
+                            }
+
+                            &.is-active {
+                                .chorus-segment-bar {
+                                    background-image: repeating-linear-gradient(
+                                        -45deg,
+                                        rgba(245, 158, 11, 0.5),
+                                        rgba(245, 158, 11, 0.5) 3px,
+                                        rgba(245, 158, 11, 0.18) 3px,
+                                        rgba(245, 158, 11, 0.18) 6px
+                                    );
+                                    border-top-color: #fbbf24;
+                                    border-bottom-color: #fbbf24;
+                                    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+
+                                    .chorus-segment-label {
+                                        color: #ffffff;
+                                        text-shadow: 0 0 4px #f59e0b;
+                                    }
+                                }
+
+                                .chorus-tick {
+                                    background-color: #fbbf24;
+                                    box-shadow: 0 0 4px #fbbf24;
+                                }
+
+                                .chorus-pin {
+                                    border-top-color: #fbbf24;
+                                    filter: drop-shadow(0 0 3px #fbbf24);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1940,12 +2325,28 @@ const addToPlaylist = () => {
     to { opacity: 1; }
 }
 
+@keyframes chorus-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.35;
+        transform: scale(0.75);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .song-info-corner, .song-info-close,
     .song-info-metro-enter-active .song-info-dialog,
-    .song-info-metro-leave-active .song-info-dialog {
+    .song-info-metro-leave-active .song-info-dialog,
+    .chorus-badge .chorus-badge-dot {
         animation-duration: 0.01ms;
         animation-delay: 0ms;
+    }
+    .chorus-badge-fade-enter-active,
+    .chorus-badge-fade-leave-active {
+        transition: none !important;
     }
 }
 </style>

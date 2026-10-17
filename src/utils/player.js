@@ -69,6 +69,7 @@ const {
   currentLyricIndex,
   showSongTranslation,
   chorusMode,
+  currentChorus,
   loudnessNormalization,
   loudnessNormalizationActive,
   dynamicCompression,
@@ -337,42 +338,56 @@ function normalizeClimaxTimeToSeconds(value) {
   return num >= 1000 ? num / 1000 : num;
 }
 
+function normalizeSongChorusSegments(response, fallbackDurationMs = 0) {
+  const rawList = Array.isArray(response?.data)
+    ? response.data
+    : response?.data
+      ? [response.data]
+      : [];
+  const segments = [];
+  for (const item of rawList) {
+    if (!item || typeof item !== "object") continue;
+    const startTime = normalizeClimaxTimeToSeconds(
+      item?.start_time ?? item?.start ?? item?.begin_time,
+    );
+    const endTime = normalizeClimaxTimeToSeconds(
+      item?.end_time ?? item?.end ?? item?.stop_time,
+    );
+    const durationTime = normalizeClimaxTimeToSeconds(
+      item?.timelength ?? item?.duration ?? fallbackDurationMs,
+    );
+    if (!Number.isFinite(startTime)) continue;
+
+    const normalizedEndTime = Number.isFinite(endTime)
+      ? endTime
+      : Number.isFinite(durationTime)
+        ? startTime + durationTime
+        : null;
+    if (!Number.isFinite(normalizedEndTime) || normalizedEndTime <= startTime)
+      continue;
+
+    const normalizedDuration = normalizedEndTime - startTime;
+    if (
+      !Number.isFinite(normalizedDuration) ||
+      normalizedDuration < CHORUS_MIN_SEGMENT_SECONDS
+    )
+      continue;
+
+    segments.push({
+      startTime,
+      endTime: normalizedEndTime,
+      duration: normalizedDuration,
+    });
+  }
+  return segments.sort((a, b) => a.startTime - b.startTime);
+}
+
 function normalizeSongChorusSegment(response, fallbackDurationMs = 0) {
-  const item = Array.isArray(response?.data)
-    ? response.data[0]
-    : response?.data;
-  if (!item || typeof item !== "object") return null;
-
-  const startTime = normalizeClimaxTimeToSeconds(
-    item?.start_time ?? item?.start ?? item?.begin_time,
-  );
-  const endTime = normalizeClimaxTimeToSeconds(
-    item?.end_time ?? item?.end ?? item?.stop_time,
-  );
-  const durationTime = normalizeClimaxTimeToSeconds(
-    item?.timelength ?? item?.duration ?? fallbackDurationMs,
-  );
-  if (!Number.isFinite(startTime)) return null;
-
-  const normalizedEndTime = Number.isFinite(endTime)
-    ? endTime
-    : Number.isFinite(durationTime)
-      ? startTime + durationTime
-      : null;
-  if (!Number.isFinite(normalizedEndTime) || normalizedEndTime <= startTime)
-    return null;
-
-  const normalizedDuration = normalizedEndTime - startTime;
-  if (
-    !Number.isFinite(normalizedDuration) ||
-    normalizedDuration < CHORUS_MIN_SEGMENT_SECONDS
-  )
-    return null;
-
+  const segments = normalizeSongChorusSegments(response, fallbackDurationMs);
+  if (!segments.length) return null;
   return {
-    startTime,
-    endTime: normalizedEndTime,
-    duration: normalizedDuration,
+    ...segments[0],
+    segments,
   };
 }
 
@@ -389,6 +404,62 @@ function setCurrentSongChorusCache(song, segment) {
   if (!song || typeof song !== "object" || !segment) return;
   // 将已命中的副歌时间缓存到歌曲对象上，减少重复请求。
   song.chorusSegment = segment;
+}
+
+export async function loadSongChorus(song) {
+  if (!song || typeof song !== "object") {
+    currentChorus.value = null;
+    return null;
+  }
+
+  const isCurrentTarget = () => {
+    const activeSong = songList.value?.[currentIndex.value];
+    return (
+      (activeSong && String(activeSong.id) === String(song.id)) ||
+      (songId.value && String(songId.value) === String(song.id))
+    );
+  };
+
+  const cached = getCurrentSongChorusCache(song);
+  if (cached) {
+    if (isCurrentTarget()) {
+      currentChorus.value = cached;
+    }
+    return cached;
+  }
+
+  if (
+    song.type === "local" ||
+    isSirenSong(song) ||
+    listInfo.value?.type === "dj"
+  ) {
+    if (isCurrentTarget()) {
+      currentChorus.value = null;
+    }
+    return null;
+  }
+
+  try {
+    const result = await getSongClimax(song);
+    const segment = normalizeSongChorusSegment(
+      result,
+      song?.dt || song?.duration || 0,
+    );
+    if (segment) {
+      setCurrentSongChorusCache(song, segment);
+      if (isCurrentTarget()) {
+        currentChorus.value = segment;
+      }
+      return segment;
+    }
+  } catch (error) {
+    // 获取副歌失败不阻断正常播放
+  }
+
+  if (isCurrentTarget()) {
+    currentChorus.value = null;
+  }
+  return null;
 }
 
 function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
@@ -1008,20 +1079,7 @@ export async function playCurrentSongChorus(options = {}) {
     return false;
   }
 
-  let segment = getCurrentSongChorusCache(currentSong);
-  if (!segment) {
-    try {
-      const result = await getSongClimax(currentSong);
-      segment = normalizeSongChorusSegment(
-        result,
-        currentSong?.dt || currentSong?.duration || 0,
-      );
-      if (segment) setCurrentSongChorusCache(currentSong, segment);
-    } catch (error) {
-      console.error("获取歌曲副歌片段失败:", error);
-      return false;
-    }
-  }
+  let segment = await loadSongChorus(currentSong);
 
   if (!segment) {
     if (showNotice) noticeOpen("当前歌曲暂无可用副歌片段", 2);
@@ -2265,6 +2323,8 @@ export function addSong(id, index, autoplay, isLocal, playbackOptions = {}) {
   const targetSong = getSongByIdOrIndex(id, currentIndex.value);
   if (!targetSong) return;
 
+  currentChorus.value = getCurrentSongChorusCache(targetSong);
+
   if (targetSong.type == "local") isLocal = true;
   else isLocal = false;
 
@@ -2525,6 +2585,7 @@ async function loadRemoteSongAssets(targetSong, targetSongId, streamInfo) {
   if (songId.value !== targetSongId) return;
   lyric.value = songLyric || { lrc: { lyric: "" } };
   restorePlayerLyricAfterSongChange();
+  void loadSongChorus(targetSong);
 }
 
 function restorePlayerLyricAfterSongChange() {
