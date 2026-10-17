@@ -763,11 +763,6 @@ html.dark.dynamic-theme .title-container .title-player {
   color: #111213 !important;
 }
 
-.dark .player .chorus-segment-bar .chorus-segment-label {
-  color: #fbbf24 !important;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8) !important;
-}
-
 .dark .player .voluem-num {
   color: var(--muted-text) !important;
 }

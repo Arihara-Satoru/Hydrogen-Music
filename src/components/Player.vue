@@ -618,12 +618,7 @@ const addToPlaylist = () => {
                                     width: `${seg.widthPercent}%`
                                 }"
                             >
-                                <div class="chorus-segment-bar">
-                                    <span class="chorus-segment-label">
-                                        <span class="chorus-label-title">副歌</span>
-                                        <span class="chorus-label-time">{{ songTime2(seg.startTime) }}</span>
-                                    </span>
-                                </div>
+                                <div class="chorus-segment-bar"></div>
                                 <div
                                     class="chorus-pin"
                                     @click.stop="seekToSegment(seg)"
@@ -1640,10 +1635,6 @@ const addToPlaylist = () => {
                                 width: 100%;
                                 height: 100%;
                                 position: relative;
-                                display: flex;
-                                align-items: center;
-                                justify-content: flex-start;
-                                padding-left: 4px;
                                 background-image: repeating-linear-gradient(
                                     -45deg,
                                     rgba(245, 158, 11, 0.28),
@@ -1656,33 +1647,6 @@ const addToPlaylist = () => {
                                 box-sizing: border-box;
                                 overflow: hidden;
                                 transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-
-                                .chorus-segment-label {
-                                    font-family: Bender-Bold, sans-serif;
-                                    font-size: 0.85vh;
-                                    line-height: 1;
-                                    letter-spacing: 0.5px;
-                                    color: #d97706;
-                                    font-weight: 700;
-                                    pointer-events: none;
-                                    user-select: none;
-                                    text-shadow: 0 0 2px rgba(255, 255, 255, 0.6);
-                                    white-space: nowrap;
-                                    display: inline-flex;
-                                    align-items: center;
-                                    gap: 3px;
-                                    transition: color 0.2s ease;
-
-                                    .chorus-label-title {
-                                        font-weight: 700;
-                                    }
-
-                                    .chorus-label-time {
-                                        font-size: 0.75vh;
-                                        opacity: 0.9;
-                                        font-family: Bender-Bold, sans-serif;
-                                    }
-                                }
                             }
 
                             .chorus-pin {
@@ -1735,11 +1699,6 @@ const addToPlaylist = () => {
                                     border-top-color: #fbbf24;
                                     border-bottom-color: #fbbf24;
                                     box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
-
-                                    .chorus-segment-label {
-                                        color: #ffffff;
-                                        text-shadow: 0 0 4px #f59e0b;
-                                    }
                                 }
 
                                 .chorus-tick {
