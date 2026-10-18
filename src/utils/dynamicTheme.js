@@ -302,23 +302,79 @@ export async function getDynamicThemeColor(source) {
   return getThemeColorFromPalette(await extractDynamicPalette(source));
 }
 
-function applyPalette({
-  hue,
-  saturation,
-  secondaryHue,
-  secondarySaturation,
-  secondaryStrength = 1,
-  tertiaryHue,
-  tertiarySaturation,
-  tertiaryStrength = 1,
-  primaryX = 12,
-  primaryY = 8,
-  secondaryX = 92,
-  secondaryY = 96,
-  tertiaryX = 52,
-  tertiaryY = 54,
-  gradientAngle = 160,
-}) {
+export const STORAGE_KEY_DYNAMIC_PALETTE = "hydrogen_dynamic_palette";
+
+function syncThemeSnapshotToNative(palette, dynamicTheme = true, customColor = "") {
+  try {
+    const isDark =
+      (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) ||
+      (typeof localStorage !== "undefined" && localStorage.getItem("theme") === "dark");
+    if (window.windowApi?.saveThemeSnapshot) {
+      window.windowApi.saveThemeSnapshot({
+        dynamicTheme,
+        customColor,
+        isDark,
+        palette: palette || null,
+      });
+    }
+  } catch (_) {}
+}
+
+export function initDynamicTheme() {
+  if (typeof document === "undefined" || typeof localStorage === "undefined") return;
+  try {
+    const playerStoreRaw = localStorage.getItem("playerStore");
+    let isDynamic = false;
+    let customColor = "";
+    if (playerStoreRaw) {
+      const parsed = JSON.parse(playerStoreRaw);
+      isDynamic = !!parsed.dynamicTheme;
+      customColor = parsed.customThemeColor || "";
+    }
+
+    if (customColor) {
+      const palette = getThemePaletteFromColor(customColor);
+      if (palette) {
+        applyPalette(palette, { persist: false, customColor });
+        return;
+      }
+    }
+
+    if (isDynamic) {
+      const cachedPaletteRaw = localStorage.getItem(STORAGE_KEY_DYNAMIC_PALETTE);
+      if (cachedPaletteRaw) {
+        const cachedPalette = JSON.parse(cachedPaletteRaw);
+        if (cachedPalette && Number.isFinite(cachedPalette.hue)) {
+          applyPalette(cachedPalette, { persist: false });
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("initDynamicTheme failed:", e);
+  }
+}
+
+function applyPalette(
+  {
+    hue,
+    saturation,
+    secondaryHue,
+    secondarySaturation,
+    secondaryStrength = 1,
+    tertiaryHue,
+    tertiarySaturation,
+    tertiaryStrength = 1,
+    primaryX = 12,
+    primaryY = 8,
+    secondaryX = 92,
+    secondaryY = 96,
+    tertiaryX = 52,
+    tertiaryY = 54,
+    gradientAngle = 160,
+  },
+  { persist = true, customColor = "" } = {},
+) {
   const root = document.documentElement;
   const rootStyle = getComputedStyle(root);
   root.style.setProperty(
@@ -351,15 +407,46 @@ function applyPalette({
     `${getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-gradient-angle")), gradientAngle)}deg`,
   );
   root.classList.add(THEME_CLASS);
+
+  if (persist) {
+    const palettePayload = {
+      hue,
+      saturation,
+      secondaryHue: nextSecondaryHue,
+      secondarySaturation: secondarySaturation ?? saturation,
+      secondaryStrength,
+      tertiaryHue: nextTertiaryHue,
+      tertiarySaturation: tertiarySaturation ?? secondarySaturation ?? saturation,
+      tertiaryStrength,
+      primaryX,
+      primaryY,
+      secondaryX,
+      secondaryY,
+      tertiaryX,
+      tertiaryY,
+      gradientAngle,
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY_DYNAMIC_PALETTE, JSON.stringify(palettePayload));
+    } catch (_) {}
+    syncThemeSnapshotToNative(palettePayload, true, customColor);
+  }
 }
 
-export function clearDynamicTheme() {
+export function clearDynamicTheme({ persist = true } = {}) {
   requestId += 1;
   if (typeof document === "undefined") return;
 
   const root = document.documentElement;
   root.classList.remove(THEME_CLASS);
   THEME_VARIABLES.forEach((name) => root.style.removeProperty(name));
+
+  if (persist) {
+    try {
+      localStorage.removeItem(STORAGE_KEY_DYNAMIC_PALETTE);
+    } catch (_) {}
+    syncThemeSnapshotToNative(null, false, "");
+  }
 }
 
 export async function applyDynamicTheme(source) {
@@ -387,5 +474,5 @@ export function applyCustomTheme(color) {
   }
 
   requestId += 1;
-  applyPalette(palette);
+  applyPalette(palette, { persist: true, customColor: color });
 }

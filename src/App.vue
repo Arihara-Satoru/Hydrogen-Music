@@ -49,9 +49,15 @@ let disposeManualUpdateAvailable = null;
 let disposeSpaceShortcut = null;
 
 watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
-    if (customColor) applyCustomTheme(customColor);
-    else if (enabled && coverUrl) applyDynamicTheme(coverUrl);
-    else clearDynamicTheme();
+    if (customColor) {
+        applyCustomTheme(customColor);
+    } else if (enabled) {
+        if (coverUrl) {
+            applyDynamicTheme(coverUrl);
+        }
+    } else {
+        clearDynamicTheme();
+    }
 }, { immediate: true });
 
 watch(() => playerStore.currentMusic, currentMusic => {
@@ -182,17 +188,15 @@ const handleTitleBarDoubleClick = () => {
 .mainWindow {
     width: 100%;
     height: 100%;
-    background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
+    background: var(--bg);
     opacity: 0;
-    animation: mainWindows-starting 0.8s cubic-bezier(0.14, 0.91, 0.58, 1) forwards;
+    animation: mainWindows-starting 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     @keyframes mainWindows-starting {
         0% {
-            background-color: rgba(222, 235, 239, 1);
             opacity: 0;
-            transform: scale(1.3);
+            transform: scale(0.99);
         }
         100% {
-            background-color: rgb(255, 255, 255);
             opacity: 1;
             transform: scale(1);
         }

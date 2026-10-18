@@ -47,22 +47,27 @@ let lyricWindow = null;
 let forceQuit = false;
 const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
-const DEFAULT_SPLASH_THEME = "ark";
-const SPLASH_THEMES = new Set([
-  "exa",
-  "corporate",
-  "popucom",
-  "endfield",
-  "ark",
-]);
-const SPLASH_BACKGROUND_COLORS = {
-  exa: "#080914",
-  corporate: "#050505",
-  popucom: "#3994ff",
-  endfield: "#f2f2f0",
-  ark: "#080a0b",
-};
+const DEFAULT_SPLASH_BG_COLOR = "#f4f6f8";
 let splashWindow = null;
+
+const hslToHex = (hue, saturation, lightness) => {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hue >= 0 && hue < 60) { r = c; g = x; b = 0; }
+  else if (hue >= 60 && hue < 120) { r = x; g = c; b = 0; }
+  else if (hue >= 120 && hue < 180) { r = 0; g = c; b = x; }
+  else if (hue >= 180 && hue < 240) { r = 0; g = x; b = c; }
+  else if (hue >= 240 && hue < 300) { r = x; g = 0; b = c; }
+  else if (hue >= 300 && hue < 360) { r = c; g = 0; b = x; }
+  const toHex = (n) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
 // 由 createWindow() 内部赋值，供 app.whenReady() 并行启动播放器内容
 let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
@@ -99,15 +104,53 @@ const createMainWindowState = () => {
 const createSplashWindow = async (mainWindowOptions) => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
-  let splashTheme = DEFAULT_SPLASH_THEME;
+  let splashBgColor = DEFAULT_SPLASH_BG_COLOR;
+  let splashQueryParams = {};
+
   try {
     const Store = await getElectronStore();
-    const settingsStore = new Store({ name: "settings" });
-    const settings = await settingsStore.get("settings");
-    const savedTheme = settings?.other?.startupAnimation;
-    if (SPLASH_THEMES.has(savedTheme)) splashTheme = savedTheme;
+    const themeStore = new Store({ name: "theme" });
+    const snapshot = await themeStore.get("themeSnapshot");
+
+    if (snapshot && typeof snapshot === "object") {
+      const isDark = !!snapshot.isDark;
+      if (snapshot.dynamicTheme && snapshot.palette) {
+        const p = snapshot.palette;
+        const hue = Number(p.hue) || 210;
+        const sat = Number(p.saturation) || 28;
+        splashBgColor = isDark ? hslToHex(hue, 38, 13) : hslToHex(hue, sat, 86);
+        splashQueryParams = {
+          dynamic: "1",
+          dark: isDark ? "1" : "0",
+          hue: String(hue),
+          sat: String(sat),
+          secHue: String(p.secondaryHue ?? hue),
+          secSat: String(p.secondarySaturation ?? sat),
+          secStr: String(p.secondaryStrength ?? 1),
+          terHue: String(p.tertiaryHue ?? hue),
+          terSat: String(p.tertiarySaturation ?? sat),
+          terStr: String(p.tertiaryStrength ?? 1),
+          priX: String(p.primaryX ?? 12),
+          priY: String(p.primaryY ?? 8),
+          secX: String(p.secondaryX ?? 92),
+          secY: String(p.secondaryY ?? 96),
+          terX: String(p.tertiaryX ?? 52),
+          terY: String(p.tertiaryY ?? 54),
+          gradAngle: String(p.gradientAngle ?? 160),
+        };
+      } else if (snapshot.customColor && /^#[\da-f]{6}$/i.test(snapshot.customColor)) {
+        splashBgColor = snapshot.customColor;
+        splashQueryParams = {
+          customColor: snapshot.customColor,
+          dark: isDark ? "1" : "0",
+        };
+      } else {
+        splashBgColor = isDark ? "#21262b" : "#f4f6f8";
+        splashQueryParams = { dark: isDark ? "1" : "0" };
+      }
+    }
   } catch (error) {
-    console.warn("Splash preference load failed:", error);
+    console.warn("Splash theme preference load failed:", error);
   }
 
   const win = new BrowserWindow({
@@ -120,7 +163,7 @@ const createSplashWindow = async (mainWindowOptions) => {
     frame: false,
     show: false,
     skipTaskbar: true,
-    backgroundColor: SPLASH_BACKGROUND_COLORS[splashTheme],
+    backgroundColor: splashBgColor,
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -135,7 +178,7 @@ const createSplashWindow = async (mainWindowOptions) => {
 
   try {
     await win.loadFile(path.join(__dirname, "splash.html"), {
-      query: { family: splashTheme },
+      query: splashQueryParams,
     });
   } catch (error) {
     console.error("Splash load failed:", error);

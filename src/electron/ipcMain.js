@@ -176,15 +176,7 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     shortcutDefaultsShiftV1: true,
     enableUpdate: normalized.other?.enableUpdate !== false,
-    startupAnimation: [
-      "exa",
-      "corporate",
-      "popucom",
-      "endfield",
-      "ark",
-    ].includes(normalized.other?.startupAnimation)
-      ? normalized.other.startupAnimation
-      : "ark",
+    startupAnimation: "corporate",
     quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
     customFont: typeof normalized.other?.customFont === "string" ? normalized.other.customFont.trim() : "",
     customFontLabel: typeof normalized.other?.customFontLabel === "string" ? normalized.other.customFontLabel.trim() : "",
@@ -605,6 +597,24 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     };
   };
 
+  const themeStore = new Store({ name: "theme" });
+  ipcMain.handle("theme:save-snapshot", async (_event, snapshot) => {
+    try {
+      await themeStore.set("themeSnapshot", snapshot);
+      return true;
+    } catch (err) {
+      console.warn("Save theme snapshot failed:", err);
+      return false;
+    }
+  });
+  ipcMain.handle("theme:get-snapshot", async () => {
+    try {
+      return await themeStore.get("themeSnapshot");
+    } catch (_) {
+      return null;
+    }
+  });
+
   ipcMain.on("set-settings", (e, settings) => {
     const parsedSettings = normalizeStoredSettings(JSON.parse(settings), app.getVersion());
     settingsStore.set("settings", parsedSettings);
@@ -692,7 +702,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
         other: {
           globalShortcuts: true,
           enableUpdate: true,
-          startupAnimation: "ark",
+          startupAnimation: "corporate",
           quitApp: "minimize",
           customFont: "",
           customFontLabel: "",

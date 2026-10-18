@@ -1,134 +1,219 @@
 <!doctype html>
-<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="complex">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="light" />
     <title>Hydrogen Music — 启动中</title>
     <link rel="stylesheet" href="./splash.css" />
     <script src="./splash.js" defer></script>
   </head>
   <body>
-    <main class="splash-shell" aria-labelledby="startup-title">
-      <header class="brand-bar">
-        <div class="brand-lockup">
-          <span class="brand-mark" aria-hidden="true">
-            <i></i>
-            <i></i>
-            <i></i>
-          </span>
-          <span class="brand-name">
-            <strong>Hydrogen Music</strong>
-            <small>LOCAL MUSIC PLAYER</small>
-          </span>
+    <div class="splash-shell">
+      <!-- Background Paper Canvas / Industrial Technical Grids -->
+      <div class="splash-bg" aria-hidden="true">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="bg-vignette"></div>
+      </div>
+
+      <!-- Top Brand Header: 1:1 Absolute Alignment with App.vue .globalWidget -->
+      <header class="splash-header">
+        <div class="header-brand">
+          <span class="brand-logo">Hydrogen</span>
+          <div class="header-visualizer" aria-hidden="true">
+            <span class="v-bar v1"></span>
+            <span class="v-bar v2"></span>
+            <span class="v-bar v3"></span>
+            <span class="v-bar v4"></span>
+            <span class="v-bar v5"></span>
+            <span class="v-bar v6"></span>
+            <span class="v-bar v7"></span>
+            <span class="v-bar v8"></span>
+          </div>
+          <!-- Corner-bracketed Search Tag (matching [ SEARCH ] in main window) -->
+          <div class="header-search-tag" aria-hidden="true">
+            <span class="tag-corner c-tl"></span>
+            <span class="tag-corner c-tr"></span>
+            <span class="tag-corner c-bl"></span>
+            <span class="tag-corner c-br"></span>
+            <span class="tag-text">SEARCH</span>
+          </div>
         </div>
-        <p class="theme-name">
-          <span>启动界面</span>
-          <b aria-hidden="true">/</b>
-          <strong data-theme-label>工业</strong>
-        </p>
+
+        <div class="header-meta">
+          <div class="system-tag">
+            <span class="sys-code">MSR // AUDIO ENGINE</span>
+            <span class="sys-divider">/</span>
+            <span class="sys-phase">ACTIVE</span>
+          </div>
+          <div class="window-decor" aria-hidden="true">
+            <span class="dot d1"></span>
+            <span class="dot d2"></span>
+            <span class="dot d3"></span>
+          </div>
+        </div>
       </header>
 
-      <aside class="phase-rail" aria-label="启动阶段">
-        <p class="phase-title">STARTUP</p>
-        <ol>
-          <li data-phase="0">
-            <span>01</span>
-            <strong>准备</strong>
-          </li>
-          <li data-phase="1">
-            <span>02</span>
-            <strong>数据</strong>
-          </li>
-          <li data-phase="2">
-            <span>03</span>
-            <strong>服务</strong>
-          </li>
-          <li data-phase="3">
-            <span>04</span>
-            <strong>界面</strong>
-          </li>
-          <li data-phase="4">
-            <span>05</span>
-            <strong>完成</strong>
-          </li>
-        </ol>
-      </aside>
+      <!-- Center Stage: 680px column alignment with Home Page elements -->
+      <main class="splash-stage">
+        <!-- Top Tech Ribbon (Echoing BREAKING NEWS badge and line-with-square-dot) -->
+        <div class="stage-ribbon-top" aria-hidden="true">
+          <div class="ribbon-badge">
+            <span class="badge-en">MSR AUDIO ARCHIVE</span>
+            <span class="badge-sep">//</span>
+            <span class="badge-cn">声学工程</span>
+          </div>
+          <div class="ribbon-line"></div>
+          <div class="ribbon-reticle"></div>
+        </div>
 
-      <section class="splash-stage">
-        <div class="stage-field" aria-hidden="true">
-          <span class="field-grid"></span>
-          <span class="field-sector"></span>
-          <span class="field-beam"></span>
-          <span class="field-orbit orbit-outer"></span>
-          <span class="field-orbit orbit-inner"></span>
-          <span class="field-node node-one"></span>
-          <span class="field-node node-two"></span>
-          <span class="field-node node-three"></span>
-          <span class="editorial-media"></span>
-          <span class="editorial-rule"></span>
-          <span class="play-shape play-one"></span>
-          <span class="play-shape play-two"></span>
-          <span class="play-shape play-three"></span>
+        <!-- Center Resonance Core -->
+        <div class="stage-resonator" aria-hidden="true">
+          <!-- 4 Industrial Corner Brackets (matching DAILY RECOMMENDATION card) -->
+          <div class="res-corner br-tl"></div>
+          <div class="res-corner br-tr"></div>
+          <div class="res-corner br-bl"></div>
+          <div class="res-corner br-br"></div>
 
-          <div class="progress-instrument">
-            <span class="instrument-track"></span>
-            <span class="instrument-sweep"></span>
-            <svg
-              class="waveform"
-              viewBox="0 0 320 120"
-              preserveAspectRatio="none"
-            >
-              <path
-                class="wave-muted"
-                d="M0 60C18 60 22 60 35 60C47 60 49 44 61 44C74 44 76 77 89 77C103 77 107 22 121 22C136 22 139 92 154 92C170 92 173 35 189 35C204 35 209 70 224 70C239 70 243 51 257 51C273 51 279 60 320 60"
-              ></path>
-              <path
-                class="wave-signal"
-                d="M0 60C18 60 22 60 35 60C47 60 49 44 61 44C74 44 76 77 89 77C103 77 107 22 121 22C136 22 139 92 154 92C170 92 173 35 189 35C204 35 209 70 224 70C239 70 243 51 257 51C273 51 279 60 320 60"
-              ></path>
+          <!-- Ambient Warm Glow Flare -->
+          <div class="resonator-glow"></div>
+
+          <!-- Outer Precision Dial Ring -->
+          <div class="orbit-ring ring-outer">
+            <svg class="ring-svg" viewBox="0 0 320 320">
+              <circle class="ring-base" cx="160" cy="160" r="150" />
+              <circle class="ring-arc ring-arc-1" cx="160" cy="160" r="150" />
+              <circle class="ring-arc ring-arc-2" cx="160" cy="160" r="150" />
+              <g class="ring-ticks">
+                <line x1="160" y1="4" x2="160" y2="14" />
+                <line x1="160" y1="306" x2="160" y2="316" />
+                <line x1="4" y1="160" x2="14" y2="160" />
+                <line x1="306" y1="160" x2="316" y2="160" />
+                <line x1="49" y1="49" x2="57" y2="57" />
+                <line x1="271" y1="49" x2="263" y2="57" />
+                <line x1="49" y1="271" x2="57" y2="263" />
+                <line x1="271" y1="271" x2="263" y2="263" />
+              </g>
+              <!-- Precision degree markings -->
+              <text x="160" y="25" class="tick-label" text-anchor="middle">000°</text>
+              <text x="295" y="163" class="tick-label" text-anchor="end">090°</text>
+              <text x="160" y="301" class="tick-label" text-anchor="middle">180°</text>
+              <text x="25" y="163" class="tick-label" text-anchor="start">270°</text>
             </svg>
-            <span class="instrument-core"></span>
+            <div class="orbit-scan"></div>
           </div>
 
-          <p class="progress-ghost">
-            <span data-progress-ghost>08</span>
-            <small>%</small>
-          </p>
+          <!-- Mid Orbit: Acoustic Waveform Equalizer Crown -->
+          <div class="orbit-ring ring-mid">
+            <div class="waveform-crown">
+              <span class="crown-bar b1"></span>
+              <span class="crown-bar b2"></span>
+              <span class="crown-bar b3"></span>
+              <span class="crown-bar b4"></span>
+              <span class="crown-bar b5"></span>
+              <span class="crown-bar b6"></span>
+              <span class="crown-bar b7"></span>
+              <span class="crown-bar b8"></span>
+              <span class="crown-bar b9"></span>
+              <span class="crown-bar b10"></span>
+              <span class="crown-bar b11"></span>
+              <span class="crown-bar b12"></span>
+              <span class="crown-bar b13"></span>
+              <span class="crown-bar b14"></span>
+              <span class="crown-bar b15"></span>
+              <span class="crown-bar b16"></span>
+            </div>
+          </div>
+
+          <!-- Inner Chamber: Vinyl Turntable Core & Typography -->
+          <div class="orbit-chamber">
+            <!-- Concentric vinyl micro-grooves -->
+            <div class="vinyl-groove g1"></div>
+            <div class="vinyl-groove g2"></div>
+
+            <div class="chamber-content">
+              <div class="chamber-kicker">MONSTER SIREN // ACOUSTICS</div>
+              <div class="chamber-title-row">
+                <svg class="chamber-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v20M17 5v14M7 5v14M22 9v6M2 9v6" stroke-linecap="round"/>
+                </svg>
+                <span class="chamber-title">RESONANCE</span>
+              </div>
+              <div class="chamber-sub">
+                <span class="sub-item">HI-RES AUDIO</span>
+                <span class="sub-dot">/</span>
+                <span class="sub-item">FLAC 24-BIT</span>
+              </div>
+              <div class="chamber-date">DATE // 10 18</div>
+            </div>
+          </div>
+
+          <!-- Technical HUD Coordinates (non-colliding layout) -->
+          <div class="hud-labels">
+            <span class="hud-tag hud-tl">SYS: AUDIO_CORE // ONLINE</span>
+            <span class="hud-tag hud-tr">SAMPLING: 192.0 kHz</span>
+            <span class="hud-tag hud-bl">CHANNEL: 2.0 STEREO</span>
+            <span class="hud-tag hud-br">DYNAMIC LATENCY &lt; 3ms</span>
+          </div>
         </div>
 
-        <div class="hero-copy">
-          <p class="hero-kicker">PLAYER STARTUP / MUSIC LIBRARY</p>
-          <h1 id="startup-title">
-            音乐
-            <span>准备中</span>
-          </h1>
-          <p class="hero-note">正在启动播放器，请稍候。</p>
+        <!-- Bottom Tech Ribbon (Echoing RECOMMENDED SONG LIST badge and line) -->
+        <div class="stage-ribbon-bottom" aria-hidden="true">
+          <div class="ribbon-badge-bottom">
+            <span class="badge-en">PIPELINE INITIALIZATION</span>
+            <span class="badge-sep">//</span>
+            <span class="badge-cn">系统就绪</span>
+          </div>
+          <div class="ribbon-line-bottom"></div>
+          <div class="ribbon-reticle"></div>
+        </div>
+      </main>
+
+      <!-- Bottom Floating Dock: Directly matches .musicWidget in position, color, and size -->
+      <footer class="splash-dock" role="region" aria-label="启动进度">
+        <!-- Amber Accent Dot on Top-Right Corner (Exact match with Home Page MusicWidget) -->
+        <span class="dock-amber-dot" aria-hidden="true"></span>
+
+        <!-- Progress track across top edge of dock (matching MusicWidget progress bar) -->
+        <div class="dock-progress-track">
+          <div class="dock-progress-bar" data-progress-bar></div>
         </div>
 
-        <section class="status-panel" aria-labelledby="status-title">
-          <div class="status-heading">
-            <p id="status-title">当前状态</p>
-            <output data-progress-output aria-label="启动进度">08%</output>
+        <div class="dock-main">
+          <!-- Left: 45x45 Album Thumbnail Cover with animated turntable lens -->
+          <div class="dock-cover" aria-hidden="true">
+            <div class="cover-lens">
+              <span class="disc-ring r1"></span>
+              <span class="disc-ring r2"></span>
+              <span class="disc-dot"></span>
+            </div>
           </div>
-          <p class="status-text" data-status aria-live="polite">
-            正在准备播放器...
-          </p>
-          <progress data-progress max="100" value="8">8%</progress>
-          <div class="progress-line" aria-hidden="true">
-            <span data-progress-bar></span>
-          </div>
-        </section>
 
-        <footer class="stage-footer">
-          <span>HYDROGEN MUSIC</span>
-          <span data-current-phase>准备</span>
-        </footer>
-      </section>
-    </main>
+          <!-- Middle: Status message and dynamic telemetry readout -->
+          <div class="dock-info">
+            <div class="status-primary">
+              <span class="status-text" data-status>正在准备播放器...</span>
+              <span class="status-badge" data-current-phase>准备</span>
+            </div>
+            <div class="status-secondary">
+              <span class="telemetry-text" data-telemetry>LOADING CORE KERNEL & SOUND DRIVERS...</span>
+            </div>
+          </div>
+
+          <!-- Right: Precision numeric progress matching Home Page player controls position -->
+          <div class="dock-meta">
+            <div class="progress-counter">
+              <span class="progress-val" data-progress-number>08</span>
+              <span class="progress-sym">%</span>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
   </body>
 </html>

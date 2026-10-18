@@ -299,6 +299,8 @@ contextBridge.exposeInMainWorld("windowApi", {
   hidePlayer,
   setSettings,
   getSettings: () => ipcRenderer.invoke("get-settings"),
+  saveThemeSnapshot: (snapshot) => ipcRenderer.invoke("theme:save-snapshot", snapshot),
+  getThemeSnapshot: () => ipcRenderer.invoke("theme:get-snapshot"),
   getOtherAudioMonitorState,
   onOtherAudioStateChanged,
   getSystemFonts: () => ipcRenderer.invoke("system-fonts:list"),

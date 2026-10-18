@@ -192,14 +192,6 @@ const dynamicCompressionOptions = [
 const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
-const startupAnimation = ref("ark");
-const startupAnimationOptions = ref([
-  { label: "星空", value: "exa" },
-  { label: "黑白", value: "corporate" },
-  { label: "缤纷", value: "popucom" },
-  { label: "工程", value: "endfield" },
-  { label: "工业", value: "ark" },
-]);
 const quitApp = ref("minimize");
 const quitAppOptions = ref([
   {
@@ -476,15 +468,6 @@ onActivated(() => {
     globalShortcuts.value = settings.other.globalShortcuts;
     // 兼容旧配置：未写入过该字段时默认保持开启更新。
     appUpdateEnabled.value = settings?.other?.enableUpdate !== false;
-    startupAnimation.value = [
-      "exa",
-      "corporate",
-      "popucom",
-      "endfield",
-      "ark",
-    ].includes(settings?.other?.startupAnimation)
-      ? settings.other.startupAnimation
-      : "ark";
     quitApp.value = settings.other.quitApp;
     customFont.value = settings?.other?.customFont || "";
     customFontLabel.value = settings?.other?.customFontLabel || "";
@@ -580,7 +563,7 @@ const setAppSettings = () => {
       shortcutDefaultsShiftV1: true,
       // 关闭后会同时禁用启动自动检查和手动检查更新入口。
       enableUpdate: appUpdateEnabled.value,
-      startupAnimation: startupAnimation.value,
+      startupAnimation: "corporate",
       quitApp: quitApp.value,
       customFont: customFont.value,
       customFontLabel: customFont.value ? customFontLabel.value : "",
@@ -1931,15 +1914,6 @@ const clearFmRecent = () => {
                     <div class="toggle-on" v-show="appUpdateEnabled"></div>
                   </Transition>
                 </div>
-              </div>
-            </div>
-            <div class="option">
-              <div class="option-name">启动动画（下次启动生效）</div>
-              <div class="option-operation">
-                <Selector
-                  v-model="startupAnimation"
-                  :options="startupAnimationOptions"
-                ></Selector>
               </div>
             </div>
             <div class="option">

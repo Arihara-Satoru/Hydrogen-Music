@@ -65,10 +65,12 @@
       other: {
         quitApp: "minimize",
         enableUpdate: false,
-        startupAnimation: "ark",
+        startupAnimation: "corporate",
       },
     }),
     setSettings: noop,
+    saveThemeSnapshot: noopResolve(true),
+    getThemeSnapshot: noopResolve(null),
     getOtherAudioMonitorState: noopResolve({
       supported: false,
       active: false,

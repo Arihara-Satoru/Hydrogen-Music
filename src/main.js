@@ -13,6 +13,7 @@ import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
+import { initDynamicTheme } from './utils/dynamicTheme'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
@@ -20,6 +21,7 @@ app.use(MotionPlugin)
 app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
+initDynamicTheme()
 app.mount('#app')
 router.isReady().then(async () => {
   await nextTick()
