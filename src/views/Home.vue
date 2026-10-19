@@ -263,7 +263,7 @@ main {
 
 .home-header {
     position: relative;
-    z-index: 20;
+    z-index: 1000;
     margin: 30px 0 20px 0;
     display: flex;
     flex-direction: row;
@@ -276,10 +276,12 @@ main {
         min-height: 27px;
         display: inline-flex;
         align-items: center;
+        -webkit-app-region: no-drag;
         .primary-nav,
         .header-router-right {
             display: flex;
             align-items: center;
+            -webkit-app-region: no-drag;
         }
         .header-router-right {
             position: absolute;
@@ -296,6 +298,7 @@ main {
             display: inline-flex;
             align-items: center;
             flex-shrink: 0;
+            -webkit-app-region: no-drag;
         }
         .primary-nav a {
             margin-right: 40px;
@@ -311,6 +314,7 @@ main {
             bottom: 0;
             z-index: 2;
             transition: left 0.3s ease;
+            pointer-events: none;
         }
         .user {
             position: relative;

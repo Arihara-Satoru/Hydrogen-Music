@@ -85,9 +85,11 @@
 <style scoped lang="scss">
   .title-container{
     position: relative;
+    -webkit-app-region: no-drag;
     .title-logo{
       font: 28Px Gilroy-ExtraBold;
       color: rgb(26, 26, 26);
+      -webkit-app-region: no-drag;
     }
     .title-player{
       width: 0;

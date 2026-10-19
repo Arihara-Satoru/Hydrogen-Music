@@ -211,12 +211,13 @@ const handleTitleBarDoubleClick = () => {
     align-items: center;
     position: absolute;
     top: 22px;
-    z-index: 999;
+    z-index: 1000;
     left: 45px; // 所有平台保持统一的布局位置
     pointer-events: none;
 
     .widget-title {
         pointer-events: auto;
+        -webkit-app-region: no-drag;
 
         &:hover {
             cursor: pointer;
@@ -228,6 +229,7 @@ const handleTitleBarDoubleClick = () => {
         transition: transform 0.72s cubic-bezier(0.16, 1, 0.3, 1);
         will-change: transform;
         pointer-events: auto;
+        -webkit-app-region: no-drag;
     }
     .widget-visualizer {
         flex-shrink: 0;

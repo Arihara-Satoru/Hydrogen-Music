@@ -615,6 +615,7 @@ $boderPosition: -1px;
     bottom: -3px;
     display: flex;
     transition: 0.3s cubic-bezier(0.24, 0.97, 0.59, 1);
+    -webkit-app-region: no-drag;
     .search-input {
         width: 100%;
         padding: 0 10px;
@@ -625,6 +626,7 @@ $boderPosition: -1px;
         outline: none;
         text-align: center;
         font: 12px SourceHanSansCN-Bold;
+        -webkit-app-region: no-drag;
         &::-webkit-input-placeholder {
             font: 12px Geometos;
             color: black;
@@ -634,6 +636,7 @@ $boderPosition: -1px;
         width: 7px;
         height: 7px;
         position: absolute;
+        pointer-events: none;
     }
     .search-border1 {
         top: 0;
@@ -672,6 +675,7 @@ $boderPosition: -1px;
         height: 4px;
         background-color: black;
         position: absolute;
+        pointer-events: none;
     }
     .search-border5 {
         top: $boderPosition;
