@@ -192,6 +192,7 @@ async function waitForLyricFonts(token) {
     if (typeof document === 'undefined' || !isLyricRevealTokenActive(token)) return;
     const fontSet = document.fonts;
     if (!fontSet) return;
+    if (fontSet.status === 'loaded') return;
 
     const lyricFontSize = Math.max(
         Number(lyricSize.value || 0) || 20,
@@ -248,30 +249,66 @@ watch(
     { flush: 'sync' }
 );
 
-// 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
-function computeCumulativeOffset(index) {
-    if (!lyricEle.value || !lyricEle.value.length) {
-        return (index + 1) * (size || 0)
-    }
-    let offset = 0
-    for (let i = 0; i <= index && i < lyricEle.value.length; i++) {
-        const el = lyricEle.value[i]
-        if (el && el.offsetParent !== null) offset += el.clientHeight + 10
-        else offset += (size || 0)
-    }
-    return offset
+// 缓存歌词行高度与前缀和，避免多轮测量和滚动中频繁触发 DOM 重排（Layout Thrashing）
+let cachedLineHeights = null;
+let cachedPrefixSums = null;
+let cachedTotalHeight = 0;
+let isLayoutDirty = true;
+
+function invalidateLayoutCache() {
+    isLayoutDirty = true;
 }
 
-// 计算整份歌词的总高度（用于边界与容器高度），优先DOM，回退估算
-function computeTotalHeight() {
-    if (!lyricEle.value || !lyricEle.value.length) return initMax || 0
-    let total = 0
-    for (let i = 0; i < lyricEle.value.length; i++) {
-        const el = lyricEle.value[i]
-        if (el && el.offsetParent !== null) total += el.clientHeight + 10
-        else total += (size || 0)
+function updateMeasuredHeights() {
+    const lines = lyricEle.value;
+    if (!lines || !lines.length) {
+        cachedLineHeights = null;
+        cachedPrefixSums = null;
+        cachedTotalHeight = 0;
+        isLayoutDirty = false;
+        return;
     }
-    return total
+
+    const count = lines.length;
+    const heights = new Float32Array(count);
+    const prefixSums = new Float32Array(count);
+    const fallbackSize = size || 0;
+
+    let runningTotal = 0;
+    for (let i = 0; i < count; i++) {
+        const el = lines[i];
+        const h = el && el.offsetParent !== null ? el.clientHeight + 10 : fallbackSize;
+        heights[i] = h;
+        runningTotal += h;
+        prefixSums[i] = runningTotal;
+    }
+
+    cachedLineHeights = heights;
+    cachedPrefixSums = prefixSums;
+    cachedTotalHeight = runningTotal;
+    isLayoutDirty = false;
+}
+
+// 计算指定索引之前（含该索引）的累计高度，优先使用缓存的前缀和，回退为均匀估算
+function computeCumulativeOffset(index) {
+    if (!lyricEle.value || !lyricEle.value.length) {
+        return (index + 1) * (size || 0);
+    }
+    if (isLayoutDirty || !cachedPrefixSums || cachedPrefixSums.length !== lyricEle.value.length) {
+        updateMeasuredHeights();
+    }
+    if (!cachedPrefixSums || index < 0) return 0;
+    const safeIdx = Math.min(index, cachedPrefixSums.length - 1);
+    return cachedPrefixSums[safeIdx];
+}
+
+// 计算整份歌词的总高度（用于边界与容器高度），优先缓存，回退估算
+function computeTotalHeight() {
+    if (!lyricEle.value || !lyricEle.value.length) return initMax || 0;
+    if (isLayoutDirty || !cachedPrefixSums || cachedPrefixSums.length !== lyricEle.value.length) {
+        updateMeasuredHeights();
+    }
+    return cachedTotalHeight || (initMax || 0);
 }
 
 function getInterludeHeightCompensation(index) {
@@ -397,6 +434,7 @@ function isSameLyricLayoutSignature(prev, next) {
 watch(
     () => lyricsObjArr.value,
     async newLyrics => {
+        invalidateLayoutCache();
         if (newLyrics && newLyrics.length > 0) {
             // 重新根据本首歌的行间隔校准演唱速率
             recomputeSongTimingModel();
@@ -423,6 +461,7 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
         }
         await nextTick();
         lyricEle.value = getLyricLineElements();
+        invalidateLayoutCache();
         setMaxHeight(true);
         syncLyricPosition();
         if (waitForPaint) {
@@ -434,6 +473,7 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
 };
 
 const recalcLyricLayout = async () => {
+    invalidateLayoutCache();
     await applyLyricLayout();
 };
 
@@ -643,9 +683,16 @@ function handleInterludeOnProgress() {
 // Resize 触发同步：容器尺寸改变后重新测量与同步
 let lyricResizeObserver = null;
 let resizeRaf = 0;
+let lastObservedWidth = 0;
 const scheduleLayout = () => {
+    // 揭示动画准备中时不被微小抖动干扰
+    if (suppressLyricFlash.value) return;
+    const curWidth = lyricScroll.value?.clientWidth || 0;
+    if (lastObservedWidth && Math.abs(curWidth - lastObservedWidth) < 2) return;
+    lastObservedWidth = curWidth;
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(async () => {
+        invalidateLayoutCache();
         await applyLyricLayout();
     });
 };
@@ -654,6 +701,7 @@ const scheduleLayout = () => {
 watch(
     lyricType,
     async () => {
+        invalidateLayoutCache();
         await recalcLyricLayout();
     },
     { deep: true, flush: 'post' }
@@ -1043,6 +1091,9 @@ watch([playing, lyricShow], ([p, show]) => {
         inset: 1.5vh;
         overflow: hidden;
         transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+        contain: layout paint;
+        transform: translateZ(0);
+        will-change: clip-path, transform, opacity;
         &::after {
             content: '';
             position: absolute;
@@ -1051,6 +1102,7 @@ watch([playing, lyricShow], ([p, show]) => {
             pointer-events: none;
             opacity: 0;
             transform: translate3d(-100%, 0, 0);
+            will-change: transform, opacity;
             background: linear-gradient(
                 90deg,
                 transparent 0,

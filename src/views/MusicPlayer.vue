@@ -295,6 +295,8 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         background-size: cover;
         filter: blur(50px) saturate(120%);
         transform: translate3d(-10%, -10%, 0);
+        will-change: transform, opacity;
+        contain: strict;
         transition: 0.3s;
     }
 
@@ -319,6 +321,8 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
         position: relative;
         z-index: 1;
+        contain: paint;
+        will-change: width, height, opacity;
         @keyframes player-in {
             0% {
                 height: 0;
@@ -362,9 +366,11 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         margin-left: 50px;
         width: calc(100% - 42vh - 50px);
         height: 100%;
-        transition: 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+        transition: transform 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99), opacity 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
         position: relative;
         z-index: 1;
+        contain: layout paint;
+        will-change: transform, opacity;
         .right-panel-content,
         .lyric-container,
         .comments-container,
