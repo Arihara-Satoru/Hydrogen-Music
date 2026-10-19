@@ -49,6 +49,7 @@ const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
 const DEFAULT_SPLASH_BG_COLOR = "#f4f6f8";
 let splashWindow = null;
+let resolvedThemeBgColor = DEFAULT_SPLASH_BG_COLOR;
 
 const hslToHex = (hue, saturation, lightness) => {
   const s = saturation / 100;
@@ -152,6 +153,8 @@ const createSplashWindow = async (mainWindowOptions) => {
   } catch (error) {
     console.warn("Splash theme preference load failed:", error);
   }
+
+  resolvedThemeBgColor = splashBgColor;
 
   const win = new BrowserWindow({
     minWidth: MAIN_WINDOW_MIN_WIDTH,
@@ -459,7 +462,7 @@ const createWindow = (winstate = createMainWindowState()) => {
       "./src/assets/icon/" +
         (process.platform === "win32" ? "icon.ico" : "icon.png"),
     ),
-    backgroundColor: "#fff",
+    backgroundColor: resolvedThemeBgColor,
     //记录窗口大小
     ...winstate.winOptions,
     show: false,
@@ -567,7 +570,9 @@ const createWindow = (winstate = createMainWindowState()) => {
       return;
     }
     win.show();
-    closeSplashWindow();
+    setTimeout(() => {
+      closeSplashWindow();
+    }, 60);
     // 微调 macOS 交通灯位置以匹配自定义布局高度
     try {
       if (isMac && typeof win.setTrafficLightPosition === "function") {

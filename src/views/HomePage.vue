@@ -59,12 +59,43 @@
       display: flex;
       flex-direction: row;
       justify-content: space-between;
+      animation: home-header-reveal 0.48s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
     .page-content{
       margin-top: 40px;
+      animation: home-content-reveal 0.52s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
       .rec-list{
         margin-bottom: 140px;
       }
+    }
+  }
+
+  @keyframes home-header-reveal {
+    0% {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes home-content-reveal {
+    0% {
+      opacity: 0;
+      transform: translateY(22px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-header,
+    .page-content {
+      animation: none !important;
     }
   }
 </style>

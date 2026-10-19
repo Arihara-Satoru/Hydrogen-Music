@@ -269,6 +269,7 @@ main {
     flex-direction: row;
     justify-content: center;
     align-items: center;
+    animation: home-nav-reveal 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
     .header-router {
         position: relative;
         margin-left: 52px;
@@ -441,6 +442,23 @@ main {
     .home-header .header-router { margin-left: 0; }
     .home-header .header-router .primary-nav a,
     .home-header .header-router .header-router-right a { margin-right: 22px; font-size: 16px; }
+}
+
+@keyframes home-nav-reveal {
+    0% {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-header {
+        animation: none !important;
+    }
 }
 </style>
 

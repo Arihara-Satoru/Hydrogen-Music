@@ -116,7 +116,7 @@ if (typeof document !== "undefined") {
     root.classList.add("is-leaving");
 
     finishPromise = new Promise((resolve) => {
-      window.setTimeout(resolve, reduceMotion.matches ? 0 : 420);
+      window.setTimeout(resolve, reduceMotion.matches ? 0 : 200);
     });
     return finishPromise;
   };

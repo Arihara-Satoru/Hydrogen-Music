@@ -189,18 +189,9 @@ const handleTitleBarDoubleClick = () => {
     width: 100%;
     height: 100%;
     background: var(--bg);
-    opacity: 0;
-    animation: mainWindows-starting 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    @keyframes mainWindows-starting {
-        0% {
-            opacity: 0;
-            transform: scale(0.99);
-        }
-        100% {
-            opacity: 1;
-            transform: scale(1);
-        }
-    }
+    position: relative;
+    overflow: hidden;
+
     .home {
         height: calc(100% - 78px);
 
