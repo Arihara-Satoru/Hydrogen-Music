@@ -40,13 +40,19 @@ export function isLossyStream(streamInfo = {}) {
 }
 
 export function formatAudioInfo(streamInfo = {}) {
-    const { sr, br, bitsPerSample, type } = buildLevelInfoFromStream(streamInfo)
+    const { sr, br, bitsPerSample, type, size } = buildLevelInfoFromStream(streamInfo)
+    const isLossless = !isLossyStream(streamInfo)
+    // 针对截断探测导致误算出的极低码率（如无损 FLAC 显示几十 kbps）做兜底过滤
+    let displayBitrate = br
+    if (isLossless && displayBitrate && displayBitrate < 200000) {
+        displayBitrate = undefined
+    }
     return {
         format: type ? type.toUpperCase() : '未知',
         sampleRate: sr ? `${Number((sr / 1000).toFixed(3))} kHz` : '未知',
-        bitDepth: isLossyStream(streamInfo)
+        bitDepth: !isLossless
             ? '不适用' : bitsPerSample ? `${bitsPerSample} bit` : '未知',
-        bitrate: br ? `${Math.round(br / 1000)} kbps` : '未知',
+        bitrate: displayBitrate ? `${Math.round(displayBitrate / 1000)} kbps` : '未知',
     }
 }
 

@@ -2428,7 +2428,19 @@ async function loadRemoteAudioInfo(targetSong, streamInfo) {
     const headerInfo = buildLevelInfoFromStream(metadata);
     // A short VBR header may only expose nominal bitrate; keep the API's full-stream value.
     if (levelInfo.br) delete headerInfo.br;
+    // 如果返回的码率对无损格式明显不合理（如截断分片导致的极低码率），不予采纳
+    if (headerInfo.lossless && headerInfo.br && headerInfo.br < 200000) {
+      delete headerInfo.br;
+    }
     Object.assign(levelInfo, headerInfo);
+    // 如果依然缺少码率，但有文件大小与时长，可通过大小和时长推导码率
+    if (!levelInfo.br && levelInfo.size && (targetSong.dt || targetSong.duration || targetSong.timelen)) {
+      const rawDuration = Number(targetSong.dt || targetSong.duration || targetSong.timelen);
+      const durationSec = rawDuration > 1000 ? rawDuration / 1000 : rawDuration;
+      if (durationSec > 0) {
+        levelInfo.br = Math.round((Number(levelInfo.size) * 8) / durationSec);
+      }
+    }
     targetSong.extname = levelInfo.type || "";
   } catch (error) {
     console.warn("读取在线音频参数失败:", error);
