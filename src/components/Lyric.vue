@@ -24,7 +24,6 @@ const {
     tlyricSize,
     rlyricSize,
     lyricType,
-    playerChangeSong,
     lyricInterludeTime,
     lyricBlur,
     videoIsPlaying,
@@ -32,6 +31,7 @@ const {
 
 const lyricScroll = ref();
 const lyricScrollArea = ref();
+const lyricLines = ref();
 const heightVal = ref(0);
 const minHeightVal = ref(null);
 const maxHeightVal = ref(null);
@@ -63,6 +63,53 @@ const LYRIC_MANUAL_SCROLL_RESUME_MS = 2000;
 // 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
 const suppressLyricFlash = ref(true);
 const lyricAreaReady = ref(false);
+const lyricRevealAnimating = ref(false);
+const lyricEntryTrack = ref();
+let lyricEntryAnimation = null;
+
+function cancelLyricEntry() {
+    if (lyricEntryAnimation) lyricEntryAnimation.cancel();
+    lyricEntryAnimation = null;
+    lyricRevealAnimating.value = false;
+}
+
+function startLyricEntry(token) {
+    cancelLyricEntry();
+    const track = lyricEntryTrack.value;
+    if (!track || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // 在真实正文行之间选取起点，首句从后方回滚，尾句从前方滚入。
+    // 不复制歌词，也不越过首尾边界；只有一行时使用轻微的归位位移。
+    const indices = Array.from(lyricsObjArr.value || [], (item, index) => item?.lyric?.trim() ? index : -1)
+        .filter(index => index >= 0);
+    if (!indices.length) return;
+    const target = Math.max(0, indices.indexOf(lycCurrentIndex.value));
+    const currentOffset = computeCumulativeOffset(indices[target]);
+    const maxTravel = (lyricScroll.value?.clientHeight || 500) * 2.2;
+    const before = currentOffset - computeCumulativeOffset(indices[0]);
+    const after = computeCumulativeOffset(indices[indices.length - 1]) - currentOffset;
+    // 靠近开头时借用后方歌词，避免只能滚动一两行；尾部始终使用前方内容。
+    const direction = before >= Math.min(maxTravel, after) ? -1 : 1;
+    let start = target;
+    for (let step = target + direction; step >= 0 && step < indices.length; step += direction) {
+        const distance = Math.abs(currentOffset - computeCumulativeOffset(indices[step]));
+        if (distance > maxTravel) break;
+        start = step;
+    }
+    const delta = currentOffset - computeCumulativeOffset(indices[start]);
+    const travel = delta || Math.min(32, (cachedLineHeights?.[indices[target]] || 60) * 0.35);
+    lyricRevealAnimating.value = true;
+    const animation = track.animate([
+        { transform: `translate3d(0, ${travel}px, 0)` },
+        { transform: 'translate3d(0, 0, 0)' },
+    ], { duration: delta ? 1800 : 650, easing: 'cubic-bezier(0.18, 0.45, 0.18, 1)' });
+    lyricEntryAnimation = animation;
+    animation.onfinish = () => {
+        if (lyricEntryAnimation !== animation || !isLyricRevealTokenActive(token)) return;
+        cancelLyricEntry();
+        // 播放在入场期间继续推进，最终位置始终交给实时歌词索引。
+        syncLyricPosition();
+    };
+}
 
 // 在高频同步中避免并发测量
 const syncingLayout = ref(false);
@@ -174,6 +221,7 @@ function getLyricLineElements() {
 }
 
 function createLyricRevealToken() {
+    cancelLyricEntry();
     lyricRevealToken += 1;
     return lyricRevealToken;
 }
@@ -183,8 +231,10 @@ function isLyricRevealTokenActive(token) {
 }
 
 function invalidateLyricReveal() {
+    cancelLyricEntry();
     lyricRevealToken += 1;
     lyricAreaReady.value = false;
+    lyricRevealAnimating.value = false;
     suppressLyricFlash.value = true;
 }
 
@@ -277,7 +327,7 @@ function updateMeasuredHeights() {
     let runningTotal = 0;
     for (let i = 0; i < count; i++) {
         const el = lines[i];
-        const h = el && el.offsetParent !== null ? el.clientHeight + 10 : fallbackSize;
+        const h = el ? (el.offsetParent !== null ? el.clientHeight + 10 : 0) : fallbackSize;
         heights[i] = h;
         runningTotal += h;
         prefixSums[i] = runningTotal;
@@ -378,30 +428,18 @@ const setMaxHeight = change => {
     if (lyricScrollArea.value) lyricScrollArea.value.style.height = initMax + 'Px';
 };
 
-const setDefaultStyle = async () => {
+const setDefaultStyle = async token => {
     clearLyricAutoResumeTimer();
     isLyricActive.value = true;
     lyricAreaReady.value = false;
-    lycCurrentIndex.value = currentLyricIndex.value >= 0 ? currentLyricIndex.value : -1;
+    lycCurrentIndex.value = syncLyricIndexForSeek(getSafeSeek());
     interludeAnimation.value = false;
+    await nextTick();
+    if (!isLyricRevealTokenActive(token)) return;
     lyricEle.value = getLyricLineElements();
-    initMax = 0;
-    setMaxHeight(false);
-    minHeightVal.value = 0;
-    lineOffset.value = initOffset;
-
-    await waitForLayoutCommit();
-    if (lycCurrentIndex.value >= 0 && size > 0) {
-        syncLyricPosition();
-    }
-
-    if (!lyricShow.value && !widgetState.value) {
-        const changeTimer = setTimeout(() => {
-            lyricShow.value = true;
-            playerChangeSong.value = false;
-            clearTimeout(changeTimer);
-        }, 400);
-    }
+    invalidateLayoutCache();
+    setMaxHeight(true);
+    syncLyricPosition();
 };
 
 function captureLyricLayoutSignature() {
@@ -414,7 +452,8 @@ function captureLyricLayoutSignature() {
 
     return {
         areaWidth: Math.round(lyricScroll.value?.clientWidth || 0),
-        totalHeight: Math.round(computeTotalHeight() || 0),
+        // 读取列表自身高度即可发现字体/换行变化，无须每帧遍历所有歌词行。
+        totalHeight: Math.round(lyricLines.value?.offsetHeight || 0),
         activeHeight: Math.round(activeLine?.clientHeight || 0),
         activeWidth: Math.round(activeLine?.clientWidth || 0),
     };
@@ -430,17 +469,14 @@ function isSameLyricLayoutSignature(prev, next) {
     );
 }
 
-// 监听歌词数组变化，重新设置样式
+// 歌词数据变化只更新缓存与时长模型；入场准备由下方的统一监听调度。
 watch(
     () => lyricsObjArr.value,
-    async newLyrics => {
+    newLyrics => {
         invalidateLayoutCache();
         if (newLyrics && newLyrics.length > 0) {
             // 重新根据本首歌的行间隔校准演唱速率
             recomputeSongTimingModel();
-            if (showLyricArea.value) {
-                await prepareLyricReveal();
-            }
             return;
         }
 
@@ -449,17 +485,17 @@ watch(
 );
 
 // 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
-const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
+const applyLyricLayout = async ({ waitForPaint = false, token } = {}) => {
     if (!lyricsObjArr.value || !lyricsObjArr.value.length) return;
     if (syncingLayout.value) return;
     syncingLayout.value = true;
     try {
         await waitForLayoutCommit();
+        if (token !== undefined && !isLyricRevealTokenActive(token)) return;
         const syncedIndex = syncLyricIndexForSeek(getSafeSeek());
-        if (syncedIndex >= 0) {
-            lycCurrentIndex.value = syncedIndex;
-        }
+        lycCurrentIndex.value = syncedIndex;
         await nextTick();
+        if (token !== undefined && !isLyricRevealTokenActive(token)) return;
         lyricEle.value = getLyricLineElements();
         invalidateLayoutCache();
         setMaxHeight(true);
@@ -473,26 +509,31 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
 };
 
 const recalcLyricLayout = async () => {
+    cancelLyricEntry();
     invalidateLayoutCache();
     await applyLyricLayout();
 };
 
 const waitForStableLyricLayout = async token => {
-    let previousSignature = null;
+    let previousSignature = captureLyricLayoutSignature();
     let stableSamples = 0;
+    const sampleTarget = typeof document !== 'undefined' && document.fonts?.status === 'loaded'
+        ? 1
+        : LYRIC_LAYOUT_STABLE_SAMPLE_TARGET;
 
     for (let attempt = 0; attempt < LYRIC_LAYOUT_STABLE_MAX_ATTEMPTS; attempt++) {
         if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return false;
-        await applyLyricLayout({ waitForPaint: true });
+        await waitForLayoutCommit();
         if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return false;
 
         lyricEle.value = getLyricLineElements();
         const signature = captureLyricLayoutSignature();
         if (isSameLyricLayoutSignature(previousSignature, signature)) {
             stableSamples += 1;
-            if (stableSamples >= LYRIC_LAYOUT_STABLE_SAMPLE_TARGET) return true;
+            if (signature.areaWidth > 0 && stableSamples >= sampleTarget) return true;
         } else {
             stableSamples = 0;
+            await applyLyricLayout({ waitForPaint: true, token });
         }
         previousSignature = signature;
     }
@@ -501,11 +542,12 @@ const waitForStableLyricLayout = async token => {
 };
 
 const prepareLyricReveal = async () => {
-    if (!showLyricArea.value) return;
+    if (!showLyricArea.value || widgetState.value) return;
 
     const token = createLyricRevealToken();
     suppressLyricFlash.value = true;
     lyricAreaReady.value = false;
+    lyricRevealAnimating.value = false;
 
     await nextTick();
     if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
@@ -513,15 +555,18 @@ const prepareLyricReveal = async () => {
     await waitForLyricFonts(token);
     if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
 
-    await setDefaultStyle();
+    await setDefaultStyle(token);
     if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
 
     await waitForStableLyricLayout(token);
     if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
 
+    lastObservedWidth = lyricScroll.value?.clientWidth || 0;
     lyricAreaReady.value = true;
     suppressLyricFlash.value = false;
     showLyricPlaceholder.value = false;
+    await nextTick();
+    if (isLyricRevealTokenActive(token)) startLyricEntry(token);
 };
 
 // —— 间奏等待动画——
@@ -692,6 +737,8 @@ const scheduleLayout = () => {
     lastObservedWidth = curWidth;
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(async () => {
+        resizeRaf = 0;
+        cancelLyricEntry();
         invalidateLayoutCache();
         await applyLyricLayout();
     });
@@ -715,15 +762,15 @@ watch(
     }
 );
 
-// 观察歌词区域的真实可见性（包含 lyrics 存在、显示开关和原文开关，并且有可显示的原文内容）
+// 首页的播放器由 v-show 隐藏，不能把零尺寸布局当作已经准备完成。
 const lyricAreaVisible = computed(() => {
-    return showLyricArea.value;
+    return showLyricArea.value && !widgetState.value;
 });
 
 // 当区域从隐藏 -> 显示时，统一走准备流程；隐藏时立即取消旧的 reveal 任务
 watch(
-    lyricAreaVisible,
-    async (visible) => {
+    [lyricAreaVisible, lyricsObjArr],
+    async ([visible]) => {
         if (visible) {
             await prepareLyricReveal();
             return;
@@ -768,6 +815,7 @@ function clearLyricAutoResumeTimer() {
 }
 
 const changeProgressLyc = async (time, index) => {
+    cancelLyricEntry();
     clearLyricAutoResumeTimer();
     isLyricActive.value = true;
     if (lyricScrollArea.value) {
@@ -818,6 +866,7 @@ watch(
         if (typeof oldVal !== 'number') return;
         if (Math.abs(newVal - oldVal) <= 1.2) return;
 
+        cancelLyricEntry();
         clearLyricAutoResumeTimer();
         isLyricActive.value = true;
         syncLyricPosition();
@@ -829,6 +878,7 @@ const handleLyricWheel = e => {
     const wheelDeltaY = typeof e.wheelDeltaY === 'number' ? e.wheelDeltaY : -Number(e.deltaY || 0);
     if (!Number.isFinite(wheelDeltaY) || wheelDeltaY === 0) return;
 
+    cancelLyricEntry();
     isLyricActive.value = false;
     heightVal.value += wheelDeltaY < 0 ? wheelDeltaY + 76 : wheelDeltaY - 76;
 
@@ -863,6 +913,7 @@ onMounted(() => {
 
 onUnmounted(() => {
     invalidateLyricReveal();
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
     clearInterludeTimers();
     clearLyricAutoResumeTimer();
     if (interludeProgressInterval) { clearInterval(interludeProgressInterval); interludeProgressInterval = null; }
@@ -901,11 +952,13 @@ watch([playing, lyricShow], ([p, show]) => {
                 :class="{
                     'no-flash': suppressLyricFlash || !lyricAreaReady,
                     'reveal-active': lyricAreaReady,
+                    'reveal-animating': lyricRevealAnimating,
                 }"
                 ref="lyricScroll"
             >
+                <div class="lyric-entry-track" ref="lyricEntryTrack">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
-                <div class="lyric-lines" :style="{ transform: `translate3d(0, ${lineOffset}px, 0)` }">
+                <div class="lyric-lines" ref="lyricLines" :style="{ transform: `translate3d(0, ${lineOffset}px, 0)` }">
                     <div class="lyric-line" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
                         <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
                             <span class="roma" :style="{ 'font-size': rlyricSize + 'px' }" v-if="item.rlyric && lyricType.indexOf('roma') != -1">{{ item.rlyric }}</span>
@@ -1049,6 +1102,7 @@ watch([playing, lyricShow], ([p, show]) => {
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
         </Transition>
         <Transition name="lyric-placeholder">
@@ -1093,30 +1147,8 @@ watch([playing, lyricShow], ([p, show]) => {
         transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
         contain: layout paint;
         transform: translateZ(0);
-        will-change: clip-path, transform, opacity;
-        &::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            z-index: 4;
-            pointer-events: none;
-            opacity: 0;
-            transform: translate3d(-100%, 0, 0);
-            will-change: transform, opacity;
-            background: linear-gradient(
-                90deg,
-                transparent 0,
-                transparent calc(100% - 20px),
-                rgba(0, 0, 0, 0.04) calc(100% - 20px),
-                rgba(0, 0, 0, 0.38) calc(100% - 2px),
-                rgba(0, 0, 0, 0.9) 100%
-            );
-        }
-        &.reveal-active {
-            animation: lyric-panel-reveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-            &::after {
-                animation: lyric-scan 0.36s 0.04s cubic-bezier(0.22, 1, 0.36, 1) both;
-            }
+        &.reveal-animating .lyric-entry-track {
+            will-change: transform;
         }
         &.no-flash {
             opacity: 0;
@@ -1478,41 +1510,6 @@ watch([playing, lyricShow], ([p, show]) => {
     opacity: 0;
 }
 
-@keyframes lyric-panel-reveal {
-    0% {
-        opacity: 0;
-        transform: translate3d(14px, 0, 0);
-        clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
-    }
-    42% {
-        opacity: 0.78;
-        transform: translate3d(6px, 0, 0);
-        clip-path: polygon(0 0, 72% 0, 61% 100%, 0 100%);
-    }
-    100% {
-        opacity: 1;
-        transform: translate3d(0, 0, 0);
-        clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
-    }
-}
-
-@keyframes lyric-scan {
-    0% {
-        opacity: 0;
-        transform: translate3d(-100%, 0, 0);
-    }
-    12% {
-        opacity: 1;
-    }
-    78% {
-        opacity: 0.75;
-    }
-    100% {
-        opacity: 0;
-        transform: translate3d(0, 0, 0);
-    }
-}
-
 @keyframes lyric-placeholder-exit {
     0%,
     60% {
@@ -1564,8 +1561,8 @@ watch([playing, lyricShow], ([p, show]) => {
 
 @media (prefers-reduced-motion: reduce) {
     .lyric-area,
-    .lyric-area.reveal-active,
-    .lyric-area.reveal-active::after,
+    .lyric-area.reveal-animating,
+    .lyric-lines,
     .lyric-content-enter-active,
     .lyric-content-leave-active,
     .lyric-placeholder-enter-active,
@@ -1576,9 +1573,13 @@ watch([playing, lyricShow], ([p, show]) => {
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
-    .lyric-area.reveal-active {
+    .lyric-container .lyric-area.reveal-animating {
+        will-change: auto;
         clip-path: none;
         transform: none;
+    }
+    .lyric-container .lyric-area .lyric-entry-track {
+        will-change: auto;
     }
 }
 </style>

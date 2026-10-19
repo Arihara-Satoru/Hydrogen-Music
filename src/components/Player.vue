@@ -522,6 +522,7 @@ const addToPlaylist = () => {
 <template>
     <div class="player-container">
         <div class="player">
+            <div class="player-body">
             <div class="player-cover">
                 <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
                     <!-- Force re-create <img> when song changes so old cover doesn't persist -->
@@ -807,6 +808,7 @@ const addToPlaylist = () => {
                 </div>
             </div>
 
+            </div>
             <div class="song-control" data-tour="player-tools">
                 <svg
                     v-if="currentSong"
@@ -1295,10 +1297,22 @@ const addToPlaylist = () => {
         width: 100%;
         height: 100%;
         transition: 0.2s;
-        overflow: hidden;
+        // 右侧工具栏超出播放器主体，文字等局部裁切由各自容器负责。
+        overflow: visible;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        .player-body {
+            // 主体随外壳展开裁切；工具栏留在这一层之外，避免互相影响。
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            flex-shrink: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
         .player-cover {
             width: 100%;
             transition: 0.2s cubic-bezier(0.33, 0.88, 0.47, 0.94);
@@ -1343,6 +1357,7 @@ const addToPlaylist = () => {
                 width: 4vh;
                 height: 4vh;
                 position: absolute;
+                transform-origin: center;
             }
             .c-border1 {
                 top: 1vh;
@@ -1351,7 +1366,8 @@ const addToPlaylist = () => {
                     top: $boderpx solid black;
                     left: $boderpx solid black;
                 }
-                animation: border1 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+                animation: border1 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
+                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
                 @keyframes border1 {
                     0% {
                         top: 1vh;
@@ -1370,7 +1386,8 @@ const addToPlaylist = () => {
                     top: $boderpx solid black;
                     right: $boderpx solid black;
                 }
-                animation: border2 0.2s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+                animation: border2 0.2s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
+                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
                 @keyframes border2 {
                     0% {
                         top: 1vh;
@@ -1389,7 +1406,8 @@ const addToPlaylist = () => {
                     bottom: $boderpx solid black;
                     right: $boderpx solid black;
                 }
-                animation: border3 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+                animation: border3 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
+                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
                 @keyframes border3 {
                     0% {
                         bottom: 1vh;
@@ -1408,7 +1426,8 @@ const addToPlaylist = () => {
                     bottom: $boderpx solid black;
                     left: $boderpx solid black;
                 }
-                animation: border4 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+                animation: border4 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
+                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
                 @keyframes border4 {
                     0% {
                         bottom: 1vh;
@@ -2295,7 +2314,19 @@ const addToPlaylist = () => {
     }
 }
 
+@keyframes cover-corner-breathe {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.97); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .player .player-cover .c-border {
+        // 完成原有归位，停止循环呼吸。
+        animation-duration: 0.01ms, 0.01ms !important;
+        animation-delay: 0ms, 0ms !important;
+        animation-iteration-count: 1, 1 !important;
+        opacity: 1;
+    }
     .song-info-corner, .song-info-close,
     .song-info-metro-enter-active .song-info-dialog,
     .song-info-metro-leave-active .song-info-dialog,

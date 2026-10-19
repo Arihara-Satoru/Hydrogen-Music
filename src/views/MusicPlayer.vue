@@ -321,7 +321,8 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
         position: relative;
         z-index: 1;
-        contain: paint;
+        // 工具栏和播放列表浮层位于播放器右侧，不能裁切外溢内容。
+        contain: layout;
         will-change: width, height, opacity;
         @keyframes player-in {
             0% {
@@ -369,7 +370,9 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         transition: transform 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99), opacity 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
         position: relative;
         z-index: 1;
-        contain: layout paint;
+        // 四角装饰和音质信息伸出面板，不能在外壳裁切绘制内容。
+        // 歌词滚动的裁切由内部 lyric-area 负责。
+        contain: layout;
         will-change: transform, opacity;
         .right-panel-content,
         .lyric-container,
@@ -450,6 +453,17 @@ watch([currentTrack, isDj], ([song, djMode]) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .music-player .player-container {
+        animation: none;
+        width: 42vh;
+        height: 100%;
+        opacity: 1;
+        transform: none;
+    }
+    .music-player .player-hide {
+        opacity: 0;
+        visibility: hidden;
+    }
     .panel-switch-enter-active,
     .panel-switch-leave-active {
         transition-duration: 0.01ms;
