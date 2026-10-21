@@ -65,7 +65,7 @@
       other: {
         quitApp: "minimize",
         enableUpdate: false,
-        startupAnimation: "corporate",
+        startupAnimation: "dynamic",
       },
     }),
     setSettings: noop,

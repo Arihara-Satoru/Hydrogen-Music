@@ -172,11 +172,23 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
     downloadFolder: normalizeDirectoryPath(normalized.local?.downloadFolder),
     localFolder: normalizeDirectoryList(normalized.local?.localFolder),
   };
+  const rawStartupAnim = normalized.other?.startupAnimation;
+  const isStartupAnimV2 = normalized.other?.startupAnimationMigrationV2 === true;
   normalized.other = {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     shortcutDefaultsShiftV1: true,
     enableUpdate: normalized.other?.enableUpdate !== false,
-    startupAnimation: "corporate",
+    startupAnimation: [
+      "dynamic",
+      "exa",
+      "corporate",
+      "popucom",
+      "endfield",
+      "ark",
+    ].includes(rawStartupAnim)
+      ? (rawStartupAnim === "corporate" && !isStartupAnimV2 ? "dynamic" : rawStartupAnim)
+      : "dynamic",
+    startupAnimationMigrationV2: isStartupAnimV2,
     quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
     customFont: typeof normalized.other?.customFont === "string" ? normalized.other.customFont.trim() : "",
     customFontLabel: typeof normalized.other?.customFontLabel === "string" ? normalized.other.customFontLabel.trim() : "",
@@ -702,7 +714,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
         other: {
           globalShortcuts: true,
           enableUpdate: true,
-          startupAnimation: "corporate",
+          startupAnimation: "dynamic",
+          startupAnimationMigrationV2: true,
           quitApp: "minimize",
           customFont: "",
           customFontLabel: "",

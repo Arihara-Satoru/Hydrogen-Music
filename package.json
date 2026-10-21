@@ -42,6 +42,7 @@
     "check:purchased-api": "node --experimental-vm-modules scripts/check-purchased-api.mjs",
     "check:release-notes": "node scripts/check-release-notes.mjs",
     "check:app-update": "node scripts/check-app-update.cjs",
+    "check:splash": "node scripts/check-splash.cjs",
     "check:siren-play-all": "node scripts/check-siren-play-all.mjs",
     "preview": "vite preview",
     "start": "node scripts/set-console-encoding.cjs && electron .",

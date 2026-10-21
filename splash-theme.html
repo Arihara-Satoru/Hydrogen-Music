@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN" data-ark-theme="ark" data-ark-depth="complex">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Hydrogen Music — 启动中</title>
+    <link rel="stylesheet" href="./splash-theme.css" />
+    <script src="./splash-theme.js" defer></script>
+  </head>
+  <body>
+    <main class="splash-shell" aria-labelledby="startup-title">
+      <header class="brand-bar">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i>
+            <i></i>
+            <i></i>
+          </span>
+          <span class="brand-name">
+            <strong>Hydrogen Music</strong>
+            <small>LOCAL MUSIC PLAYER</small>
+          </span>
+        </div>
+        <p class="theme-name">
+          <span>启动界面</span>
+          <b aria-hidden="true">/</b>
+          <strong data-theme-label>工业</strong>
+        </p>
+      </header>
+
+      <aside class="phase-rail" aria-label="启动阶段">
+        <p class="phase-title">STARTUP</p>
+        <ol>
+          <li data-phase="0">
+            <span>01</span>
+            <strong>准备</strong>
+          </li>
+          <li data-phase="1">
+            <span>02</span>
+            <strong>数据</strong>
+          </li>
+          <li data-phase="2">
+            <span>03</span>
+            <strong>服务</strong>
+          </li>
+          <li data-phase="3">
+            <span>04</span>
+            <strong>界面</strong>
+          </li>
+          <li data-phase="4">
+            <span>05</span>
+            <strong>完成</strong>
+          </li>
+        </ol>
+      </aside>
+
+      <section class="splash-stage">
+        <div class="stage-field" aria-hidden="true">
+          <span class="field-grid"></span>
+          <span class="field-sector"></span>
+          <span class="field-beam"></span>
+          <span class="field-orbit orbit-outer"></span>
+          <span class="field-orbit orbit-inner"></span>
+          <span class="field-node node-one"></span>
+          <span class="field-node node-two"></span>
+          <span class="field-node node-three"></span>
+          <span class="editorial-media"></span>
+          <span class="editorial-rule"></span>
+          <span class="play-shape play-one"></span>
+          <span class="play-shape play-two"></span>
+          <span class="play-shape play-three"></span>
+
+          <div class="progress-instrument">
+            <span class="instrument-track"></span>
+            <span class="instrument-sweep"></span>
+            <svg
+              class="waveform"
+              viewBox="0 0 320 120"
+              preserveAspectRatio="none"
+            >
+              <path
+                class="wave-muted"
+                d="M0 60C18 60 22 60 35 60C47 60 49 44 61 44C74 44 76 77 89 77C103 77 107 22 121 22C136 22 139 92 154 92C170 92 173 35 189 35C204 35 209 70 224 70C239 70 243 51 257 51C273 51 279 60 320 60"
+              ></path>
+              <path
+                class="wave-signal"
+                d="M0 60C18 60 22 60 35 60C47 60 49 44 61 44C74 44 76 77 89 77C103 77 107 22 121 22C136 22 139 92 154 92C170 92 173 35 189 35C204 35 209 70 224 70C239 70 243 51 257 51C273 51 279 60 320 60"
+              ></path>
+            </svg>
+            <span class="instrument-core"></span>
+          </div>
+
+          <p class="progress-ghost">
+            <span data-progress-ghost>08</span>
+            <small>%</small>
+          </p>
+        </div>
+
+        <div class="hero-copy">
+          <p class="hero-kicker">PLAYER STARTUP / MUSIC LIBRARY</p>
+          <h1 id="startup-title">
+            音乐
+            <span>准备中</span>
+          </h1>
+          <p class="hero-note">正在启动播放器，请稍候。</p>
+        </div>
+
+        <section class="status-panel" aria-labelledby="status-title">
+          <div class="status-heading">
+            <p id="status-title">当前状态</p>
+            <output data-progress-output aria-label="启动进度">08%</output>
+          </div>
+          <p class="status-text" data-status aria-live="polite">
+            正在准备播放器...
+          </p>
+          <progress data-progress max="100" value="8">8%</progress>
+          <div class="progress-line" aria-hidden="true">
+            <span data-progress-bar></span>
+          </div>
+        </section>
+
+        <footer class="stage-footer">
+          <span>HYDROGEN MUSIC</span>
+          <span data-current-phase>准备</span>
+        </footer>
+      </section>
+    </main>
+  </body>
+</html>

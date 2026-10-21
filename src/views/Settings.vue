@@ -192,6 +192,15 @@ const dynamicCompressionOptions = [
 const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
+const startupAnimation = ref("dynamic");
+const startupAnimationOptions = ref([
+  { label: "动态自适应", value: "dynamic" },
+  { label: "工业", value: "ark" },
+  { label: "工程", value: "endfield" },
+  { label: "星空", value: "exa" },
+  { label: "黑白", value: "corporate" },
+  { label: "缤纷", value: "popucom" },
+]);
 const quitApp = ref("minimize");
 const quitAppOptions = ref([
   {
@@ -468,6 +477,18 @@ onActivated(() => {
     globalShortcuts.value = settings.other.globalShortcuts;
     // 兼容旧配置：未写入过该字段时默认保持开启更新。
     appUpdateEnabled.value = settings?.other?.enableUpdate !== false;
+    const rawStartupAnim = settings?.other?.startupAnimation;
+    const isStartupAnimV2 = settings?.other?.startupAnimationMigrationV2 === true;
+    startupAnimation.value = [
+      "dynamic",
+      "exa",
+      "corporate",
+      "popucom",
+      "endfield",
+      "ark",
+    ].includes(rawStartupAnim)
+      ? (rawStartupAnim === "corporate" && !isStartupAnimV2 ? "dynamic" : rawStartupAnim)
+      : "dynamic";
     quitApp.value = settings.other.quitApp;
     customFont.value = settings?.other?.customFont || "";
     customFontLabel.value = settings?.other?.customFontLabel || "";
@@ -563,7 +584,8 @@ const setAppSettings = () => {
       shortcutDefaultsShiftV1: true,
       // 关闭后会同时禁用启动自动检查和手动检查更新入口。
       enableUpdate: appUpdateEnabled.value,
-      startupAnimation: "corporate",
+      startupAnimation: startupAnimation.value,
+      startupAnimationMigrationV2: true,
       quitApp: quitApp.value,
       customFont: customFont.value,
       customFontLabel: customFont.value ? customFontLabel.value : "",
@@ -1917,6 +1939,15 @@ const clearFmRecent = () => {
               </div>
             </div>
             <div class="option">
+              <div class="option-name">启动动画（下次启动生效）</div>
+              <div class="option-operation">
+                <Selector
+                  v-model="startupAnimation"
+                  :options="startupAnimationOptions"
+                ></Selector>
+              </div>
+            </div>
+            <div class="option">
               <div class="option-name">退出应用时</div>
               <div class="option-operation">
                 <Selector
@@ -2434,6 +2465,7 @@ const clearFmRecent = () => {
               width: 200px;
               position: relative;
               overflow: hidden;
+              isolation: isolate;
               &:hover {
                 cursor: pointer;
               }

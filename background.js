@@ -48,6 +48,21 @@ let forceQuit = false;
 const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
 const DEFAULT_SPLASH_BG_COLOR = "#f4f6f8";
+const DEFAULT_SPLASH_THEME = "dynamic";
+const SPLASH_THEMES = new Set([
+  "exa",
+  "corporate",
+  "popucom",
+  "endfield",
+  "ark",
+]);
+const SPLASH_BACKGROUND_COLORS = {
+  exa: "#080914",
+  corporate: "#050505",
+  popucom: "#3994ff",
+  endfield: "#f2f2f0",
+  ark: "#080a0b",
+};
 let splashWindow = null;
 let resolvedThemeBgColor = DEFAULT_SPLASH_BG_COLOR;
 
@@ -105,53 +120,80 @@ const createMainWindowState = () => {
 const createSplashWindow = async (mainWindowOptions) => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
-  let splashBgColor = DEFAULT_SPLASH_BG_COLOR;
-  let splashQueryParams = {};
-
+  let splashTheme = DEFAULT_SPLASH_THEME;
   try {
     const Store = await getElectronStore();
-    const themeStore = new Store({ name: "theme" });
-    const snapshot = await themeStore.get("themeSnapshot");
-
-    if (snapshot && typeof snapshot === "object") {
-      const isDark = !!snapshot.isDark;
-      if (snapshot.dynamicTheme && snapshot.palette) {
-        const p = snapshot.palette;
-        const hue = Number(p.hue) || 210;
-        const sat = Number(p.saturation) || 28;
-        splashBgColor = isDark ? hslToHex(hue, 38, 13) : hslToHex(hue, sat, 86);
-        splashQueryParams = {
-          dynamic: "1",
-          dark: isDark ? "1" : "0",
-          hue: String(hue),
-          sat: String(sat),
-          secHue: String(p.secondaryHue ?? hue),
-          secSat: String(p.secondarySaturation ?? sat),
-          secStr: String(p.secondaryStrength ?? 1),
-          terHue: String(p.tertiaryHue ?? hue),
-          terSat: String(p.tertiarySaturation ?? sat),
-          terStr: String(p.tertiaryStrength ?? 1),
-          priX: String(p.primaryX ?? 12),
-          priY: String(p.primaryY ?? 8),
-          secX: String(p.secondaryX ?? 92),
-          secY: String(p.secondaryY ?? 96),
-          terX: String(p.tertiaryX ?? 52),
-          terY: String(p.tertiaryY ?? 54),
-          gradAngle: String(p.gradientAngle ?? 160),
-        };
-      } else if (snapshot.customColor && /^#[\da-f]{6}$/i.test(snapshot.customColor)) {
-        splashBgColor = snapshot.customColor;
-        splashQueryParams = {
-          customColor: snapshot.customColor,
-          dark: isDark ? "1" : "0",
-        };
-      } else {
-        splashBgColor = isDark ? "#21262b" : "#f4f6f8";
-        splashQueryParams = { dark: isDark ? "1" : "0" };
-      }
+    const settingsStore = new Store({ name: "settings" });
+    const settings = await settingsStore.get("settings");
+    const savedTheme = settings?.other?.startupAnimation;
+    const isV2Migrated = settings?.other?.startupAnimationMigrationV2 === true;
+    if (savedTheme === "dynamic") {
+      splashTheme = "dynamic";
+    } else if (savedTheme === "corporate" && !isV2Migrated) {
+      // 兼容历史占位配置：未显式在设置页选择过黑白时，默认使用动态自适应
+      splashTheme = "dynamic";
+    } else if (SPLASH_THEMES.has(savedTheme)) {
+      splashTheme = savedTheme;
     }
   } catch (error) {
-    console.warn("Splash theme preference load failed:", error);
+    console.warn("Splash preference load failed:", error);
+  }
+
+  let splashBgColor = DEFAULT_SPLASH_BG_COLOR;
+  let splashQueryParams = {};
+  let targetSplashFile = "splash.html";
+
+  if (SPLASH_THEMES.has(splashTheme)) {
+    targetSplashFile = "splash-theme.html";
+    splashBgColor = SPLASH_BACKGROUND_COLORS[splashTheme] || "#080a0b";
+    splashQueryParams = { family: splashTheme };
+  } else {
+    targetSplashFile = "splash.html";
+    try {
+      const Store = await getElectronStore();
+      const themeStore = new Store({ name: "theme" });
+      const snapshot = await themeStore.get("themeSnapshot");
+
+      if (snapshot && typeof snapshot === "object") {
+        const isDark = !!snapshot.isDark;
+        if (snapshot.dynamicTheme && snapshot.palette) {
+          const p = snapshot.palette;
+          const hue = Number(p.hue) || 210;
+          const sat = Number(p.saturation) || 28;
+          splashBgColor = isDark ? hslToHex(hue, 38, 13) : hslToHex(hue, sat, 86);
+          splashQueryParams = {
+            dynamic: "1",
+            dark: isDark ? "1" : "0",
+            hue: String(hue),
+            sat: String(sat),
+            secHue: String(p.secondaryHue ?? hue),
+            secSat: String(p.secondarySaturation ?? sat),
+            secStr: String(p.secondaryStrength ?? 1),
+            terHue: String(p.tertiaryHue ?? hue),
+            terSat: String(p.tertiarySaturation ?? sat),
+            terStr: String(p.tertiaryStrength ?? 1),
+            priX: String(p.primaryX ?? 12),
+            priY: String(p.primaryY ?? 8),
+            secX: String(p.secondaryX ?? 92),
+            secY: String(p.secondaryY ?? 96),
+            terX: String(p.tertiaryX ?? 52),
+            terY: String(p.tertiaryY ?? 54),
+            gradAngle: String(p.gradientAngle ?? 160),
+          };
+        } else if (snapshot.customColor && /^#[\da-f]{6}$/i.test(snapshot.customColor)) {
+          splashBgColor = snapshot.customColor;
+          splashQueryParams = {
+            customColor: snapshot.customColor,
+            dark: isDark ? "1" : "0",
+          };
+        } else {
+          splashBgColor = isDark ? "#21262b" : "#f4f6f8";
+          splashQueryParams = { dark: isDark ? "1" : "0" };
+        }
+      }
+    } catch (error) {
+      console.warn("Splash theme preference load failed:", error);
+    }
   }
 
   resolvedThemeBgColor = splashBgColor;
@@ -180,7 +222,7 @@ const createSplashWindow = async (mainWindowOptions) => {
   });
 
   try {
-    await win.loadFile(path.join(__dirname, "splash.html"), {
+    await win.loadFile(path.join(__dirname, targetSplashFile), {
       query: splashQueryParams,
     });
   } catch (error) {
