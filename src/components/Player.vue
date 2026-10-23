@@ -14,6 +14,8 @@ import { toggleDesktopLyric } from '../utils/desktopLyric';
 import { getSongDisplayName } from '../utils/songName';
 import { vDelayedTooltip } from '../utils/delayedTooltip';
 import { formatAudioInfo } from '../utils/quality';
+import { resolveImageUrl, getDefaultCoverUrl } from '../utils/imageUtils';
+import { useListenTogetherStore } from '../store/listenTogetherStore';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -422,6 +424,23 @@ function normalizeSliderRate(value) {
 
 const isTogetherMode = computed(() => listInfo.value?.type === 'together');
 
+const currentCoverUrl = computed(() => {
+    const song = currentSong.value;
+    if (!song) return '';
+    if (song.type === 'local') {
+        return localBase64Img.value || '';
+    }
+    let cover = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url || '';
+    if (!cover && (isTogetherMode.value || listInfo.value?.type === 'together')) {
+        try {
+            const togetherStore = useListenTogetherStore();
+            const tSong = togetherStore.playback?.song;
+            cover = tSong?.coverUrl || tSong?.al?.picUrl || '';
+        } catch (_) {}
+    }
+    return cover ? resolveImageUrl(cover) : '';
+});
+
 const safePlaybackRate = computed({
     get: () => (isTogetherMode.value ? 1 : normalizeSliderRate(playbackRate.value)),
     set: value => {
@@ -527,16 +546,15 @@ const addToPlaylist = () => {
                 <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
                     <!-- Force re-create <img> when song changes so old cover doesn't persist -->
                     <img
-                        v-if="songList?.[currentIndex]?.type != 'local'"
-                        :key="'remote-' + (songId || songList?.[currentIndex]?.id)"
-                        :src="songList?.[currentIndex]?.coverUrl || songList?.[currentIndex]?.al?.picUrl"
+                        v-if="currentCoverUrl"
+                        :key="'cover-' + (songId || currentSong?.id || currentIndex)"
+                        :src="currentCoverUrl"
                         alt=""
                     />
-                    <img v-else v-show="localBase64Img" :key="'local-' + (songId || songList?.[currentIndex]?.id)" :src="localBase64Img" alt="" />
                     <img
-                        v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img"
-                        :key="'local-default-' + (songId || songList?.[currentIndex]?.id)"
-                        src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140"
+                        v-else
+                        :key="'default-cover-' + (songId || currentSong?.id || currentIndex)"
+                        :src="getDefaultCoverUrl()"
                         alt=""
                     />
                 </div>

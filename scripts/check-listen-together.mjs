@@ -260,4 +260,29 @@ assert.match(listenTogetherVue, /class="room-id-bar"/, '房间号需置于包含
 assert.match(listenTogetherVue, /class="copy-room-id-btn"/, '房间号右侧需提供复制按钮')
 assert.match(listenTogetherVue, /copyRoomNumber/, '复制按钮需绑定 copyRoomNumber 方法')
 
+// Together song list must use two-column grid layout for wide screen
+const togetherSongListVue = await readFile('src/components/TogetherSongList.vue', 'utf8')
+assert.match(togetherSongListVue, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/, '房间歌曲列表需使用双列网格布局')
+assert.match(togetherSongListVue, /class="song-actions"/, '歌曲列表操作按钮需置于专属 song-actions 容器中')
+
+// Test cover resolution and fallback in listenTogetherData
+const songWithImage = data.normalizeRoomSong({
+    hash: 'TESTHASH123',
+    songname: '测试歌曲',
+    Image: 'http://imge.kugou.com/stdmusic/{size}/20260630/cover.jpg'
+})
+assert.equal(songWithImage.coverUrl, 'http://imge.kugou.com/stdmusic/{size}/20260630/cover.jpg', 'normalizeRoomSong 需支持 Image 字段提取封面')
+
+const playbackWithSparseAudio = data.normalizeRoomPlayback({
+    progress: '10',
+    cur_song: 'TESTHASH123',
+    audio: { hash: 'TESTHASH123' }
+}, [songWithImage])
+assert.equal(playbackWithSparseAudio?.song?.coverUrl, 'http://imge.kugou.com/stdmusic/{size}/20260630/cover.jpg', 'normalizeRoomPlayback 需从歌单补充封面元数据')
+
+// Player.vue must resolve cover URL via resolveImageUrl
+const playerVue = await readFile('src/components/Player.vue', 'utf8')
+assert.match(playerVue, /import\s*\{[^}]*resolveImageUrl[^}]*\}\s*from\s*['"]\.\.\/utils\/imageUtils['"]/, 'Player.vue 需引入 resolveImageUrl')
+assert.match(playerVue, /currentCoverUrl/, 'Player.vue 需使用 currentCoverUrl 解析并兜底封面')
+
 console.log('Together API, real response mapping, controls, leave recovery and stale-session checks passed')

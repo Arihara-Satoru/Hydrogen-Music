@@ -8,6 +8,7 @@ import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
+import { useListenTogetherStore } from '../store/listenTogetherStore';
 import { getMusicCommentCount, getMusicComments } from '../api/song';
 import { getDjProgramComments, getDjProgramCommentsNew } from '../api/dj';
 import { resolveImageUrl } from '../utils/imageUtils';
@@ -41,7 +42,11 @@ const coverBgUrl = computed(() => {
     const song = list[idx] || null;
     if (!song) return null;
     if (song.type === 'local') return playerStore.localBase64Img || null;
-    const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url || null;
+    let url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url || null;
+    if (!url && playerStore.listInfo?.type === 'together') {
+        const togetherSong = useListenTogetherStore().playback?.song;
+        url = togetherSong?.coverUrl || togetherSong?.al?.picUrl || null;
+    }
     return withCoverParam(url, 512);
 });
 

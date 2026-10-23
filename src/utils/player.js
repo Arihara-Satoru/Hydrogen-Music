@@ -1826,6 +1826,9 @@ export function playTogetherTrack(song, url, position, autoplay) {
   stopTogetherPlayback();
   songList.value = [song];
   currentIndex.value = 0;
+  if (!listInfo.value || listInfo.value.type !== 'together') {
+    listInfo.value = { type: 'together', id: song.id, sourceRoute: '/together' };
+  }
   playerChangeSong.value = false;
   quality.value = null;
   songId.value = song.id;
