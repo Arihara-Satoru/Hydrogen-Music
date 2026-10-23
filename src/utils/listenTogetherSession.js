@@ -114,7 +114,20 @@ export async function enterTogetherRoom(input, kind = 'music', creation = null) 
         if (groupId) room.groupId = String(groupId)
         if (!valid()) return
         if (creation && kind === 'music') {
-            await togetherRequest('music', 'initialize', { ...params(room), audios: creation.audios || [] }, { signal: controller.signal })
+            const audios = creation.audios || []
+            const firstAudio = audios[0]
+            const progressInfo = creation.progress_info || {
+                cur_song: firstAudio?.hash || '',
+                album_audio_id: String(firstAudio?.mixsongid ?? firstAudio?.mixSongId ?? firstAudio?.album_audio_id ?? ''),
+                progress: 0,
+                pause: firstAudio ? '1' : '2',
+                play_mode: 1,
+            }
+            await togetherRequest('music', 'initialize', {
+                ...params(room),
+                audios,
+                progress_info: progressInfo,
+            }, { signal: controller.signal })
         }
         if (!valid()) return
         const context = { room, account: user, generation: g, controller, saved: savePersonal(), failures: 0, streamRetryAt: 0 }

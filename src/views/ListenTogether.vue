@@ -14,7 +14,7 @@ import { search } from '../api/other'
 import { normalizeRoom, normalizeRoomSong, roomItems, roomAudio, loadDistinctRoomPages } from '../utils/listenTogetherData.mjs'
 import { enterTogetherRoom, leaveTogetherRoom, refreshRoomDetails, loadMoreRoomSongs, roomAction, sendRoomMessage, setLocalListening, resetTogetherSession } from '../utils/listenTogetherSession'
 import { copyToClipboard } from '../utils/clipboard'
-import { dialogOpen } from '../utils/dialog'
+import { dialogOpen, noticeOpen } from '../utils/dialog'
 import { getCookie } from '../utils/authority'
 import { resolveImageUrl } from '../utils/imageUtils'
 
@@ -25,6 +25,8 @@ const channels = ref([])
 const hasMoreRooms = ref(false), listFeedback = ref('')
 const error = ref(''), feedback = ref(''), draft = ref(''), sending = ref(false), tab = ref('playlist')
 const showCreate = ref(false), configuring = ref(false), olderLoading = ref(false), hasOlder = ref(true)
+const copied = ref(false)
+let copyResetTimer = null
 const form = reactive({ room_name: '', room_notice: '', room_privacy: 2, capacity: 5, global_collection_id: '', allow_chat: 1, music_type: 1, white_noise_type: 1 })
 const kindOptions = [{ label: '众乐房', value: 'music' }, { label: '自习室', value: 'study' }]
 const sourceOptions = computed(() => [{ label: '推荐房间', value: 'recommend' }, { label: '最近访问', value: 'recent' },
@@ -180,12 +182,29 @@ async function loadOlder() {
     olderLoading.value = false
 }
 
+async function copyRoomNumber() {
+    const id = together.room?.id
+    if (!id) return
+    const success = await copyToClipboard(id)
+    if (!success) {
+        noticeOpen('复制失败', 2)
+        return
+    }
+    copied.value = true
+    feedback.value = '房间号已复制'
+    noticeOpen('房间号已复制', 2)
+    clearTimeout(copyResetTimer)
+    copyResetTimer = setTimeout(() => {
+        copied.value = false
+    }, 1500)
+}
+
 watch([kind, source], () => { rooms.value = []; channels.value = []; void loadRooms() })
 watch(kind, () => { if (kind.value !== 'study' && source.value === 'created') source.value = 'recommend' })
 watch(() => together.room?.id, () => { results.value = []; draft.value = ''; tab.value = 'playlist'; hasOlder.value = true; error.value = '' })
 watch(() => user.user?.userId, () => { listVersion++; searchVersion++; rooms.value = []; channels.value = []; hasMoreRooms.value = false; listFeedback.value = ''; results.value = []; draft.value = ''; error.value = ''; feedback.value = ''; loading.value = false; searching.value = false; showCreate.value = false; if (active && user.user) void loadRooms() })
 onActivated(() => { active = true; void loadRooms() })
-onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.value = false; searching.value = false; showCreate.value = false })
+onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.value = false; searching.value = false; showCreate.value = false; clearTimeout(copyResetTimer) })
 </script>
 
 <template>
@@ -193,7 +212,7 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
         <header class="page-heading">
             <div><p class="eyebrow">LISTEN TOGETHER</p><h1>{{ together.room?.name || '一起听' }}</h1><p class="muted">{{ together.room ? `${together.room.kind === 'music' ? '众乐房' : '自习室'} · ${together.connection}` : '把喜欢的音乐，分享给此刻在线的人。' }}</p></div>
             <div v-if="together.room" class="actions">
-                <BaseButton variant="secondary" size="small" @click="run(async () => { if (!await copyToClipboard(together.room.id)) throw new Error('复制失败'); feedback = '房间号已复制' })">复制房间号</BaseButton>
+                <BaseButton variant="secondary" size="small" @click="copyRoomNumber">复制房间号</BaseButton>
                 <BaseButton variant="secondary" size="small" :disabled="pending" @click="leave()">离开房间</BaseButton>
             </div>
             <div v-else class="actions"><BaseButton variant="secondary" :disabled="pending" @click="recoverRoom">恢复房间</BaseButton><BaseButton :disabled="pending" @click="openCreate()">创建房间</BaseButton></div>
@@ -225,7 +244,25 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
                     <img v-if="together.playback?.song.coverUrl" class="current-cover" :src="resolveImageUrl(together.playback.song.coverUrl)" alt="当前歌曲封面" />
                     <h2>{{ together.playback?.song.name || '等待房间播放' }}</h2>
                     <p class="muted">{{ together.playback?.song.ar?.map(a => a.name).join(' / ') }}</p>
-                    <p class="room-number">房间号 {{ together.room.id }}</p>
+                    <div class="room-id-bar">
+                        <span class="room-number">房间号 {{ together.room.id }}</span>
+                        <button
+                            class="copy-room-id-btn"
+                            type="button"
+                            :class="{ 'is-copied': copied }"
+                            :title="copied ? '已复制' : '复制房间号'"
+                            :aria-label="copied ? '已复制' : '复制房间号'"
+                            @click="copyRoomNumber"
+                        >
+                            <svg v-if="!copied" class="copy-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <svg v-else class="copied-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </button>
+                    </div>
                     <BaseButton block variant="secondary" @click="run(() => setLocalListening(!together.localPaused))">{{ together.localPaused ? '恢复同步收听' : '仅暂停我的收听' }}</BaseButton>
                     <p class="muted help">{{ together.canControl ? '底部播放器可控制房间的播放与进度。' : '歌曲与进度跟随房间；你可以单独调节音量或暂停收听。' }}</p>
                     <p v-if="together.room.notice" class="room-notice">{{ together.room.notice }}</p>
@@ -275,7 +312,12 @@ h1, h2, h3, p { margin: 0; } h1 { font: 28px SourceHanSansCN-Bold; margin: 5px 0
 .room-card .room-notice { max-height: 3em; overflow: hidden; }.load-more { display: flex; margin: 24px auto 0; }
 .room-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 22px; align-items: start; }.room-content { padding: 0; min-width: 0; }
 .current-cover { width: 100%; aspect-ratio: 1; object-fit: cover; margin: 18px 0; border-radius: 3px; }.room-summary h2 { margin-top: 18px; overflow-wrap: anywhere; }
-.room-number { font: 12px Bender-Bold; margin: 18px 0; color: var(--muted-text); user-select: text; }.help { margin-top: 14px; }.owner-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--border); }.owner-actions h3 { width: 100%; margin-bottom: 4px; }
+.room-id-bar { display: inline-flex; align-items: center; gap: 6px; margin: 18px 0; max-width: 100%; white-space: nowrap; }
+.room-number { font: 12px Bender-Bold; color: var(--muted-text); user-select: text; margin: 0; line-height: 1; }
+.copy-room-id-btn { border: 1px solid var(--border); background: var(--layer); color: var(--text); border-radius: 2px; padding: 0; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all .2s ease; flex-shrink: 0; user-select: none; }
+.copy-room-id-btn:hover { background: var(--text); color: var(--bg); }
+.copy-room-id-btn.is-copied { border-color: #3ba776; color: #3ba776; }
+.help { margin-top: 14px; }.owner-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--border); }.owner-actions h3 { width: 100%; margin-bottom: 4px; }
 .room-tabs { display: flex; gap: 24px; padding: 0 24px; border-bottom: 1px solid var(--border); overflow-x: auto; }.room-tabs button { white-space: nowrap; border: 0; border-bottom: 2px solid transparent; padding: 18px 0; background: transparent; color: var(--muted-text); cursor: pointer; font: 14px SourceHanSansCN-Bold; }.room-tabs .selected { color: var(--text); border-bottom-color: var(--text); }.tab-content { padding: 24px; }.song-search { margin-bottom: 18px; }
 .empty { text-align: center; padding: 48px 16px; color: var(--muted-text); font-size: 13px; line-height: 1.8; }.message { padding: 12px 16px; background: var(--layer); border-left: 2px solid var(--text); margin-bottom: 18px; font-size: 13px; overflow-wrap: anywhere; }.error { color: #b83a3a; border-color: currentColor; }
 .members { list-style: none; padding: 0; }.members li { display: flex; gap: 12px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }.members img { width: 36px; height: 36px; border-radius: 50%; }.members span { flex: 1; font-size: 14px; }

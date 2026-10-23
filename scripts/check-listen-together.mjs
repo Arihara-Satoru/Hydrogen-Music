@@ -199,6 +199,17 @@ assert.equal(roomRequests.at(-1).operation, 'dismiss')
 assert.equal(state.room, null); assert.equal(state.joining, false); assert.equal(player.songId, 99)
 failInitialize = false
 
+// Successful creation initializes music room with valid progress_info.
+await api.enterTogetherRoom(null, 'music', { room_name: '测试音乐室', audios: [{ hash: 'ABC', mixsongid: '42' }] })
+const initRequest = roomRequests.find(request => request.operation === 'initialize' && request.args.audios?.length > 0)
+assert.ok(initRequest, '创建众乐房必须调用 initialize')
+assert.equal(initRequest.args.progress_info.cur_song, 'ABC')
+assert.equal(initRequest.args.progress_info.album_audio_id, '42')
+assert.equal(initRequest.args.progress_info.progress, 0)
+assert.equal(initRequest.args.progress_info.pause, '1')
+assert.equal(initRequest.args.progress_info.play_mode, 1)
+await api.leaveTogetherRoom(true)
+
 // A late join for a previous account cannot enter a room or issue cleanup as the new user.
 pendingJoin = deferred()
 const joining = api.enterTogetherRoom('old-account', 'music')
@@ -242,4 +253,11 @@ await playerStoreSource.evaluate()
 playerStoreSource.namespace.usePlayerStore.persist.storage.setItem('playerStore', JSON.stringify({ songId: 42, progress: 83, volume: .8, listInfo: { type: 'together' } }))
 const resumed = JSON.parse(persisted.get('playerStore'))
 assert.equal(resumed.songId, 99); assert.equal(resumed.progress, 12); assert.equal(resumed.volume, .8)
+
+// Room summary must render room ID with a copy button
+const listenTogetherVue = await readFile('src/views/ListenTogether.vue', 'utf8')
+assert.match(listenTogetherVue, /class="room-id-bar"/, '房间号需置于包含复制按钮的 room-id-bar 中')
+assert.match(listenTogetherVue, /class="copy-room-id-btn"/, '房间号右侧需提供复制按钮')
+assert.match(listenTogetherVue, /copyRoomNumber/, '复制按钮需绑定 copyRoomNumber 方法')
+
 console.log('Together API, real response mapping, controls, leave recovery and stale-session checks passed')

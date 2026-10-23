@@ -16,7 +16,7 @@
       <span class="select-head-cont" :class="{ 'long-label': isLongLabel(current?.label) }">{{ current?.label }}</span>
     </div>
     <teleport to="body">
-      <transition name="selector" @enter="absolutePosition(overlay, select)">
+      <transition name="selector" @enter="handleEnter">
         <div
           class="selector-option"
           :id="listId"
@@ -49,7 +49,7 @@
   </div>
 </template>
 <script setup>
-import { computed, nextTick, onActivated, onDeactivated, ref, useId } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useId } from "vue";
 import { absolutePosition } from "../utils/domHandler";
 
 const props = defineProps({
@@ -71,6 +71,13 @@ const current = computed(() =>
   props.options.find((x) => x.value === props.modelValue)
 );
 
+const handleEnter = (el) => {
+  if (select.value) {
+    el.style.minWidth = `${select.value.offsetWidth}px`;
+    absolutePosition(el, select.value);
+  }
+};
+
 const changeOption = (e) => {
   emit("update:modelValue", e.value);
   option.value = false;
@@ -82,10 +89,17 @@ const isLongLabel = (label) => {
 }
 
 let clickOutside = (event) => {
-  if (select.value && !select.value.contains(event.target)) {
+  if (select.value && !select.value.contains(event.target) && overlay.value && !overlay.value.contains(event.target)) {
     option.value = false;
   }
 };
+
+onMounted(() => {
+  window.addEventListener("click", clickOutside);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("click", clickOutside);
+});
 onActivated(() => {
   window.addEventListener("click", clickOutside);
 });
@@ -133,12 +147,14 @@ const handleKeydown = (event) => {
 
 .selector-option {
   position: absolute;
+  z-index: 2000;
   overflow-y: overlay;
   background: rgb(228, 240, 240);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
   line-height: 25px;
   user-select: none;
   padding: 8px 0;
+  box-sizing: border-box;
 }
 
 .selector-head{
@@ -164,19 +180,18 @@ const handleKeydown = (event) => {
 }
 
 .selector-option-item {
-  width: 200px;
+  min-width: 200px;
+  width: 100%;
+  box-sizing: border-box;
   height: 34px;
   font: 13px SourceHanSansCN-Bold;
-  background-image: linear-gradient(90deg, black, black);
-  background-repeat: repeat-y;
-  background-position: -200px 0;
   padding: 0 16px;
   line-height: 34px;
-  transition: background-position 0.2s, color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
   cursor: pointer;
   text-align: center;
   &:hover {
-    background-position: 0 0;
+    background-color: black;
     color: white;
   }
   &-selected {
