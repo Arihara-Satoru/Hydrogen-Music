@@ -246,13 +246,13 @@ const handleTitleBarDoubleClick = () => {
     background: transparent;
     position: fixed;
     top: 0;
-    z-index: 999;
+    z-index: 1001;
     -webkit-app-region: drag;
     .window-control {
         position: fixed;
         top: 13px;
         -webkit-app-region: no-drag;
-        z-index: 999;
+        z-index: 1002;
 
         // macOS 按钮在左侧
         &.macos {

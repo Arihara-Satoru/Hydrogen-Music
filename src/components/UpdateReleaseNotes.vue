@@ -8,6 +8,7 @@ const emit = defineEmits(['close']);
 const otherStore = useOtherStore();
 const show = ref(true);
 const primaryAction = ref(null);
+const panelRef = ref(null);
 
 const updateInfo = computed(() => otherStore.updateInfo || {});
 const version = computed(() => updateInfo.value.version || '--');
@@ -35,7 +36,12 @@ const handleKeydown = (event) => {
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown);
-  nextTick(() => primaryAction.value?.focus());
+  nextTick(() => {
+    primaryAction.value?.focus({ preventScroll: true });
+    if (panelRef.value) {
+      panelRef.value.scrollTop = 0;
+    }
+  });
 });
 
 onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
@@ -44,6 +50,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 <template>
   <div class="update-page">
     <section
+      ref="panelRef"
       class="update-panel"
       :class="{ 'update-panel-close': !show }"
       role="dialog"
@@ -117,7 +124,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
           </section>
 
           <footer class="update-actions">
-            <button ref="primaryAction" type="button" class="primary-action" autofocus @click="toUpdate">
+            <button ref="primaryAction" type="button" class="primary-action" @click="toUpdate">
               <span>查看并下载更新</span>
               <span aria-hidden="true">↗</span>
             </button>
@@ -138,6 +145,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
   --ark-rule: rgba(244, 246, 246, 0.2);
   position: fixed;
   inset: 0;
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 32px;
@@ -149,8 +157,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
   position: relative;
   width: min(1120px, 100%);
   height: min(680px, calc(100vh - 64px));
-  min-height: 460px;
+  max-height: calc(100vh - 64px);
+  min-height: min(460px, calc(100vh - 64px));
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: none;
   background: linear-gradient(112deg, rgba(255, 255, 255, 0.035), transparent 38%), var(--ark-ink);
   border-block: 1px solid rgba(244, 246, 246, 0.72);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
@@ -192,6 +204,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 .update-header {
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
   height: 72px;
   display: flex;
   align-items: center;
@@ -232,13 +245,18 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 .update-layout {
   position: relative;
   z-index: 1;
-  height: calc(100% - 72px);
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(260px, 0.8fr) minmax(440px, 1.45fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .signal-stage {
   position: relative;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
   padding: clamp(24px, 3vw, 42px);
@@ -312,19 +330,29 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 
 .update-information {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 18px;
-  padding: clamp(28px, 4vw, 52px);
+  gap: clamp(12px, 1.8vw, 18px);
+  padding: clamp(20px, 3vw, 40px);
 }
 
-.title-row { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.title-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
 .eyebrow { margin: 0 0 8px; color: var(--ark-signal); font-size: 10px; }
 h1, h2, h3, p { margin-block: 0; }
 
 h1 {
-  font: clamp(36px, 4.5vw, 64px) / 0.92 SourceHanSansCN-Heavy, sans-serif;
-  letter-spacing: -0.05em;
+  font: clamp(32px, 4vw, 56px) / 1.05 SourceHanSansCN-Heavy, sans-serif;
+  letter-spacing: -0.04em;
 }
 
 .version-badge {
@@ -339,10 +367,17 @@ h1 {
 
 .version-badge span { display: block; margin-bottom: 3px; font-size: 9px; }
 .version-badge strong { font: 24px/1 Bender-Bold, Consolas, monospace; font-variant-numeric: tabular-nums; }
-.summary { max-width: 580px; color: var(--ark-muted); font: 13px/1.65 SourceHanSansCN-Regular, sans-serif; }
+.summary {
+  flex-shrink: 0;
+  max-width: 580px;
+  color: var(--ark-muted);
+  font: 13px/1.65 SourceHanSansCN-Regular, sans-serif;
+}
 
 .release-notes {
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   border-top: 1px solid var(--ark-rule);
@@ -350,11 +385,12 @@ h1 {
 }
 
 .notes-header {
+  flex-shrink: 0;
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
-  min-height: 60px;
-  padding-block: 11px 10px;
+  min-height: 52px;
+  padding-block: 8px 8px;
 }
 
 .notes-header span { display: block; color: var(--ark-signal); font-size: 8px; }
@@ -363,7 +399,10 @@ h1 {
 
 .notes-scroll {
   min-height: 0;
-  overflow: auto;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 4px 18px 16px 0;
   scrollbar-width: thin;
   scrollbar-color: var(--ark-signal) rgba(244, 246, 246, 0.08);
@@ -396,7 +435,12 @@ h1 {
 }
 
 .notes-empty { align-self: start; padding: 8px 0 18px; color: var(--ark-muted); font: 13px/1.6 SourceHanSansCN-Regular, sans-serif; text-align: left; }
-.update-actions { display: flex; align-items: center; gap: 12px; }
+.update-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
 .update-actions button {
   min-height: 42px;
@@ -441,14 +485,17 @@ h1 {
   .update-panel { height: calc(100vh - 32px); min-height: 0; }
   .update-header { height: 60px; }
   .status-lockup { display: none; }
-  .update-layout { height: calc(100% - 60px); grid-template-columns: 1fr; grid-template-rows: 72px minmax(0, 1fr); }
+  .update-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 72px minmax(0, 1fr);
+  }
   .signal-stage { border-right: 0; border-bottom: 1px solid var(--ark-rule); padding: 0 22px; }
   .signal-stage > strong, .uplink-mark, .stage-caption { display: none; }
   .stage-index { top: 50%; left: 22px; transform: translateY(-50%); }
   .signal-stage::before { content: 'UPDATE CHANNEL'; position: absolute; top: 50%; right: 22px; color: rgba(244, 246, 246, 0.26); font: 22px Bender-Bold, Consolas, monospace; transform: translateY(-50%); }
   .update-information { gap: 14px; padding: 22px; }
   .title-row { align-items: start; }
-  h1 { font-size: clamp(32px, 9vw, 46px); }
+  h1 { font-size: clamp(28px, 8vw, 42px); }
   .version-badge { min-width: 104px; }
   .summary { display: none; }
 }
@@ -461,12 +508,12 @@ h1 {
   .update-actions button { width: 100%; }
 }
 
-@media (max-height: 560px) and (orientation: landscape) {
-  .update-page { padding: 14px; }
-  .update-panel { height: calc(100vh - 28px); min-height: 0; }
+@media (max-height: 640px) {
+  .update-page { padding: 16px; }
+  .update-panel { height: calc(100vh - 32px); min-height: 0; }
   .update-header { height: 56px; }
-  .update-layout { height: calc(100% - 56px); }
-  .update-information { gap: 10px; padding-block: 20px; }
+  .update-information { gap: 10px; padding: 16px 24px; }
+  .notes-header { min-height: 44px; padding-block: 6px; }
   .summary { display: none; }
 }
 

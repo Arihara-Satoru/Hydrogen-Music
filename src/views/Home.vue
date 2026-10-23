@@ -269,6 +269,7 @@ main {
     flex-direction: row;
     justify-content: center;
     align-items: center;
+    pointer-events: none;
     animation: home-nav-reveal 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
     .header-router {
         position: relative;
@@ -276,6 +277,7 @@ main {
         min-height: 27px;
         display: inline-flex;
         align-items: center;
+        pointer-events: auto;
         -webkit-app-region: no-drag;
         .primary-nav,
         .header-router-right {

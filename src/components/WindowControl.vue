@@ -43,7 +43,7 @@ function windowControl(option) {
 
 <template>
     <!-- macOS 使用原生交通灯，不在渲染层自绘 -->
-    <div v-if="!isMacOS" class="window-control windows" v-bind="attrs">
+    <div v-if="!isMacOS" class="window-control windows" v-bind="attrs" @dblclick.stop>
         <div @click="windowControl(1)" class="minimize">
             <svg t="1668091020963" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1210" width="200" height="200">
                 <path d="M65.23884 456.152041 958.760137 456.152041l0 111.695918L65.23884 567.847959 65.23884 456.152041z" p-id="1211"></path>
@@ -87,12 +87,14 @@ function windowControl(option) {
     flex-direction: row;
     justify-content: space-around;
     align-items: center;
+    -webkit-app-region: no-drag;
 
     div {
         display: flex;
         opacity: 0.5;
         transition: 0.3s;
         padding: 10px;
+        -webkit-app-region: no-drag;
 
         &:hover {
             opacity: 1;
@@ -102,6 +104,7 @@ function windowControl(option) {
         svg {
             width: 18px;
             height: 18px;
+            pointer-events: none;
         }
     }
 }
