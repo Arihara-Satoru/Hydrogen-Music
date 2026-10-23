@@ -54,7 +54,8 @@
     "dist:local": "node scripts/build-kugou-api.cjs && vite build && node scripts/build.js -p never",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run",
-    "check:selector": "node scripts/check-selector.mjs"
+    "check:selector": "node scripts/check-selector.mjs",
+    "check:search-typewriter": "node scripts/check-search-typewriter.mjs"
   },
   "dependencies": {
     "axios": "^1.17.0",

@@ -34,6 +34,141 @@ const hoverActivateTimer = ref(null)
 const hoverPendingIndex = ref(-1)
 const requestSeq = ref(0)
 
+const MIN_TYPEWRITER_HOLD_MS = 3000
+const MAX_TYPEWRITER_HOLD_MS = 5000
+const TYPEWRITER_FLASH_MS = 480
+
+let typewriterTimer = null
+const displayedText = ref('SEARCH')
+const cursorPhase = ref('blink')
+
+function getRandomHoldDuration() {
+    return Math.floor(Math.random() * (MAX_TYPEWRITER_HOLD_MS - MIN_TYPEWRITER_HOLD_MS + 1)) + MIN_TYPEWRITER_HOLD_MS
+}
+
+const currentTargetText = computed(() => {
+    const val = searchKeyword.value?.trim()
+    return val || 'SEARCH'
+})
+
+const isDefaultPlaceholder = computed(() => {
+    return currentTargetText.value === 'SEARCH' && !searchKeyword.value?.trim()
+})
+
+function stopTypewriter() {
+    if (typewriterTimer) {
+        clearTimeout(typewriterTimer)
+        typewriterTimer = null
+    }
+    cursorPhase.value = 'blink'
+}
+
+function getDeleteInterval(text) {
+    const len = text.length || 1
+    return Math.max(50, Math.min(110, Math.floor(750 / len)))
+}
+
+function getRestoreInterval(text) {
+    const len = text.length || 1
+    return Math.max(30, Math.min(55, Math.floor(350 / len)))
+}
+
+function isReducedMotion() {
+    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
+}
+
+let reduceMotionQuery = null
+
+function handleReduceMotionChange(e) {
+    if (e.matches) {
+        stopTypewriter()
+        displayedText.value = currentTargetText.value
+    } else if (!searchShow.value && playerStore.playerShow) {
+        startTypewriter()
+    }
+}
+
+function startTypewriter(immediate = false) {
+    stopTypewriter()
+    if (searchShow.value) return
+
+    const target = currentTargetText.value
+    displayedText.value = target
+    cursorPhase.value = 'blink'
+
+    if (isReducedMotion()) {
+        return
+    }
+
+    const holdTime = immediate ? 500 : getRandomHoldDuration()
+    typewriterTimer = setTimeout(() => {
+        runDeletePhase(target)
+    }, holdTime)
+}
+
+function runDeletePhase(target) {
+    if (searchShow.value) return
+
+    cursorPhase.value = 'solid'
+    const interval = getDeleteInterval(target)
+
+    function stepDelete() {
+        if (searchShow.value) return
+
+        if (displayedText.value.length > 0) {
+            displayedText.value = displayedText.value.slice(0, -1)
+            typewriterTimer = setTimeout(stepDelete, interval)
+        } else {
+            runFlashPhase(target)
+        }
+    }
+
+    typewriterTimer = setTimeout(stepDelete, interval)
+}
+
+function runFlashPhase(target) {
+    if (searchShow.value) return
+
+    displayedText.value = ''
+    cursorPhase.value = 'fast-blink'
+
+    typewriterTimer = setTimeout(() => {
+        runRestorePhase(target)
+    }, TYPEWRITER_FLASH_MS)
+}
+
+function runRestorePhase(target) {
+    if (searchShow.value) return
+
+    cursorPhase.value = 'solid'
+    const interval = getRestoreInterval(target)
+
+    function stepRestore() {
+        if (searchShow.value) return
+
+        if (displayedText.value.length < target.length) {
+            displayedText.value = target.slice(0, displayedText.value.length + 1)
+            typewriterTimer = setTimeout(stepRestore, interval)
+        } else {
+            displayedText.value = target
+            cursorPhase.value = 'blink'
+            typewriterTimer = setTimeout(() => {
+                runDeletePhase(target)
+            }, getRandomHoldDuration())
+        }
+    }
+
+    typewriterTimer = setTimeout(stepRestore, interval)
+}
+
+function handleVisibilityChange() {
+    if (document.hidden) {
+        stopTypewriter()
+    } else if (!searchShow.value && playerStore.playerShow) {
+        startTypewriter()
+    }
+}
+
 function normalizeAssistLimit(value) {
     const num = Number.parseInt(value, 10)
     if (!Number.isFinite(num)) return DEFAULT_ASSIST_LIMIT
@@ -445,6 +580,7 @@ function handleSearchInput() {
 
 function searchFoucs(event, state) {
     if (state === 'focus') {
+        stopTypewriter()
         event.target.placeholder = ''
         searchShow.value = true
         assistVisible.value = true
@@ -463,6 +599,7 @@ function searchFoucs(event, state) {
         event.target.placeholder = 'SEARCH'
         searchShow.value = false
         assistVisible.value = false
+        startTypewriter()
     }
 }
 
@@ -516,12 +653,51 @@ watch(currentList, list => {
     if (activeAssistIndex.value >= list.length) resetAssistActiveIndex()
 })
 
+watch(searchKeyword, () => {
+    if (!searchShow.value) {
+        startTypewriter()
+    }
+})
+
+watch(
+    () => playerStore.playerShow,
+    show => {
+        if (show && !searchShow.value) {
+            startTypewriter()
+        } else if (!show) {
+            stopTypewriter()
+        }
+    },
+)
+
 onMounted(() => {
     window.addEventListener('cacheDataCleared', clearSearchHistory)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    if (typeof window !== 'undefined' && window.matchMedia) {
+        reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+        if (reduceMotionQuery.addEventListener) {
+            reduceMotionQuery.addEventListener('change', handleReduceMotionChange)
+        } else if (reduceMotionQuery.addListener) {
+            reduceMotionQuery.addListener(handleReduceMotionChange)
+        }
+    }
+    if (playerStore.playerShow && !searchShow.value) {
+        startTypewriter()
+    }
 })
 
 onUnmounted(() => {
     window.removeEventListener('cacheDataCleared', clearSearchHistory)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    if (reduceMotionQuery) {
+        if (reduceMotionQuery.removeEventListener) {
+            reduceMotionQuery.removeEventListener('change', handleReduceMotionChange)
+        } else if (reduceMotionQuery.removeListener) {
+            reduceMotionQuery.removeListener(handleReduceMotionChange)
+        }
+        reduceMotionQuery = null
+    }
+    stopTypewriter()
     clearDebounceTimer()
     clearHoverPendingState()
 })
@@ -546,6 +722,18 @@ onUnmounted(() => {
                 placeholder="SEARCH"
                 spellcheck="false"
             />
+            <div
+                v-if="!searchShow"
+                class="typewriter-display"
+                :class="{ 'is-default-placeholder': isDefaultPlaceholder }"
+                aria-hidden="true"
+            >
+                <span class="typewriter-text">{{ displayedText }}</span>
+                <span
+                    class="typewriter-cursor"
+                    :class="[`cursor-${cursorPhase}`, { 'is-empty': !displayedText }]"
+                ></span>
+            </div>
             <div class="search-border search-border1"></div>
             <div class="search-border search-border2"></div>
             <div class="search-border search-border3"></div>
@@ -630,6 +818,75 @@ $boderPosition: -1px;
         &::-webkit-input-placeholder {
             font: 12px Geometos;
             color: black;
+        }
+    }
+    &:not(.search-container-foucs) .search-input {
+        color: transparent !important;
+        -webkit-text-fill-color: transparent !important;
+        &::-webkit-input-placeholder {
+            color: transparent !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+        &::placeholder {
+            color: transparent !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+    }
+    .typewriter-display {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        user-select: none;
+        overflow: hidden;
+        white-space: nowrap;
+        font: 12px SourceHanSansCN-Bold, sans-serif;
+        color: black;
+        z-index: 1;
+
+        &.is-default-placeholder {
+            font: 12px Geometos, sans-serif;
+            letter-spacing: 0.5px;
+        }
+
+        .typewriter-text {
+            max-width: calc(100% - 8px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            line-height: 20px;
+        }
+
+        .typewriter-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 12px;
+            background-color: currentColor;
+            margin-left: 2px;
+            flex-shrink: 0;
+            vertical-align: middle;
+
+            &.is-empty {
+                margin-left: 0;
+            }
+
+            &.cursor-blink {
+                animation: typewriter-cursor-blink 0.9s steps(1) infinite;
+            }
+
+            &.cursor-fast-blink {
+                animation: typewriter-cursor-flash 0.48s steps(1) 1;
+            }
+
+            &.cursor-solid {
+                opacity: 1;
+            }
         }
     }
     .search-border {
@@ -1005,5 +1262,56 @@ $boderPosition: -1px;
 .fade-leave-to {
     transform: scale(0.9);
     opacity: 0;
+}
+
+@keyframes typewriter-cursor-blink {
+    0%, 49.9% {
+        opacity: 1;
+    }
+    50%, 100% {
+        opacity: 0;
+    }
+}
+
+@keyframes typewriter-cursor-flash {
+    0%, 24.9% {
+        opacity: 1;
+    }
+    25%, 49.9% {
+        opacity: 0;
+    }
+    50%, 74.9% {
+        opacity: 1;
+    }
+    75%, 100% {
+        opacity: 0;
+    }
+}
+
+:global(html.dark .search-container:not(.search-container-foucs) .search-input),
+:global(.dark .search-container:not(.search-container-foucs) .search-input) {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+:global(html.dark .search-container .typewriter-display),
+:global(.dark .search-container .typewriter-display) {
+    color: var(--text) !important;
+}
+
+:global(html.dark .search-container .typewriter-display .typewriter-cursor),
+:global(.dark .search-container .typewriter-display .typewriter-cursor) {
+    background-color: var(--text) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .search-container {
+        transition: none !important;
+    }
+
+    .search-container .typewriter-cursor {
+        animation: none !important;
+        opacity: 0.8 !important;
+    }
 }
 </style>
