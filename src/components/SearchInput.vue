@@ -37,7 +37,7 @@ const requestSeq = ref(0)
 const MIN_TYPEWRITER_HOLD_MS = 3000
 const MAX_TYPEWRITER_HOLD_MS = 5000
 const TYPEWRITER_FLASH_MS = 480
-const TYPEWRITER_PRE_FLASH_PAUSE_MS = 300
+const TYPEWRITER_PRE_FLASH_PAUSE_MS = 1800
 const TYPEWRITER_POST_FLASH_PAUSE_MS = 150
 
 let typewriterTimer = null
@@ -121,6 +121,7 @@ function runDeletePhase(target) {
             displayedText.value = displayedText.value.slice(0, -1)
             typewriterTimer = setTimeout(stepDelete, interval)
         } else {
+            cursorPhase.value = 'blink'
             typewriterTimer = setTimeout(() => {
                 runFlashPhase(target)
             }, TYPEWRITER_PRE_FLASH_PAUSE_MS)
