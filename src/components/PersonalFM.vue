@@ -878,7 +878,6 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
       poolBefore: fmSongs.value.length,
       poolAfter: fmSongs.value.length,
     };
-    console.log("[FM Dedup]", emptyStats);
     return emptyStats;
   }
   const before = fmSongs.value.length;
@@ -916,7 +915,6 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
     poolBefore: before,
     poolAfter: fmSongs.value.length,
   };
-  console.log("[FM Dedup]", stats);
   return stats;
 }
 
@@ -940,7 +938,6 @@ function bootstrapFromPoolIfNeeded(source) {
   playedSongs.value.push(firstSong);
   rememberRecent(firstSong.id);
   currentIndex.value = 0;
-  console.log(`[FM] Started with first ${source} song:`, firstSong.name);
   return true;
 }
 const currentIndex = ref(0);
@@ -1471,11 +1468,8 @@ const togglePlay = async (options = {}) => {
   const playbackOptions = {
     userInitiated: options?.userInitiated !== false,
   };
-  console.log("togglePlay clicked!");
-  console.log("currentSong:", currentSong.value);
 
   if (!currentSong.value) {
-    console.log("No current song available");
     return;
   }
 
@@ -1485,32 +1479,24 @@ const togglePlay = async (options = {}) => {
     playerStore.currentMusic
   ) {
     if (playing.value) {
-      console.log("Pausing current FM song");
       pauseMusic();
     } else {
-      console.log("Resuming current FM song");
       startMusic(playbackOptions);
     }
     return;
   }
 
-  // 播放新的FM歌曲
-  console.log("Playing new FM song:", currentSong.value.name);
-
   try {
     // 获取歌曲URL
-    console.log("Getting music URL for:", currentSong.value.id);
     const preferredQuality = getPreferredQuality(quality.value);
     // 传递完整歌曲对象以确保 hash 和 album_audio_id 都可用
     const trackInfo = await resolveTrackByQualityPreference(
       currentSong.value,
       preferredQuality,
     );
-    console.log("Music URL response:", trackInfo);
     if (trackInfo && trackInfo.url) {
       const musicUrl = trackInfo.url;
       const targetSongId = currentSong.value.id;
-      console.log("Playing music from URL:", musicUrl);
       const normalizedCurrentSong = normalizeFmSong(currentSong.value);
       if (!normalizedCurrentSong) {
         console.error("Invalid current FM song shape:", currentSong.value);
@@ -1578,8 +1564,6 @@ const togglePlay = async (options = {}) => {
         }
         console.warn("Failed to load lyrics:", lyricError);
       }
-
-      console.log("FM song started playing successfully");
     } else {
       console.error("No valid music URL found");
     }
@@ -1593,7 +1577,6 @@ const nextSong = async (options = {}) => {
   if (currentIndex.value < playedSongs.value.length - 1) {
     currentIndex.value++;
     if (currentSong.value) {
-      console.log("Playing next FM song from history:", currentSong.value.name);
       await togglePlay(options);
     }
     return;
@@ -1612,14 +1595,12 @@ const nextSong = async (options = {}) => {
     rememberRecent(nextSongFromPool.id);
     currentIndex.value = playedSongs.value.length - 1;
 
-    console.log("Playing new FM song:", nextSongFromPool.name);
     await togglePlay(options);
     // 低水位预取，保持池内始终有歌可播
     if (fmSongs.value.length < 2) {
       refreshFM({ silent: true });
     }
   } else {
-    console.log("No more FM songs available");
     // 如果歌曲池为空，尝试再次刷新
     if (fmSongs.value.length === 0) {
       await refreshFM({ silent: true });
@@ -1629,7 +1610,6 @@ const nextSong = async (options = {}) => {
         playedSongs.value.push(nextSongFromPool);
         rememberRecent(nextSongFromPool.id);
         currentIndex.value = playedSongs.value.length - 1;
-        console.log("Playing retry FM song:", nextSongFromPool.name);
         await togglePlay(options);
         if (fmSongs.value.length < 2) {
           refreshFM({ silent: true });
@@ -1643,11 +1623,8 @@ const prevSong = async (options = {}) => {
   if (currentIndex.value > 0) {
     currentIndex.value--;
     if (currentSong.value) {
-      console.log("Playing previous FM song:", currentSong.value.name);
       await togglePlay(options);
     }
-  } else {
-    console.log("Already at first song, cannot go to previous");
   }
 };
 
@@ -1786,11 +1763,6 @@ const refreshFM = async ({ silent = false } = {}) => {
   try {
     const selectedModeRequest = buildSelectedModeRequest();
     const usingDefaultMode = isDefaultFmModeSelected.value;
-    const selectedModeLabel =
-      selectedModeRequest.song_pool_id !== undefined
-        ? `${selectedModeRequest.mode}/pool-${selectedModeRequest.song_pool_id}`
-        : selectedModeRequest.mode;
-    console.log("[FM] Requesting Personal FM data, mode:", selectedModeLabel);
     let shouldTryModeRescue = false;
 
     // 1) 主流程：统一走酷狗 /personal/fm，只是参数按当前模式切换。
@@ -1803,11 +1775,6 @@ const refreshFM = async ({ silent = false } = {}) => {
       if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
       songs = Array.isArray(response?.data) ? response.data : [];
       if (!usingDefaultMode) primarySource = FM_REFRESH_SOURCE.FM_MODE_RESCUE;
-      console.log(
-        "[FM] personal/fm response size:",
-        songs.length,
-        selectedModeRequest,
-      );
 
       if (songs.length > 0) {
         if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
@@ -1816,33 +1783,17 @@ const refreshFM = async ({ silent = false } = {}) => {
           lastRefreshSource.value = primarySource;
           lastLoadedUserId.value = requestUserId;
           bootstrapFromPoolIfNeeded(primarySource);
-          console.log("[FM] refresh source:", lastRefreshSource.value);
           return true;
         }
         // 仅在“去重后无新增 + 当前无可播下一首”时触发模式救援
         if (!nextCandidateSong.value && usingDefaultMode) {
           shouldTryModeRescue = true;
-          console.log(
-            "[FM] personal/fm deduped to empty and no next candidate, try mode rescue",
-          );
-        } else if (!nextCandidateSong.value) {
-          console.log(
-            "[FM] selected mode deduped to empty, fallback to daily recommendations",
-          );
-        } else {
-          console.log(
-            "[FM] primary source deduped to empty, but next candidate already exists; skip fallback",
-          );
+        } else if (nextCandidateSong.value) {
           return;
         }
       } else if (!nextCandidateSong.value && usingDefaultMode) {
         shouldTryModeRescue = true;
-        console.log("[FM] personal/fm returned empty list, try mode rescue");
-      } else if (!nextCandidateSong.value) {
-        console.log(
-          "[FM] selected mode returned empty list, fallback to daily recommendations",
-        );
-      } else {
+      } else if (nextCandidateSong.value) {
         return;
       }
     } catch (fmError) {
@@ -1863,11 +1814,6 @@ const refreshFM = async ({ silent = false } = {}) => {
         const modeSongs = Array.isArray(modeResponse?.data)
           ? modeResponse.data
           : [];
-        console.log(
-          "[FM] fm_mode_rescue response size:",
-          modeSongs.length,
-          FM_MODE_RESCUE_OPTIONS,
-        );
         if (modeSongs.length > 0) {
           if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
           const modeStats = addToFmPoolUnique(
@@ -1878,7 +1824,6 @@ const refreshFM = async ({ silent = false } = {}) => {
             lastRefreshSource.value = FM_REFRESH_SOURCE.FM_MODE_RESCUE;
             lastLoadedUserId.value = requestUserId;
             bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.FM_MODE_RESCUE);
-            console.log("[FM] refresh source:", lastRefreshSource.value);
             return true;
           }
         }
@@ -1894,7 +1839,6 @@ const refreshFM = async ({ silent = false } = {}) => {
     try {
       const recResponse = await getRecommendSongs();
       if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
-      console.log("Daily recommendations response:", recResponse);
 
       if (recResponse && recResponse.data && recResponse.data.dailySongs) {
         const songs = mapSongsPlayableStatus(recResponse.data.dailySongs);
@@ -1908,10 +1852,8 @@ const refreshFM = async ({ silent = false } = {}) => {
           lastRefreshSource.value = FM_REFRESH_SOURCE.DAILY_RECOMMEND;
           lastLoadedUserId.value = requestUserId;
           bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.DAILY_RECOMMEND);
-          console.log("[FM] refresh source:", lastRefreshSource.value);
           return true;
         }
-        console.log("[FM] daily_recommend deduped to empty");
       }
     } catch (recError) {
       console.warn("Daily recommendations also failed:", recError);
@@ -2046,15 +1988,12 @@ watch(
 // 处理播放模式响应
 const handleFMPlayModeResponse = async (event) => {
   const { action } = event.detail;
-  console.log("Received FM play mode response:", action);
 
   if (action === "loop") {
     // 单曲循环模式：重新播放当前歌曲
-    console.log("Loop mode: replaying current song");
     await togglePlay({ userInitiated: false });
   } else if (action === "next") {
     // FM模式：播放下一首漫游歌曲
-    console.log("FM mode: playing next song");
     await goNext({ userInitiated: false });
   }
 };
@@ -2062,10 +2001,8 @@ const handleFMPlayModeResponse = async (event) => {
 // 处理上一首FM歌曲响应
 const handleFMPreviousResponse = async (event) => {
   const { action } = event.detail;
-  console.log("Received FM previous response:", action);
 
   if (action === "previous") {
-    console.log("Playing previous FM song from player controls");
     await goPrev({
       userInitiated: event.detail?.userInitiated === true,
     });
@@ -2075,10 +2012,8 @@ const handleFMPreviousResponse = async (event) => {
 // 处理下一首FM歌曲响应
 const handleFMNextResponse = async (event) => {
   const { action } = event.detail;
-  console.log("Received FM next response:", action);
 
   if (action === "next") {
-    console.log("Playing next FM song from player controls");
     await goNext({
       userInitiated: event.detail?.userInitiated === true,
     });
@@ -2087,9 +2022,6 @@ const handleFMNextResponse = async (event) => {
 
 // 处理设置页触发的清空漫游缓存事件
 const handleFmClearRecent = () => {
-  console.log(
-    "Received fmClearRecent event from Settings, reloading recent queue",
-  );
   loadPersistentRecent();
 };
 </script>

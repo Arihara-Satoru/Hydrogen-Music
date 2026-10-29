@@ -18,10 +18,9 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: {
-        // 生产环境移除 console
-        drop_console: true,
-        drop_debugger: true,
-        pure_funcs: ['console.log', 'console.info', 'console.warn']
+        // 生产环境只移除调试输出，保留 warn/error 以便排查线上问题
+        pure_funcs: ['console.log', 'console.info', 'console.debug'],
+        drop_debugger: true
       },
       mangle: {
         // 避免 eval 相关问题

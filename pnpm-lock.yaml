@@ -93,9 +93,6 @@ importers:
       js-cookie:
         specifier: ^3.0.8
         version: 3.0.8
-      js-md5:
-        specifier: ^0.8.3
-        version: 0.8.3
       nodemon:
         specifier: ^3.1.14
         version: 3.1.14
@@ -2160,9 +2157,6 @@ packages:
 
   js-cookie@3.0.8:
     resolution: {integrity: sha512-yeJd4aNAdYZQjaon2bpD/Gb0B/omw7HQOsynXXcOiWVCacbBcPlgn8S/d1X6blFSaHao7ozqtW7NZW19xpCtIw==}
-
-  js-md5@0.8.3:
-    resolution: {integrity: sha512-qR0HB5uP6wCuRMrWPTrkMaev7MJZwJuuw4fnwAzRgP4J4/F8RwtodOKpGp4XpqsLBFzzgqIO42efFAyz2Et6KQ==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -6039,8 +6033,6 @@ snapshots:
   jiti@2.7.0: {}
 
   js-cookie@3.0.8: {}
-
-  js-md5@0.8.3: {}
 
   js-tokens@4.0.0: {}
 
