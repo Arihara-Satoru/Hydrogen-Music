@@ -394,7 +394,7 @@ context.defineEmits = () => (_event, value) => { selectorProps.modelValue = valu
 const selectorSource = (await readFile('src/components/Selector.vue', 'utf8')).match(/<script setup>([\s\S]*?)<\/script>/)[1]
 const selectorModule = new SourceTextModule(selectorSource + '\nexport { handleKeydown, option, activeIndex, current };', { context })
 await selectorModule.link(key => ({
-    vue: mock({ ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), nextTick: async callback => callback(), useId: () => 'compression-options', onActivated: noop, onDeactivated: noop }),
+    vue: mock({ ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), nextTick: async callback => callback(), useId: () => 'compression-options', onMounted: noop, onBeforeUnmount: noop, onActivated: noop, onDeactivated: noop }),
     '../utils/domHandler': mock({ absolutePosition: noop }),
 })[key])
 await selectorModule.evaluate()

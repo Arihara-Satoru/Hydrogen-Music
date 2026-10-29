@@ -274,6 +274,7 @@ let uiRetryResponder = async () => {
 const settingsContext = createContext({
     console: { ...console, error() {} }, Date, ref, computed, watch, extractVipInfo, getCurrentVipLevel,
     useRouter: () => ({}), useUserStore: () => userStore, usePlayerStore: () => reactive({}),
+    useOtherStore: () => reactive({}), useAppUpdate: () => ({ state: ref({ status: 'idle', version: '' }) }),
     window: {}, windowApi: {}, isLogin: () => !!userStore.user,
     onActivated() {}, onUnmounted() {}, onBeforeRouteLeave() {},
     dailyVipClaimState: claimState,

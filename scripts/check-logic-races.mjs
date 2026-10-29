@@ -16,7 +16,7 @@ assert.match(libraryStore, /this\.libraryDetailToken != requestToken/)
 assert.match(localStore, /this\.localDetailToken === requestToken/)
 assert.match(libraryDetail, /libraryInfo\.value !== targetInfo/)
 assert.match(libraryDetail, /if \(itemIndex >= 0\) libraryList\.value\.splice/)
-assert.match(ipcMain, /if \(manualUpdateCheckRunning\) return/)
+assert.match(ipcMain, /if \(manualUpdateCheckRunning\b[^\n]*\)\s*return/)
 assert.match(ipcMain, /cleanupManualUpdateListeners\(\)/)
 
 console.log('logic race check passed')
