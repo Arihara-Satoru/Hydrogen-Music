@@ -56,7 +56,6 @@ export function buildFontOptions({ systemFonts = [], customFont = '', customFont
 export async function loadSystemFontOptions() {
     if (cachedSystemFonts.length > 0) return [...cachedSystemFonts]
     if (systemFontsPromise) return systemFontsPromise
-    if (typeof windowApi === 'undefined' || typeof windowApi.getSystemFonts !== 'function') return []
 
     systemFontsPromise = windowApi.getSystemFonts()
         .then(fonts => {

@@ -94,6 +94,7 @@
     getRemoteAudioMetadata: noopResolve(null),
     getCoverPalette: noopResolve(null),
     getLocalMusicLyric: noopResolve(""),
+    getSystemFonts: noopResolve([]),
 
     // ── 歌单 ──
     getLastPlaylist: noopResolve(null),

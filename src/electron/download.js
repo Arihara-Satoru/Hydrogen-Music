@@ -6,13 +6,10 @@ const { randomUUID } = require('crypto')
 const { getElectronStore } = require('./store')
 const { parseStream } = require('./musicMetadata')
 const path = require('path');
-let NodeID3 = null
-let Metaflac = null
-let Sharp = null
+const NodeID3 = require('node-id3')
+const Metaflac = require('metaflac-js')
+const Sharp = require('sharp')
 const audioExtensions = new Set(['mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'aiff', 'aif', 'ape'])
-try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
-try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
-try { Sharp = require('sharp') } catch (_) { Sharp = null }
 
 function hasLyrics(lyrics) {
   return !!(lyrics && (lyrics.lrc || lyrics.tlyric || lyrics.romalrc))
@@ -49,7 +46,7 @@ async function prepareCoverData(coverUrl, providedCover = null) {
     mime = inferImageMime(buffer, response.headers && response.headers['content-type'], coverUrl)
   }
 
-  if ((mime === 'image/png' || mime === 'image/jpeg') || !Sharp) return { buffer, mime }
+  if ((mime === 'image/png' || mime === 'image/jpeg')) return { buffer, mime }
 
   const image = Sharp(buffer)
   const metadata = await image.metadata()
@@ -104,7 +101,6 @@ function resolveDownloadExtension(item, fallback) {
 }
 
 function updateId3(tags, audioPath) {
-  if (!NodeID3) throw new Error('node-id3 unavailable')
   const result = NodeID3.update(tags, audioPath)
   if (result instanceof Error) throw result
   if (result === false) throw new Error('node-id3 update failed')
@@ -170,7 +166,6 @@ async function finalizeDownloadedFile(audioPath, context, options = {}) {
   }
 
   if (format === 'flac') {
-    if (!Metaflac) throw new Error('metaflac-js unavailable')
     const flac = new Metaflac(audioPath)
     if (!Buffer.isBuffer(flac.padding)) flac.padding = Buffer.alloc(0)
     for (const tag of ['TITLE', 'ARTIST', 'ALBUM', 'LYRICS', 'UNSYNCEDLYRICS', 'LRC', 'LYRICS_LRC', 'SYNCEDLYRICS']) {
@@ -489,7 +484,7 @@ function buildUnsyncedLyricText(lyricPayload) {
 // 生成带时间戳的同步歌词帧（ID3v2 SYLT），用于 MP3 内嵌同步歌词
 function buildSynchronisedLyricsFrames(lyricPayload) {
   try {
-    if (!NodeID3 || !NodeID3.TagConstants) return null
+    if (!NodeID3.TagConstants) return null
     const TagConstants = NodeID3.TagConstants
     const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/g
 

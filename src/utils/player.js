@@ -164,9 +164,7 @@ function getEffectivePlaybackRate() {
 function applyPlaybackRate(playback = currentMusic.value) {
   if (!playback) return 1;
   const targetRate = getEffectivePlaybackRate();
-  try {
-    playback.rate?.(targetRate);
-  } catch (_) {}
+  playback.rate?.(targetRate);
   return targetRate;
 }
 
@@ -196,9 +194,7 @@ if (playbackRate) {
     }
     applyPlaybackRate();
     if (musicVideoDOM.value?.media) {
-      try {
-        musicVideoDOM.value.media.playbackRate = getEffectivePlaybackRate();
-      } catch (_) {}
+      musicVideoDOM.value.media.playbackRate = getEffectivePlaybackRate();
     }
   });
 }
@@ -563,9 +559,7 @@ function clearGaplessPreload({ invalidate = true, unload = true } = {}) {
   if (invalidate) gaplessPreloadToken += 1;
   gaplessPreloadPendingKey = "";
   if (unload && gaplessPreload?.player) {
-    try {
-      gaplessPreload.player.unload?.();
-    } catch (_) {}
+    gaplessPreload.player.unload?.();
   }
   gaplessPreload = null;
 }
@@ -669,9 +663,7 @@ async function preloadGaplessSong() {
 
     const player = markRaw(await createDecodedAudioPlayer(playbackInfo.url));
     if (token !== gaplessPreloadToken) {
-      try {
-        player.unload?.();
-      } catch (_) {}
+      player.unload?.();
       return null;
     }
 
@@ -754,21 +746,15 @@ function fadeOutPreviousPlayback(previousPlayback, nextPlayback) {
         : volume.value;
     previousPlayback.fade(fromVolume, 0, GAPLESS_CROSSFADE_MS);
     previousPlayback.once?.("fade", () => {
-      try {
-        previousPlayback.unload?.();
-      } catch (_) {}
+      previousPlayback.unload?.();
     });
   } catch (_) {
-    try {
-      previousPlayback.unload?.();
-    } catch (_) {}
+    previousPlayback.unload?.();
     return;
   }
 
   setTimeout(() => {
-    try {
-      previousPlayback.unload?.();
-    } catch (_) {}
+    previousPlayback.unload?.();
   }, GAPLESS_CROSSFADE_MS + 80);
 }
 
@@ -808,9 +794,7 @@ async function hydrateGaplessStartedSongAssets(
   if (targetSong.type === "local") {
     windowApi.getLocalMusicImage(targetSong.url).then((base64) => {
       localBase64Img.value = base64;
-      try {
-        window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
-      } catch (_) {}
+      window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
     });
     const localLyric = await getLocalLyric(targetSong.url);
     if (songId.value !== targetSongId) return;
@@ -868,9 +852,7 @@ function startGaplessTarget(target, entry, options = {}) {
   lyric.value = null;
   lyricsObjArr.value = null;
   currentLyricIndex.value = -1;
-  try {
-    localBase64Img.value = null;
-  } catch (_) {}
+  localBase64Img.value = null;
 
   setId(target.id, target.index);
   syncWindowsTaskbarPlaybackState();
@@ -998,15 +980,11 @@ function startChorusMonitor(endTime) {
     if (!Number.isFinite(currentSeek)) return;
     if (currentSeek < safeEndTime - 0.15 * getEffectivePlaybackRate()) return;
 
-    try {
-      currentMusic.value.seek(safeEndTime);
-    } catch (_) {}
+    currentMusic.value.seek(safeEndTime);
     progress.value = safeEndTime;
     syncLyricIndexForSeek(safeEndTime);
     clearInterval(musicProgress);
-    try {
-      currentMusic.value.pause();
-    } catch (_) {}
+    currentMusic.value.pause();
     clearChorusPlaybackState();
     playing.value = false;
     handleTrackPlaybackEnded({ fromChorus: true });
@@ -1866,9 +1844,7 @@ export function play(
   // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
   stopProgressSampling();
   if (previousPlayback && !keepPreviousPlayback) {
-    try {
-      previousPlayback.unload?.();
-    } catch (_) {}
+    previousPlayback.unload?.();
     Howler.unload();
   }
   // 播放前更新音量
@@ -1924,16 +1900,14 @@ export function play(
     }
     playerChangeSong.value = false;
     // 通知 Media Session：新曲目加载完成，刷新一次系统时长/进度（静态策略）
-    try {
-      window.dispatchEvent(
-        new CustomEvent("mediaSession:seeked", {
-          detail: {
-            duration: Math.floor(playback.duration() || 0),
-            toTime: progress.value || 0,
-          },
-        }),
-      );
-    } catch (_) {}
+    window.dispatchEvent(
+      new CustomEvent("mediaSession:seeked", {
+        detail: {
+          duration: Math.floor(playback.duration() || 0),
+          toTime: progress.value || 0,
+        },
+      }),
+    );
   };
   const handlePlaybackEnd = (playback) => {
     if (currentMusic.value !== playback) return;
@@ -2302,17 +2276,13 @@ export function addSong(id, index, autoplay, isLocal, playbackOptions = {}) {
   progress.value = 0;
   time.value = 0;
   // 清空上首的本地封面，避免下一首短暂使用上一首封面
-  try {
-    localBase64Img.value = null;
-  } catch (_) {}
+  localBase64Img.value = null;
   // 立即通知 SMTC/Media Session 将进度归零，避免保留上一首的时间轴
-  try {
-    window.dispatchEvent(
-      new CustomEvent("mediaSession:seeked", {
-        detail: { duration: 0, toTime: 0 },
-      }),
-    );
-  } catch (_) {}
+  window.dispatchEvent(
+    new CustomEvent("mediaSession:seeked", {
+      detail: { duration: 0, toTime: 0 },
+    }),
+  );
   if (lyricShow.value) {
     lyricShow.value = false;
     playerChangeSong.value = true;
@@ -2421,7 +2391,7 @@ export function setSongLevel(level, streamInfo = null) {
 async function loadRemoteAudioInfo(targetSong, streamInfo) {
   const url = streamInfo?.url;
   const levelInfo = targetSong?.level;
-  if (!url || !levelInfo || typeof windowApi === "undefined" || !windowApi?.getRemoteAudioMetadata) return;
+  if (!url || !levelInfo) return;
   if (levelInfo.sr && (isLossyStream(levelInfo) || levelInfo.bitsPerSample)) return;
 
   try {
@@ -2514,9 +2484,7 @@ function applyCloudMusicMetadata(targetSong, metadata, targetSongId) {
   }
 
   if (artworkChanged && songId.value === targetSongId) {
-    try {
-      window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
-    } catch (_) {}
+    window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
   }
 }
 
@@ -2669,9 +2637,7 @@ export async function getSongUrl(
       windowApi.getLocalMusicImage(targetSong.url).then((base64) => {
         if (!isCurrentRequest()) return;
         localBase64Img.value = base64;
-        try {
-          window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
-        } catch (_) {}
+        window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
       });
       play(
         directPreloadedEntry.url,
@@ -2731,9 +2697,7 @@ export async function getSongUrl(
       if (!isCurrentRequest()) return;
       localBase64Img.value = base64;
       // 本地封面到达后，提示 Media Session 刷新一次元数据（以载入封面）
-      try {
-        window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
-      } catch (_) {}
+      window.dispatchEvent(new CustomEvent("mediaSession:updateArtwork"));
     });
     const localPath = targetSong.url;
     const fileUrl = windowApi?.toFileUrl
@@ -3143,13 +3107,11 @@ export function changeProgress(toTime, options = {}) {
   syncLyricIndexForSeek(targetTime);
   currentMusic.value.seek(targetTime);
   // 静态策略下，仅在显式 seek 时通知一次系统进度
-  try {
-    window.dispatchEvent(
-      new CustomEvent("mediaSession:seeked", {
-        detail: { duration: Math.floor(time.value || 0), toTime: targetTime },
-      }),
-    );
-  } catch (_) {}
+  window.dispatchEvent(
+    new CustomEvent("mediaSession:seeked", {
+      detail: { duration: Math.floor(time.value || 0), toTime: targetTime },
+    }),
+  );
 }
 //控制拖拽进度条
 export function changeProgressByDragStart() {
@@ -3667,14 +3629,7 @@ export function addToNext(nextSong, autoplay) {
   // FM页面已离开但播放器状态仍是personalfm时，playNext会被FM分支拦截导致无法播放
   // 在“立即播放”场景下自动退出FM上下文，确保后续走普通切歌逻辑
   if (listInfo.value && listInfo.value.type === "personalfm" && autoplay) {
-    let isOnPersonalFMRoute = false;
-    try {
-      const hash =
-        typeof window !== "undefined" && window.location && window.location.hash
-          ? window.location.hash
-          : "";
-      isOnPersonalFMRoute = hash.includes("/personalfm");
-    } catch (_) {}
+    const isOnPersonalFMRoute = window.location.hash.includes("/personalfm");
     // 仍在FM页面时，保持原有“下一首FM”逻辑，避免破坏FM流程
     if (isOnPersonalFMRoute) {
       playNext();
@@ -3882,9 +3837,7 @@ export function musicVideoCheck(seek, update) {
         if (musicVideoDOM.value) {
           musicVideoDOM.value.currentTime = vt;
           if (musicVideoDOM.value.media) {
-            try {
-              musicVideoDOM.value.media.playbackRate = getEffectivePlaybackRate();
-            } catch (_) {}
+            musicVideoDOM.value.media.playbackRate = getEffectivePlaybackRate();
           }
         }
         currentTiming = timing;

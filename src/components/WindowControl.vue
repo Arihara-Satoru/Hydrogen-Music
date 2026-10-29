@@ -14,19 +14,15 @@ onMounted(() => {
     // 检测是否为 macOS
     isMacOS.value = navigator.platform.toLowerCase().includes('mac');
 
-    if (typeof windowApi.getWindowMaximizedState === 'function') {
-        windowApi.getWindowMaximizedState()
-            .then((state) => {
-                isWindowMaximized.value = !!state;
-            })
-            .catch(() => {});
-    }
-
-    if (typeof windowApi.onWindowMaximizedChange === 'function') {
-        removeWindowMaximizedListener = windowApi.onWindowMaximizedChange((state) => {
+    windowApi.getWindowMaximizedState()
+        .then((state) => {
             isWindowMaximized.value = !!state;
-        });
-    }
+        })
+        .catch(() => {});
+
+    removeWindowMaximizedListener = windowApi.onWindowMaximizedChange((state) => {
+        isWindowMaximized.value = !!state;
+    });
 });
 
 onBeforeUnmount(() => {

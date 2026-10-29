@@ -373,23 +373,11 @@ const handlePrimaryAction = async () => {
   }
 
   try {
-    if (typeof windowApi !== 'undefined' && windowApi?.toRegister) {
-      windowApi.toRegister(url)
-      closeModal()
-      return
-    }
-
-    if (typeof window !== 'undefined' && window?.open) {
-      window.open(url, '_blank')
-      closeModal()
-      return
-    }
+    windowApi.toRegister(url)
+    closeModal()
   } catch (_) {
     noticeOpen('打开链接失败', 2)
-    return
   }
-
-  noticeOpen('当前环境无法打开外部链接', 2)
 }
 
 const copyLink = async () => {
@@ -402,7 +390,7 @@ const copyLink = async () => {
   let copied = false
   copied = await copyToClipboard(link)
 
-  if (!copied && typeof windowApi !== 'undefined' && windowApi?.copyTxt) {
+  if (!copied) {
     try {
       windowApi.copyTxt(link)
       copied = true

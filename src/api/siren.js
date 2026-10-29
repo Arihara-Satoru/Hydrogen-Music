@@ -28,10 +28,6 @@ function buildRequestConfig(extraOptions = {}) {
 }
 
 async function requestViaMain(url, options = {}) {
-    if (!windowApi || typeof windowApi.getRequestData !== 'function') {
-        throw new Error('windowApi.getRequestData 不可用')
-    }
-
     return windowApi.getRequestData({
         url,
         option: buildRequestConfig(options),

@@ -16,16 +16,8 @@ const { loadRemoteAudioMetadata } = require("./remoteAudioMetadata");
 const { spawn } = require("child_process");
 const { loadLocalLyricPayload } = require("./localLyrics");
 const { listSystemFonts } = require("./systemFonts");
-let ffmpegPath = null;
-try {
-  ffmpegPath = require("ffmpeg-static");
-} catch (_) {
-  ffmpegPath = null;
-}
-let sharp = null;
-try {
-  sharp = require("sharp");
-} catch (_) {}
+const ffmpegPath = require("ffmpeg-static");
+const sharp = require("sharp");
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require("./shortcuts");
 const { getElectronStore } = require("./store");
@@ -538,7 +530,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     loadRemoteAudioMetadata(options),
   );
   ipcMain.handle("cover-palette", async (_event, imageUrl) => {
-    if (!sharp || typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return null;
+    if (typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return null;
 
     try {
       const response = await axios.get(imageUrl, {
