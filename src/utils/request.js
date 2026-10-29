@@ -16,7 +16,7 @@ const request = axios.create({
     timeout: 20000,
 });
 
-const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
+const LOGIN_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1']
 
 let cachedAuthCookieString = null
 let kugouApiReadyPromise = null
@@ -42,7 +42,7 @@ function waitForKugouApiReady() {
 
 function buildAuthCookieString(device, includeAccountCookies) {
   if (includeAccountCookies && cachedAuthCookieString === null) {
-    cachedAuthCookieString = AUTH_COOKIE_KEYS
+    cachedAuthCookieString = LOGIN_COOKIE_KEYS
       .map((key) => {
         const value = getCookie(key)
         return value ? `${key}=${value}` : ''
@@ -51,7 +51,10 @@ function buildAuthCookieString(device, includeAccountCookies) {
       .join(';')
   }
 
-  return [includeAccountCookies ? cachedAuthCookieString : '', buildKugouDeviceCookieString(device)]
+  const dfid = getCookie('dfid')
+  const dfidCookie = dfid ? `dfid=${dfid}` : ''
+
+  return [includeAccountCookies ? cachedAuthCookieString : '', dfidCookie, buildKugouDeviceCookieString(device)]
     .filter(Boolean)
     .join(';')
 }
@@ -171,6 +174,10 @@ request.interceptors.response.use(function (response) {
       || url === '/user/purchased/albums'
       || url === '/login/device'
       || url === '/login/device/kick'
+      || url.startsWith('/song/url')
+      || url === '/user/verify'
+      || url === '/register/dev'
+      || url === '/privilege/lite'
     if (!suppressGlobalNotice) {
       if (msg) noticeOpen(`请求错误：${msg}`, 2)
       else if (status) noticeOpen(`请求错误 (${status})`, 2)

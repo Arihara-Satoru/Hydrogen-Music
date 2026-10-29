@@ -12,6 +12,7 @@ import { destroyListenTimeReporter, initListenTimeReporter } from './utils/liste
 import { initTogetherSession, destroyTogetherSession } from './utils/listenTogetherSession';
 import { installSpacePlaybackShortcut } from './utils/playbackKeyboard.mjs';
 import { pauseMusic, startMusic } from './utils/player';
+import { ensureDeviceRegistered } from './utils/musicUrlResolver';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -73,6 +74,7 @@ onMounted(() => {
     initDesktopLyric();
     initListenTimeReporter();
     initTogetherSession();
+    void ensureDeviceRegistered().catch(() => {});
 
     // 塞壬唱片开启时，空闲预加载所有专辑歌曲时长
     if (userStore.sirenPage) {

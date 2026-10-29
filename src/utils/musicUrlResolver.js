@@ -31,7 +31,7 @@ let deviceRegistrationPromise = null
  * 注册设备（酷狗要求播放前先注册设备）
  * 仅在首次调用时执行一次，后续复用设备标识。
  */
-async function ensureDeviceRegistered() {
+export async function ensureDeviceRegistered() {
     if (deviceRegistered || getCookie('dfid')) {
         deviceRegistered = true
         return

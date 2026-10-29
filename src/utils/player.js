@@ -2907,7 +2907,16 @@ export async function getSongUrl(
             else currentMusic.value?.once?.("load", startChorusPlayback);
           }
         },
-      );
+      ).catch((error) => {
+        if (!isCurrentRequest()) return;
+        console.warn("获取歌曲播放地址失败:", error);
+        noticeOpen("当前歌曲无法播放", 2);
+        clearInterval(musicProgress);
+        playing.value = false;
+        currentMusic.value = null;
+        lyric.value = null;
+        playNext();
+      });
     } else {
       noticeOpen("当前歌曲无法播放", 2);
       clearInterval(musicProgress);

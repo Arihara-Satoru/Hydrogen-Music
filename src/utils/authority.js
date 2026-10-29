@@ -1,7 +1,7 @@
 import Cookies from "js-cookie";
 
 const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
-const LOGIN_COOKIE_KEYS = AUTH_COOKIE_KEYS.filter(key => key !== 'dfid')
+export const LOGIN_COOKIE_KEYS = AUTH_COOKIE_KEYS.filter(key => key !== 'dfid')
 
 function extractAuthCookieValues(rawCookie) {
   const cookieText = String(rawCookie || '')
