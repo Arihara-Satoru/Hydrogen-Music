@@ -117,6 +117,15 @@ if (typeof document !== "undefined") {
     return finishPromise;
   };
 
+  window.addEventListener("message", (event) => {
+    if (!event.data || typeof event.data !== "object") return;
+    if (event.data.type === "setSplashStatus") {
+      window.setSplashStatus?.(event.data.status, event.data.progress);
+    } else if (event.data.type === "finishSplash") {
+      window.finishSplash?.();
+    }
+  });
+
   renderProgress(currentProgress);
   const qaStatus = params.get("status");
   if (qaStatus) window.setSplashStatus(qaStatus, currentProgress);

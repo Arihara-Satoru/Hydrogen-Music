@@ -17,6 +17,7 @@ import { usePlayerStore } from "@/store/playerStore";
 import { useOtherStore } from "@/store/otherStore";
 import { useAppUpdate } from "@/composables/useAppUpdate";
 import Selector from "../components/Selector.vue";
+import StartupPreviewModal from "../components/StartupPreviewModal.vue";
 import FontSelector from "../components/FontSelector.vue";
 import ListeningSettings from "../components/ListeningSettings.vue";
 import { setTheme, getSavedTheme } from "@/utils/theme";
@@ -201,6 +202,23 @@ const startupAnimationOptions = ref([
   { label: "黑白", value: "corporate" },
   { label: "缤纷", value: "popucom" },
 ]);
+const showStartupPreviewModal = ref(false);
+const openStartupPreview = () => {
+  showStartupPreviewModal.value = true;
+};
+const currentStartupAnimationLabel = computed(() => {
+  const found = startupAnimationOptions.value.find(
+    (item) => item.value === startupAnimation.value,
+  );
+  return found ? found.label : "动态自适应";
+});
+const onStartupAnimationChange = (newVal) => {
+  startupAnimation.value = newVal;
+  setAppSettings();
+};
+const onCloseStartupPreview = () => {
+  showStartupPreviewModal.value = false;
+};
 const quitApp = ref("minimize");
 const quitAppOptions = ref([
   {
@@ -1941,10 +1959,21 @@ const clearFmRecent = () => {
             <div class="option">
               <div class="option-name">启动动画（下次启动生效）</div>
               <div class="option-operation">
-                <Selector
-                  v-model="startupAnimation"
-                  :options="startupAnimationOptions"
-                ></Selector>
+                <button
+                  class="startup-preview-trigger"
+                  type="button"
+                  @click="openStartupPreview"
+                  title="点击预览并切换启动动画"
+                >
+                  <span class="startup-trigger-name">{{ currentStartupAnimationLabel }}</span>
+                  <span class="startup-trigger-badge">
+                    <svg class="preview-eye-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <span>预览与切换</span>
+                  </span>
+                </button>
               </div>
             </div>
             <div class="option">
@@ -1975,6 +2004,12 @@ const clearFmRecent = () => {
       </div>
     </div>
 
+    <StartupPreviewModal
+      :show="showStartupPreviewModal"
+      :model-value="startupAnimation"
+      @update:model-value="onStartupAnimationChange"
+      @close="onCloseStartupPreview"
+    />
   </div>
 </template>
 
@@ -2429,6 +2464,58 @@ const clearFmRecent = () => {
                 cursor: pointer;
                 opacity: 0.8;
                 box-shadow: none;
+              }
+            }
+            .startup-preview-trigger {
+              margin-right: 1px;
+              width: 200px;
+              height: 34px;
+              padding: 0 10px;
+              background-color: rgba(255, 255, 255, 0.35);
+              color: black;
+              border: none;
+              border-radius: 0;
+              outline: none;
+              appearance: none;
+              font: 13px SourceHanSansCN-Bold;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              cursor: pointer;
+              transition: 0.2s;
+              box-sizing: border-box;
+
+              .startup-trigger-name {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: left;
+              }
+
+              .startup-trigger-badge {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 11px;
+                padding: 2px 6px;
+                background: rgba(0, 0, 0, 0.08);
+                color: inherit;
+                border-radius: 2px;
+                flex-shrink: 0;
+
+                .preview-eye-icon {
+                  display: block;
+                }
+              }
+
+              &:hover {
+                opacity: 0.85;
+                background-color: rgba(255, 255, 255, 0.55);
+              }
+
+              &:focus-visible {
+                outline: 2px solid currentColor;
+                outline-offset: 1px;
               }
             }
             select {
