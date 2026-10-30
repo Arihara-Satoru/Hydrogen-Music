@@ -39,19 +39,35 @@ li {
     align-items: center;
     gap: 12px;
     padding: 8px 12px;
-    background: var(--layer);
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(10px);
     border: 1px solid var(--border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
     min-width: 0;
     box-sizing: border-box;
-    transition: background-color 0.16s ease, border-color 0.16s ease;
+    transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+:global(html.dark) li {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 li:hover {
-    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    background: rgba(255, 255, 255, 0.72);
+    border-color: var(--text);
+    transform: translateY(-1px);
+}
+:global(html.dark) li:hover {
+    background: rgba(255, 255, 255, 0.09);
     border-color: var(--text);
 }
 li.current {
     border-color: var(--text);
-    background: color-mix(in srgb, var(--panel) 96%, transparent);
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: inset 2px 0 0 0 var(--text);
+}
+:global(html.dark) li.current {
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: inset 2px 0 0 0 var(--text);
 }
 li.current .song-number {
     color: var(--text);

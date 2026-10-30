@@ -209,8 +209,8 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
 <template>
     <div class="together-page">
         <header class="page-heading">
-            <div>
-                <p class="eyebrow">LISTEN TOGETHER</p>
+            <div class="heading-meta">
+                <p class="eyebrow">LISTEN TOGETHER // ARCHIVE</p>
                 <h1>{{ together.room?.name || '一起听' }}</h1>
                 <p class="muted">{{ together.room ? `${together.room.kind === 'music' ? '众乐房' : '自习室'} · ${together.connection}` : '把喜欢的音乐，分享给此刻在线的人。' }}</p>
             </div>
@@ -245,19 +245,22 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
                 </button>
             </nav>
 
-            <section class="join-panel panel">
+            <!-- 紧凑型命令连接条（Terminal Connect Bar） -->
+            <section class="join-terminal">
                 <div class="card-frame" aria-hidden="true">
                     <div class="frame-corner frame-tl"></div>
-                    <div class="frame-corner frame-tr"></div>
-                    <div class="frame-corner frame-bl"></div>
                     <div class="frame-corner frame-br"></div>
                 </div>
-                <form class="inline-form" @submit.prevent="join()">
+                <div class="terminal-tag">
+                    <span class="terminal-prefix">&gt;</span>
+                    <span class="terminal-text">CONNECT</span>
+                </div>
+                <form class="terminal-form" @submit.prevent="join()">
                     <label class="sr-only" for="room-number">房间号</label>
                     <input
                         id="room-number"
                         v-model="roomId"
-                        :placeholder="kind === 'music' ? '输入众乐房房间号，与朋友一起听' : '输入自习室房间号，进入自习室'"
+                        :placeholder="kind === 'music' ? '输入众乐房房间号，与朋友一起听...' : '输入自习室房间号，进入自习室...'"
                         maxlength="80"
                         spellcheck="false"
                     />
@@ -265,28 +268,21 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
                 </form>
             </section>
 
-            <section class="panel discovery">
-                <div class="card-frame" aria-hidden="true">
-                    <div class="frame-corner frame-tl"></div>
-                    <div class="frame-corner frame-tr"></div>
-                    <div class="frame-corner frame-bl"></div>
-                    <div class="frame-corner frame-br"></div>
-                </div>
-                <div class="section-heading">
-                    <div class="heading-left">
-                        <div class="source-tabs" role="tablist">
-                            <button
-                                v-for="opt in sourceOptions"
-                                :key="opt.value"
-                                type="button"
-                                class="source-tab"
-                                :class="{ active: source === opt.value }"
-                                :aria-pressed="source === opt.value"
-                                @click="source = opt.value"
-                            >
-                                {{ opt.label }}
-                            </button>
-                        </div>
+            <!-- 发现区块：开放式排版，无厚重白底大框 -->
+            <section class="discovery-section">
+                <div class="section-toolbar">
+                    <div class="source-tabs" role="tablist">
+                        <button
+                            v-for="opt in sourceOptions"
+                            :key="opt.value"
+                            type="button"
+                            class="source-tab"
+                            :class="{ active: source === opt.value }"
+                            :aria-pressed="source === opt.value"
+                            @click="source = opt.value"
+                        >
+                            {{ opt.label }}
+                        </button>
                     </div>
                     <form class="actions" @submit.prevent="loadRooms()">
                         <div v-if="source === 'recommend'" class="search-box">
@@ -296,43 +292,49 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
                     </form>
                 </div>
 
+                <!-- 频道列表 -->
                 <div v-if="channels.length" class="room-grid">
                     <article v-for="channel in channels" :key="channel.id" class="room-card">
                         <div class="card-frame" aria-hidden="true">
                             <div class="frame-corner frame-tl"></div>
-                            <div class="frame-corner frame-tr"></div>
-                            <div class="frame-corner frame-bl"></div>
                             <div class="frame-corner frame-br"></div>
                         </div>
                         <img v-if="channel.cover" :src="resolveImageUrl(channel.cover)" alt="" />
-                        <div>
+                        <div class="card-content">
                             <h2>{{ channel.name }}</h2>
-                            <p class="muted">频道 {{ channel.id }}</p>
+                            <div class="card-tags">
+                                <span class="meta-tag">CHANNEL // {{ channel.id }}</span>
+                            </div>
                         </div>
                         <BaseButton variant="secondary" size="small" :disabled="pending" @click="openCreate(); form.global_collection_id = channel.id; form.room_privacy = 1">在此创建</BaseButton>
                     </article>
                 </div>
 
                 <div v-if="loading && !rooms.length" class="room-grid">
-                    <SkeletonBox v-for="n in 6" :key="n" height="110px" />
+                    <SkeletonBox v-for="n in 6" :key="n" height="96px" />
                 </div>
 
                 <p v-else-if="!rooms.length && !channels.length" class="empty">
                     {{ error ? '房间列表暂不可用，可以重试或输入房间号加入。' : '暂无可加入的房间，试试创建一个自己的音乐室。' }}
                 </p>
 
+                <!-- 房间网格 -->
                 <div v-else class="room-grid">
                     <article v-for="room in rooms" :key="room.id" class="room-card">
                         <div class="card-frame" aria-hidden="true">
                             <div class="frame-corner frame-tl"></div>
-                            <div class="frame-corner frame-tr"></div>
-                            <div class="frame-corner frame-bl"></div>
                             <div class="frame-corner frame-br"></div>
                         </div>
                         <img v-if="room.cover" :src="resolveImageUrl(room.cover)" alt="" loading="lazy" />
                         <div class="card-content">
                             <h2 :title="room.name">{{ room.name }}</h2>
-                            <p class="muted">{{ room.count }} 人在线 · {{ room.id }}</p>
+                            <div class="card-tags">
+                                <span class="meta-tag tag-online">
+                                    <span class="signal-dot"></span>
+                                    {{ room.count }} 在线
+                                </span>
+                                <span class="meta-tag tag-id">ID // {{ room.id }}</span>
+                            </div>
                             <p v-if="room.notice" class="room-notice" :title="room.notice">{{ room.notice }}</p>
                         </div>
                         <div class="card-actions">
@@ -358,11 +360,9 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
         <template v-else>
             <div class="room-layout">
                 <!-- 顶部正在播放横向卡片 -->
-                <section class="panel room-summary">
+                <section class="room-summary">
                     <div class="card-frame" aria-hidden="true">
                         <div class="frame-corner frame-tl"></div>
-                        <div class="frame-corner frame-tr"></div>
-                        <div class="frame-corner frame-bl"></div>
                         <div class="frame-corner frame-br"></div>
                     </div>
 
@@ -425,11 +425,9 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
                 </section>
 
                 <!-- 下方完整内容面板 -->
-                <section class="panel room-content">
+                <section class="room-content">
                     <div class="card-frame" aria-hidden="true">
                         <div class="frame-corner frame-tl"></div>
-                        <div class="frame-corner frame-tr"></div>
-                        <div class="frame-corner frame-bl"></div>
                         <div class="frame-corner frame-br"></div>
                     </div>
                     <nav class="room-tabs" aria-label="房间内容">
@@ -508,8 +506,6 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
                                 <article v-for="message in together.messages" :key="message.id" :class="{ mine: message.sender === identity() }">
                                     <div class="card-frame" aria-hidden="true">
                                         <div class="frame-corner frame-tl"></div>
-                                        <div class="frame-corner frame-tr"></div>
-                                        <div class="frame-corner frame-bl"></div>
                                         <div class="frame-corner frame-br"></div>
                                     </div>
                                     <small>{{ message.name }}</small>
@@ -552,6 +548,7 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
     padding: 24px 0 160px;
     color: var(--text);
     text-align: left;
+    position: relative;
 }
 
 /* 标头区域 */
@@ -560,14 +557,14 @@ onDeactivated(() => { active = false; listVersion++; searchVersion++; loading.va
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-    margin-bottom: 20px;
+    margin-bottom: 22px;
 }
 h1, h2, h3, p {
     margin: 0;
 }
 h1 {
     font: 28px SourceHanSansCN-Bold, sans-serif;
-    margin: 5px 0 10px;
+    margin: 5px 0 8px;
 }
 h2 {
     font: 15px SourceHanSansCN-Bold, sans-serif;
@@ -594,24 +591,32 @@ h3 {
     border-bottom: 1px solid var(--border);
 }
 .lobby-tab-btn {
+    position: relative;
     border: none;
-    border-bottom: 2px solid transparent;
     padding: 8px 4px 12px;
     background: transparent;
     color: var(--muted-text);
     cursor: pointer;
     font: 16px SourceHanSansCN-Bold, sans-serif;
-    transition: color 0.18s ease, border-bottom-color 0.18s ease;
+    transition: color 0.18s ease;
 }
 .lobby-tab-btn:hover {
     color: var(--text);
 }
 .lobby-tab-btn.active {
     color: var(--text);
-    border-bottom-color: var(--text);
+}
+.lobby-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--text);
 }
 
-/* 通用四角框（与评论区一致的标志性 Arknights 风格） */
+/* 对角线微角标（精简为左上+右下，克制且具方舟工业特色） */
 .card-frame {
     position: absolute;
     inset: 0;
@@ -621,24 +626,12 @@ h3 {
     position: absolute;
     width: 6px;
     height: 6px;
-    border: 2px solid var(--text);
+    border: 1.5px solid var(--text);
 }
 .frame-corner.frame-tl {
     top: -1px;
     left: -1px;
     border-bottom: none;
-    border-right: none;
-}
-.frame-corner.frame-tr {
-    top: -1px;
-    right: -1px;
-    border-bottom: none;
-    border-left: none;
-}
-.frame-corner.frame-bl {
-    bottom: -1px;
-    left: -1px;
-    border-top: none;
     border-right: none;
 }
 .frame-corner.frame-br {
@@ -648,37 +641,82 @@ h3 {
     border-left: none;
 }
 
-/* 面板样式 */
-.panel {
+/* 紧凑型命令连接条（Terminal Connect Bar） */
+.join-terminal {
     position: relative;
-    padding: 22px;
-    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(12px);
     border: 1px solid var(--border);
-    backdrop-filter: blur(8px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+    margin-bottom: 24px;
+    box-sizing: border-box;
 }
-.section-heading, .actions, .inline-form, .join-panel {
-    display: flex;
+:global(html.dark) .join-terminal {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.terminal-tag {
+    display: inline-flex;
     align-items: center;
-    gap: 14px;
+    gap: 4px;
+    padding: 3px 8px;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text);
+    font: 11px Bender-Bold, monospace;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+    user-select: none;
 }
-.section-heading {
-    justify-content: space-between;
-    margin-bottom: 20px;
+:global(html.dark) .terminal-tag {
+    background: rgba(255, 255, 255, 0.09);
 }
-.join-panel {
-    margin-bottom: 22px;
+.terminal-prefix {
+    opacity: 0.65;
 }
-.join-panel .inline-form {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-.join-panel .inline-form input {
+.terminal-form {
     flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.terminal-form input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.55);
+}
+:global(html.dark) .terminal-form input {
+    background: rgba(255, 255, 255, 0.05);
 }
 
-/* 来源分类标签（推荐房间 / 最近访问 / 我创建的） */
+/* 发现区块横向导轨 */
+.discovery-section {
+    position: relative;
+}
+.section-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+}
+.actions, .inline-form {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+/* 来源分类标签 */
 .source-tabs {
     display: flex;
     align-items: center;
@@ -719,18 +757,30 @@ h3 {
 .room-card {
     position: relative;
     border: 1px solid var(--border);
-    background: var(--layer);
-    padding: 16px 18px;
+    background: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(12px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+    padding: 14px 18px;
     display: flex;
     align-items: center;
     gap: 14px;
     min-height: 94px;
     box-sizing: border-box;
-    transition: background-color 0.18s ease, border-color 0.18s ease;
+    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+:global(html.dark) .room-card {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 .room-card:hover {
-    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    background: rgba(255, 255, 255, 0.76);
     border-color: var(--text);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+:global(html.dark) .room-card:hover {
+    background: rgba(255, 255, 255, 0.09);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 .room-card img {
     width: 54px;
@@ -749,7 +799,42 @@ h3 {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
+}
+.card-tags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 5px;
+    flex-wrap: wrap;
+}
+.meta-tag {
+    font: 11px/1 Bender-Bold, monospace;
+    padding: 3px 6px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    color: var(--muted-text);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    line-height: 1;
+}
+:global(html.dark) .meta-tag {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+.tag-online {
+    color: var(--text);
+}
+.signal-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #3ba776;
+    display: inline-block;
+}
+:global(html.dark) .signal-dot {
+    background: #18d1ff;
 }
 .room-card .card-actions {
     display: flex;
@@ -769,7 +854,7 @@ h3 {
     overflow: hidden;
 }
 
-/* 与评论区一致的展开/加载更多胶囊按钮 */
+/* 展开/加载更多胶囊按钮 */
 .floor-more-btn {
     display: block;
     margin: 20px auto 0;
@@ -793,7 +878,7 @@ h3 {
     cursor: not-allowed;
 }
 
-/* 房内布局：上下通栏结构，告别左右高度不平衡 */
+/* 房内布局：上下通栏结构 */
 .room-layout {
     display: flex;
     flex-direction: column;
@@ -802,10 +887,19 @@ h3 {
 
 /* 正在播放顶部横向卡片 */
 .room-summary {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 24px;
-    padding: 22px 24px;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+:global(html.dark) .room-summary {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 .summary-cover-wrapper {
     width: 128px;
@@ -824,7 +918,10 @@ h3 {
     align-items: center;
     justify-content: center;
     color: var(--muted-text);
-    background: var(--layer);
+    background: rgba(0, 0, 0, 0.03);
+}
+:global(html.dark) .cover-placeholder {
+    background: rgba(255, 255, 255, 0.05);
 }
 .summary-main {
     flex: 1;
@@ -857,16 +954,19 @@ h3 {
     white-space: nowrap;
 }
 
-/* 房间号与复制按钮 */
+/* 房间号与复制按钮（严格契约） */
 .room-id-bar {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: var(--layer);
+    background: rgba(0, 0, 0, 0.04);
     border: 1px solid var(--border);
     flex-shrink: 0;
     white-space: nowrap;
+}
+:global(html.dark) .room-id-bar {
+    background: rgba(255, 255, 255, 0.06);
 }
 .room-number {
     font: 12px Bender-Bold, monospace;
@@ -877,7 +977,7 @@ h3 {
 }
 .copy-room-id-btn {
     border: 1px solid var(--border);
-    background: var(--panel);
+    background: rgba(255, 255, 255, 0.5);
     color: var(--text);
     padding: 0;
     width: 22px;
@@ -889,6 +989,9 @@ h3 {
     transition: all 0.18s ease;
     flex-shrink: 0;
     user-select: none;
+}
+:global(html.dark) .copy-room-id-btn {
+    background: rgba(255, 255, 255, 0.08);
 }
 .copy-room-id-btn:hover {
     background: var(--text);
@@ -912,8 +1015,17 @@ h3 {
 
 /* 房间内容主面板 */
 .room-content {
+    position: relative;
     padding: 0;
     min-width: 0;
+    background: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+:global(html.dark) .room-content {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 .room-tabs {
     display: flex;
@@ -957,11 +1069,14 @@ h3 {
 }
 .message {
     padding: 12px 16px;
-    background: var(--layer);
+    background: rgba(255, 255, 255, 0.45);
     border-left: 2px solid var(--text);
     margin-bottom: 18px;
     font-size: 13px;
     overflow-wrap: anywhere;
+}
+:global(html.dark) .message {
+    background: rgba(255, 255, 255, 0.06);
 }
 .error {
     color: #b83a3a;
@@ -982,9 +1097,14 @@ h3 {
     gap: 12px;
     align-items: center;
     padding: 10px 14px;
-    background: var(--layer);
+    background: rgba(255, 255, 255, 0.45);
     border: 1px solid var(--border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
     min-width: 0;
+}
+:global(html.dark) .members li {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 .members img {
     width: 36px;
@@ -1005,11 +1125,14 @@ h3 {
     font-size: 11px;
     color: var(--muted-text);
     padding: 1px 6px;
-    background: var(--panel);
+    background: rgba(0, 0, 0, 0.05);
     border: 1px solid var(--border);
 }
+:global(html.dark) .members small {
+    background: rgba(255, 255, 255, 0.08);
+}
 
-/* 聊天气泡（四角框风格） */
+/* 聊天气泡（对角微角标风格） */
 .chat-messages {
     min-height: 220px;
     max-height: 420px;
@@ -1022,15 +1145,21 @@ h3 {
 .chat-messages article {
     position: relative;
     border: 1px solid var(--border);
-    background: var(--layer);
+    background: rgba(255, 255, 255, 0.5);
     padding: 10px 16px;
     max-width: 75%;
     align-self: flex-start;
 }
+:global(html.dark) .chat-messages article {
+    background: rgba(255, 255, 255, 0.06);
+}
 .chat-messages .mine {
     align-self: flex-end;
-    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    background: rgba(255, 255, 255, 0.85);
     border-color: var(--text);
+}
+:global(html.dark) .chat-messages .mine {
+    background: rgba(255, 255, 255, 0.14);
 }
 .chat-messages small {
     font-size: 11px;
@@ -1057,12 +1186,15 @@ input, textarea {
     min-width: 0;
     padding: 8px 12px;
     border: 1px solid var(--border);
-    background: var(--layer);
+    background: rgba(255, 255, 255, 0.55);
     color: var(--text);
     font: inherit;
     font-size: 13px;
     outline: none;
     transition: border-color 0.18s ease;
+}
+:global(html.dark) input, :global(html.dark) textarea {
+    background: rgba(255, 255, 255, 0.05);
 }
 textarea {
     width: 100%;
@@ -1102,8 +1234,11 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
     border-color: var(--text);
 }
 .together-page :deep(.base-button--secondary) {
-    background: var(--layer);
+    background: rgba(255, 255, 255, 0.5);
     color: var(--text);
+}
+:global(html.dark) .together-page :deep(.base-button--secondary) {
+    background: rgba(255, 255, 255, 0.08);
 }
 .together-page :deep(.base-button--danger) {
     background: transparent;
@@ -1148,7 +1283,11 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
         flex-wrap: wrap;
         justify-content: flex-end;
     }
-    .join-panel .inline-form {
+    .join-terminal {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .terminal-form {
         flex-wrap: wrap;
     }
     .together-page {
@@ -1156,14 +1295,11 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
     }
 }
 @media (max-width: 600px) {
-    .section-heading {
+    .section-toolbar {
         flex-wrap: wrap;
     }
-    .panel, .tab-content {
+    .tab-content {
         padding: 16px;
-    }
-    .room-content {
-        padding: 0;
     }
     .room-tabs {
         gap: 16px;
@@ -1172,7 +1308,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
     .room-card {
         padding: 14px;
     }
-    .discovery .actions {
+    .actions {
         flex-wrap: wrap;
     }
 }
@@ -1246,9 +1382,6 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
 }
 .dark .together-page .error, .dark .together-form .error {
     color: #ff9999 !important;
-}
-.dark .together-page .panel {
-    background: var(--panel) !important;
 }
 .dark .together-page .room-tabs button {
     background: transparent !important;
