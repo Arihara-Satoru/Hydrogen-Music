@@ -11,7 +11,10 @@ defineEmits(['select'])
         <li v-for="(song, index) in songs" :key="`${song.hash}:${song.order_userid || ''}:${index}`" :class="{ current: song.hash === currentHash }">
             <span class="song-number">{{ String(index + 1).padStart(2, '0') }}</span>
             <img v-if="song.coverUrl || song.al?.picUrl" :src="resolveImageUrl(song.coverUrl || song.al.picUrl)" alt="" loading="lazy" />
-            <div class="song-label"><OverflowMarquee :text="song.name" /><small>{{ song.ar?.map(artist => artist.name).filter(Boolean).join(' / ') || '未知歌手' }}</small></div>
+            <div class="song-label">
+                <OverflowMarquee :text="song.name" />
+                <small>{{ song.ar?.map(artist => artist.name).filter(Boolean).join(' / ') || '未知歌手' }}</small>
+            </div>
             <div class="song-actions">
                 <slot name="actions" :song="song">
                     <BaseButton v-if="action" variant="secondary" size="small" :disabled="busy" @click="$emit('select', song)">{{ action }}</BaseButton>
@@ -28,35 +31,55 @@ defineEmits(['select'])
     padding: 0;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 24px;
+    gap: 8px 16px;
 }
 li {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 11px 0;
-    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    background: var(--layer);
+    border: 1px solid var(--border);
     min-width: 0;
     box-sizing: border-box;
+    transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+li:hover {
+    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    border-color: var(--text);
+}
+li.current {
+    border-color: var(--text);
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+}
+li.current .song-number {
+    color: var(--text);
+    font-weight: bold;
+}
+li.current .song-label {
+    font-weight: bold;
 }
 .song-number {
-    font: 12px Bender-Bold;
+    font: 12px/1 Bender-Bold, monospace;
     color: var(--muted-text);
     width: 22px;
     flex-shrink: 0;
+    text-align: center;
 }
 img {
     width: 38px;
     height: 38px;
     object-fit: cover;
-    border-radius: 2px;
     flex-shrink: 0;
+    border: 1px solid var(--border);
 }
 .song-label {
     flex: 1;
     min-width: 0;
     font-size: 13px;
     line-height: 1.4;
+    color: var(--text);
 }
 small {
     display: block;
@@ -73,18 +96,11 @@ small {
     gap: 6px;
     flex-shrink: 0;
 }
-.current .song-number {
-    color: var(--text);
-    font-weight: bold;
-}
-.current .song-label {
-    font-weight: bold;
-}
 
 @media (max-width: 720px) {
     .together-song-list {
         grid-template-columns: 1fr;
-        column-gap: 0;
+        gap: 8px;
     }
 }
 </style>
