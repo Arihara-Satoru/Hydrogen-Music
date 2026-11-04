@@ -76,7 +76,8 @@ app.whenReady().then(async () => {
         ],
         getFmSongCover: () => cover, getSongDisplayName: song => song.name, getFmSongAlbumName: song => song.al.name,
         canOpenArtist: () => true, canOpenAlbum: () => true,
-        toggleModePanel: noop, changeFmMode: noop, changeFmSubmode: noop, handleCoverSlotClick: noop,
+        toggleModePanel: noop, changeFmMode: noop, changeFmSubmode: noop, handleCoverSlotClick: noop, pinLeavingCover: noop,
+        enterCover: (_item, done) => done(), leaveCover: (_item, done) => done(),
         openArtist: noop, openAlbum: noop, goPrev: noop, goNext: noop, trashSong: noop, likeSong: noop, refreshFM: noop,
       });
       const songId = Vue.toRef(state, 'songId'), currentSong = Vue.toRef(state, 'currentSong');

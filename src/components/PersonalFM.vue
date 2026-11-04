@@ -149,13 +149,18 @@
             <div class="fm-cover-carousel" aria-label="漫游歌曲序列">
               <TransitionGroup
                 :name="coverTransitionName"
-                :css="!modeSwitching"
+                :css="false"
+                move-class="fm-cover-size-aware-move"
+                @before-leave="pinLeavingCover"
+                @enter="enterCover"
+                @leave="leaveCover"
                 tag="div"
                 class="fm-cover-track"
               >
                 <button
                   v-for="item in coverTrackItems"
                   :key="item.key"
+                  :data-cover-key="item.key"
                   type="button"
                   class="fm-cover-slot"
                   :class="[
@@ -441,6 +446,7 @@ import {
   onDeactivated,
   computed,
   watch,
+  nextTick,
 } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -1320,6 +1326,110 @@ const coverTrackItems = computed(() => {
   return [leftItem, centerItem, rightItem];
 });
 
+// Vue 的默认列表 FLIP 只补偿位移，不补偿侧封面与主封面的尺寸差。
+// 在同一布局坐标系中记录正在显示的矩形，连点时也从当前动画帧续接。
+const coverMoveAnimations = new Map();
+const stopCoverMoves = () => {
+  for (const animation of coverMoveAnimations.values()) animation.cancel();
+  coverMoveAnimations.clear();
+};
+
+const pinLeavingCover = (item) => {
+  const { offsetLeft, offsetTop, offsetWidth, offsetHeight } = item;
+  Object.assign(item.style, {
+    left: `${offsetLeft}px`,
+    top: `${offsetTop}px`,
+    width: `${offsetWidth}px`,
+    height: `${offsetHeight}px`,
+    margin: "0",
+  });
+};
+
+const animateCoverPresence = (item, done, entering) => {
+  if (modeSwitching.value || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    done();
+    return;
+  }
+  const opacity = window.getComputedStyle(item).opacity;
+  const direction = coverTransitionDirection.value === "prev" ? -1 : 1;
+  const outside = `translateX(${direction * (entering ? 24 : -32)}px)`;
+  const animation = item.animate(entering ? [
+    { opacity: 0, transform: outside },
+    { opacity, transform: "none" },
+  ] : [
+    { opacity, transform: "none" },
+    { opacity: 0, transform: outside },
+  ], {
+    duration: entering ? 300 : 180,
+    delay: entering ? 90 : 0,
+    fill: "both",
+    easing: "ease-out",
+  });
+  animation.onfinish = () => {
+    done();
+    animation.cancel();
+  };
+};
+const enterCover = (item, done) => animateCoverPresence(item, done, true);
+const leaveCover = (item, done) => {
+  item.style.position = "absolute";
+  item.style.pointerEvents = "none";
+  item.style.zIndex = "1";
+  animateCoverPresence(item, done, false);
+};
+
+watch(coverTrackItems, async () => {
+  const track = fmSceneRef.value?.querySelector(".fm-cover-track");
+  if (!track) return;
+  const before = new Map();
+  for (const item of track.children) {
+    const style = window.getComputedStyle(item);
+    const matrix = new DOMMatrixReadOnly(style.transform);
+    const [originX, originY] = style.transformOrigin.split(" ").map(Number.parseFloat);
+    before.set(item.dataset.coverKey, {
+      x: item.offsetLeft + matrix.m41 + originX * (1 - matrix.m11),
+      y: item.offsetTop + matrix.m42 + originY * (1 - matrix.m22),
+      width: item.offsetWidth * matrix.m11,
+      height: item.offsetHeight * matrix.m22,
+      opacity: style.opacity,
+    });
+  }
+  stopCoverMoves();
+  await nextTick();
+  if (!track.isConnected || modeSwitching.value ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const activeKeys = new Set(coverTrackItems.value.map((item) => item.key));
+  const hostStyle = window.getComputedStyle(fmSceneRef.value);
+  for (const item of track.children) {
+    const key = item.dataset.coverKey;
+    const previous = before.get(key);
+    if (!previous || !activeKeys.has(key) || !item.offsetWidth || !item.offsetHeight) continue;
+    const dx = previous.x - item.offsetLeft;
+    const dy = previous.y - item.offsetTop;
+    const sx = previous.width / item.offsetWidth;
+    const sy = previous.height / item.offsetHeight;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 &&
+        Math.abs(sx - 1) < 0.001 && Math.abs(sy - 1) < 0.001) continue;
+
+    // 角色变化触发的旧 CSS 淡入淡出不能抢先改变封面的可见度。
+    for (const animation of item.getAnimations()) {
+      if (animation instanceof CSSTransition) animation.finish();
+    }
+    const animation = item.animate([
+      { transformOrigin: "0 0", transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: previous.opacity },
+      { transformOrigin: "0 0", transform: "none", opacity: window.getComputedStyle(item).opacity },
+    ], {
+      duration: getCoverTransitionDurationMs(),
+      easing: hostStyle.getPropertyValue("--fm-cover-transition-ease").trim(),
+    });
+    coverMoveAnimations.set(item, animation);
+    animation.onfinish = () => {
+      if (coverMoveAnimations.get(item) === animation) coverMoveAnimations.delete(item);
+    };
+  }
+}, { flush: "pre" });
+
 const coverTransitionName = computed(() => {
   if (coverTransitionDirection.value === "next") return "fm-shift-next";
   if (coverTransitionDirection.value === "prev") return "fm-shift-prev";
@@ -1922,6 +2032,7 @@ onActivated(() => {
 });
 
 onDeactivated(() => {
+  stopCoverMoves();
   clearPanelIntroSchedule();
   isPanelIntroActive.value = false;
   modePanelOpen.value = false;
@@ -1929,6 +2040,7 @@ onDeactivated(() => {
 
 onUnmounted(() => {
   // 清理所有事件监听器
+  stopCoverMoves();
   window.removeEventListener("fmPlayModeResponse", handleFMPlayModeResponse);
   window.removeEventListener("fmPreviousResponse", handleFMPreviousResponse);
   window.removeEventListener("fmNextResponse", handleFMNextResponse);
