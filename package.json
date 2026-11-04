@@ -31,8 +31,6 @@
     "check:external-links": "node scripts/check-external-links.cjs",
     "check:foreground-memory": "node scripts/check-foreground-memory.mjs",
     "check:fm-cache-cleanup": "node scripts/check-fm-cache-cleanup.mjs",
-    "check:fm-navigation": "node scripts/check-fm-navigation.cjs",
-    "check:fm-theme": "node scripts/check-fm-theme.cjs",
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",
     "check:account-social": "node --experimental-vm-modules scripts/check-account-social.mjs",
     "check:onboarding": "node scripts/check-onboarding.mjs",

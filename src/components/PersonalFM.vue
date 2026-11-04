@@ -181,7 +181,7 @@
                   @click="handleCoverSlotClick(item)"
                 >
                   <template v-if="item.song && !item.isPlaceholder">
-                    <span v-if="!isClassic" class="fm-cd" aria-hidden="true">
+                    <span v-if="item.role === 'center' && !isClassic" class="fm-cd" aria-hidden="true">
                       <span class="fm-cd-label"></span>
                     </span>
                     <img
@@ -195,7 +195,7 @@
                           : ''
                       "
                     />
-                    <span v-if="!isClassic" class="fm-cover-reflection" aria-hidden="true">
+                    <span v-if="item.role === 'center' && !isClassic" class="fm-cover-reflection" aria-hidden="true">
                       <span class="fm-cd"><span class="fm-cd-label"></span></span>
                       <img
                         :src="getFmSongCover(item.song) || '/src/assets/img/default-cover.svg'"
@@ -950,12 +950,12 @@ const coverNavigating = ref(false);
 const coverInterrupting = ref(false);
 const coverTransitionDirection = ref("neutral");
 const queuedDirections = ref([]);
-const COVER_TRANSITION_FALLBACK_MS = 420;
-const COVER_RELEASE_RATIO_FALLBACK = 1;
-const COVER_RELEASE_MIN_MS = 360;
-const COVER_RELEASE_BUFFER_MS = 20;
-const COVER_INTERRUPT_RELEASE_MS = 160;
-const MAX_QUEUED_COVER_DIRECTIONS = 4;
+const COVER_TRANSITION_FALLBACK_MS = 2500;
+const COVER_RELEASE_RATIO_FALLBACK = 0.45;
+const COVER_RELEASE_MIN_MS = 180;
+const COVER_RELEASE_BUFFER_MS = 16;
+const COVER_INTERRUPT_RELEASE_MS = 180;
+const MAX_QUEUED_COVER_DIRECTIONS = 6;
 const PANEL_INTRO_DURATION_MS = 1500;
 const PANEL_INTRO_BUFFER_MS = 40;
 let fmRefreshToken = 0;
@@ -1435,14 +1435,12 @@ const startPanelIntro = () => {
 const releaseCoverNavigation = async () => {
   coverNavigating.value = false;
   coverInterrupting.value = false;
+  setCoverTransitionDirection("neutral");
 
   const [nextDirection, ...restDirections] = queuedDirections.value;
   queuedDirections.value = restDirections;
 
-  if (!nextDirection) {
-    setCoverTransitionDirection("neutral");
-    return;
-  }
+  if (!nextDirection) return;
 
   if (nextDirection === "next") {
     await goNext();
@@ -2066,16 +2064,18 @@ const handleFmClearRecent = () => {
   --fm-intro-line-color: var(--border);
   --fm-intro-line-width: 1px;
   --fm-intro-content-offset: 12px;
-  --fm-cover-transition-duration: 0.42s;
-  --fm-cover-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --fm-cover-ghost-fade-duration: 0.12s;
+  --fm-cover-transition-duration: 0.72s;
+  --fm-cover-transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fm-cover-ghost-fade-duration: 0.1s;
   --fm-cover-ghost-fade-delay: calc(
     var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration)
   );
-  --fm-cover-placeholder-fade-duration: 0.15s;
-  --fm-cover-overlap-release-ratio: 1;
-  --fm-cover-overlap-fade-duration: 0.16s;
-  --fm-cover-overlap-release-delay: var(--fm-cover-transition-duration);
+  --fm-cover-placeholder-fade-duration: 0.12s;
+  --fm-cover-overlap-release-ratio: 0.45;
+  --fm-cover-overlap-fade-duration: 0.14s;
+  --fm-cover-overlap-release-delay: calc(
+    var(--fm-cover-transition-duration) * var(--fm-cover-overlap-release-ratio)
+  );
   --fm-cover-z-leaving: 1;
   --fm-cover-z-side: 2;
   --fm-cover-z-side-moving: 3;
@@ -2578,14 +2578,9 @@ const handleFmClearRecent = () => {
   color: var(--fm-text) !important;
   appearance: none;
   transition:
-    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
     border-color 0.2s ease,
-    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
-  will-change: transform, opacity, width, height;
+    opacity 0.2s ease;
+  will-change: transform, opacity;
   backface-visibility: hidden;
 
   img {
@@ -2878,21 +2873,13 @@ const handleFmClearRecent = () => {
 .fm-shift-next-move,
 .fm-shift-prev-move,
 .fm-shift-neutral-move {
-  transition:
-    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
 }
 
 .fm-cover-slot.slot-side.fm-shift-next-move {
-  transition:
-    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
   opacity: 1;
   z-index: var(--fm-cover-z-side-moving);
   animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
@@ -2907,12 +2894,8 @@ const handleFmClearRecent = () => {
 
 /* goPrev 三层顺序：新中间 > 旧中间 > right->leave（最低） */
 .fm-cover-slot.slot-side.fm-shift-prev-move {
-  transition:
-    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
   opacity: 1;
   z-index: var(--fm-cover-z-prev-right-leave-bottom);
   animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
@@ -2946,34 +2929,9 @@ const handleFmClearRecent = () => {
     opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
 }
 
-.fm-shift-next-leave-active {
-  position: absolute;
-  left: 0;
-  pointer-events: none;
-  z-index: var(--fm-cover-z-leaving);
-  transition:
-    transform var(--fm-cover-transition-duration)
-      var(--fm-cover-transition-ease),
-    opacity var(--fm-cover-ghost-fade-duration) linear
-      var(--fm-cover-ghost-fade-delay);
-}
-
-.fm-shift-prev-leave-active {
-  position: absolute;
-  right: 0;
-  pointer-events: none;
-  z-index: var(--fm-cover-z-leaving);
-  transition:
-    transform var(--fm-cover-transition-duration)
-      var(--fm-cover-transition-ease),
-    opacity var(--fm-cover-ghost-fade-duration) linear
-      var(--fm-cover-ghost-fade-delay);
-}
-
+.fm-shift-next-leave-active,
+.fm-shift-prev-leave-active,
 .fm-shift-neutral-leave-active {
-  position: absolute;
-  pointer-events: none;
-  z-index: var(--fm-cover-z-leaving);
   transition:
     transform var(--fm-cover-transition-duration)
       var(--fm-cover-transition-ease),
@@ -2985,6 +2943,14 @@ const handleFmClearRecent = () => {
 .fm-cover-slot.slot-placeholder.fm-shift-prev-leave-active,
 .fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-active {
   transition: opacity var(--fm-cover-placeholder-fade-duration) linear;
+}
+
+.fm-cover-slot.fm-shift-next-leave-active,
+.fm-cover-slot.fm-shift-prev-leave-active,
+.fm-cover-slot.fm-shift-neutral-leave-active {
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
 }
 
 .fm-shift-next-leave-from,
@@ -3001,22 +2967,22 @@ const handleFmClearRecent = () => {
 
 .fm-shift-next-enter-from {
   opacity: 0;
-  transform: translateX(36px) scale(0.95);
+  transform: translateX(20px) scale(0.97);
 }
 
 .fm-shift-next-leave-to {
   opacity: 0;
-  transform: translateX(-36px) scale(0.95);
+  transform: translateX(-20px) scale(0.97);
 }
 
 .fm-shift-prev-enter-from {
   opacity: 0;
-  transform: translateX(-36px) scale(0.95);
+  transform: translateX(-20px) scale(0.97);
 }
 
 .fm-shift-prev-leave-to {
   opacity: 0;
-  transform: translateX(36px) scale(0.95);
+  transform: translateX(20px) scale(0.97);
 }
 
 .fm-shift-neutral-enter-from,
@@ -3122,16 +3088,18 @@ const handleFmClearRecent = () => {
   --fm-intro-line-color: rgba(70, 246, 230, 0.42);
   --fm-intro-line-width: 1px;
   --fm-intro-content-offset: 12px;
-  --fm-cover-transition-duration: 0.42s;
-  --fm-cover-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --fm-cover-ghost-fade-duration: 0.12s;
+  --fm-cover-transition-duration: 0.72s;
+  --fm-cover-transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fm-cover-ghost-fade-duration: 0.1s;
   --fm-cover-ghost-fade-delay: calc(
     var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration)
   );
-  --fm-cover-placeholder-fade-duration: 0.15s;
-  --fm-cover-overlap-release-ratio: 1;
-  --fm-cover-overlap-fade-duration: 0.16s;
-  --fm-cover-overlap-release-delay: var(--fm-cover-transition-duration);
+  --fm-cover-placeholder-fade-duration: 0.12s;
+  --fm-cover-overlap-release-ratio: 0.45;
+  --fm-cover-overlap-fade-duration: 0.14s;
+  --fm-cover-overlap-release-delay: calc(
+    var(--fm-cover-transition-duration) * var(--fm-cover-overlap-release-ratio)
+  );
   --fm-cover-z-leaving: 1;
   --fm-cover-z-side: 2;
   --fm-cover-z-side-moving: 3;
@@ -3690,14 +3658,9 @@ const handleFmClearRecent = () => {
   color: var(--fm-text) !important;
   appearance: none;
   transition:
-    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
     border-color 0.2s ease,
-    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
-  will-change: transform, opacity, width, height;
+    opacity 0.2s ease;
+  will-change: transform, opacity;
   backface-visibility: hidden;
 
   img {
@@ -4819,12 +4782,6 @@ html .personal-fm.fm-layout-modern {
     padding: 0;
     border: 0;
     border-radius: 0;
-    transition:
-      width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-      height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-      margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-      transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-      opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
 
     img { border-radius: 0; }
   }
@@ -4853,11 +4810,6 @@ html .personal-fm.fm-layout-modern {
     height: 90%;
     border-radius: 50%;
     pointer-events: none;
-    opacity: 0;
-    visibility: hidden;
-    transition:
-      opacity calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease),
-      visibility calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease);
     background:
       radial-gradient(circle, transparent 0 8%, rgb(245 247 248 / 90%) 8.5% 10%, transparent 10.5%),
       repeating-radial-gradient(circle, transparent 0 2px, rgb(255 255 255 / 18%) 3px, transparent 4px),
@@ -4865,11 +4817,6 @@ html .personal-fm.fm-layout-modern {
     border: 1px solid var(--fm-disc-metal);
     box-shadow: 8px 10px 24px rgb(0 0 0 / 15%), inset 0 0 0 4px rgb(255 255 255 / 35%);
     mask-image: radial-gradient(circle, transparent 0 7%, #000 7.5%);
-  }
-
-  .fm-cover-slot.slot-center .fm-cd {
-    opacity: 1;
-    visibility: visible;
   }
 
   .fm-cd-label {
@@ -4888,21 +4835,12 @@ html .personal-fm.fm-layout-modern {
     width: 152%;
     height: 100%;
     transform: scaleY(-1);
-    opacity: 0;
-    visibility: hidden;
+    opacity: 0.42;
     mask-image: linear-gradient(to top, #000, transparent 65%);
     pointer-events: none;
-    transition:
-      opacity calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease),
-      visibility calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease);
 
     > img { position: relative; z-index: 1; width: 65.79%; }
-    .fm-cd { left: 40.79%; width: 59.21%; box-shadow: none; opacity: 1; visibility: visible; }
-  }
-
-  .fm-cover-slot.slot-center .fm-cover-reflection {
-    opacity: 0.42;
-    visibility: visible;
+    .fm-cd { left: 40.79%; width: 59.21%; box-shadow: none; }
   }
 
   .fm-water-surface {
@@ -4926,20 +4864,8 @@ html .personal-fm.fm-layout-modern {
     height: 44px;
     border-radius: 0;
     transform: none;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition:
-      opacity calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease),
-      visibility calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease);
 
     svg { width: 22px; height: 22px; }
-  }
-
-  .fm-cover-slot.slot-center .fm-play-overlay {
-    opacity: 0.86;
-    visibility: visible;
-    pointer-events: auto;
   }
 
   .fm-cover-slot.slot-center:hover .fm-play-overlay { transform: scale(1.06); }
