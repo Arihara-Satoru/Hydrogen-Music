@@ -147,141 +147,93 @@
         <div class="fm-content" v-if="currentSong && !loading">
           <div class="fm-main">
             <div class="fm-cover-carousel" aria-label="漫游歌曲序列">
-              <div class="fm-cover-track">
-                <!-- 左侧上一首槽位 -->
+              <TransitionGroup
+                :name="coverTransitionName"
+                :css="!modeSwitching"
+                tag="div"
+                class="fm-cover-track"
+              >
                 <button
+                  v-for="item in coverTrackItems"
+                  :key="item.key"
                   type="button"
-                  class="fm-cover-slot slot-left slot-side"
-                  :class="{
-                    'slot-placeholder': coverTrackItems[0]?.isPlaceholder,
-                    'slot-clickable': coverTrackItems[0]?.clickable,
-                  }"
-                  :disabled="!coverTrackItems[0]?.clickable"
-                  aria-label="播放上一首"
-                  @click="handleCoverSlotClick(coverTrackItems[0])"
+                  class="fm-cover-slot"
+                  :class="[
+                    `slot-${item.role}`,
+                    {
+                      'slot-center': item.role === 'center',
+                      'slot-side': item.role !== 'center',
+                      'slot-placeholder': item.isPlaceholder,
+                      'slot-clickable': item.clickable,
+                    },
+                  ]"
+                  :disabled="!item.clickable"
+                  :aria-label="
+                    item.role === 'center'
+                      ? isPlaying
+                        ? '暂停当前歌曲'
+                        : '播放当前歌曲'
+                      : item.role === 'left'
+                        ? '播放上一首'
+                        : '播放下一首'
+                  "
+                  :aria-pressed="item.role === 'center' ? isPlaying : undefined"
+                  @click="handleCoverSlotClick(item)"
                 >
-                  <Transition name="fm-slot-thumb" mode="out-in">
-                    <div
-                      :key="coverTrackItems[0]?.song?.id || 'no-prev'"
-                      class="fm-slot-thumb-wrap"
-                    >
-                      <template v-if="coverTrackItems[0]?.song && !coverTrackItems[0]?.isPlaceholder">
-                        <img
-                          :src="
-                            getFmSongCover(coverTrackItems[0].song) ||
-                            '/src/assets/img/default-cover.svg'
-                          "
-                          alt=""
-                          draggable="false"
-                        />
-                        <span class="slot-side-overlay" aria-hidden="true"></span>
-                      </template>
-                      <template v-else>
-                        <span class="slot-placeholder-text">
-                          {{ coverTrackItems[0]?.placeholderText || 'NO PREV' }}
-                        </span>
-                      </template>
-                    </div>
-                  </Transition>
-                </button>
-
-                <!-- 中间当前主唱片舞台 -->
-                <button
-                  type="button"
-                  class="fm-cover-slot slot-center slot-clickable"
-                  :aria-label="isPlaying ? '暂停当前歌曲' : '播放当前歌曲'"
-                  :aria-pressed="isPlaying"
-                  @click="handleCoverSlotClick(coverTrackItems[1])"
-                >
-                  <Transition :name="coverTransitionName" mode="out-in">
-                    <div
-                      :key="coverTrackItems[1]?.song?.id || 'center'"
-                      class="fm-center-stage"
-                    >
-                      <span v-if="!isClassic" class="fm-cd" aria-hidden="true">
-                        <span class="fm-cd-label"></span>
-                      </span>
+                  <template v-if="item.song && !item.isPlaceholder">
+                    <span v-if="!isClassic" class="fm-cd" aria-hidden="true">
+                      <span class="fm-cd-label"></span>
+                    </span>
+                    <img
+                      :src="
+                        getFmSongCover(item.song) ||
+                        '/src/assets/img/default-cover.svg'
+                      "
+                      :alt="
+                        item.role === 'center'
+                          ? `${item.song.name || '当前歌曲'}封面`
+                          : ''
+                      "
+                    />
+                    <span v-if="!isClassic" class="fm-cover-reflection" aria-hidden="true">
+                      <span class="fm-cd"><span class="fm-cd-label"></span></span>
                       <img
-                        :src="
-                          getFmSongCover(coverTrackItems[1]?.song) ||
-                          '/src/assets/img/default-cover.svg'
-                        "
-                        :alt="`${coverTrackItems[1]?.song?.name || '当前歌曲'}封面`"
+                        :src="getFmSongCover(item.song) || '/src/assets/img/default-cover.svg'"
+                        alt=""
+                        draggable="false"
                       />
-                      <span v-if="!isClassic" class="fm-cover-reflection" aria-hidden="true">
-                        <span class="fm-cd"><span class="fm-cd-label"></span></span>
-                        <img
-                          :src="
-                            getFmSongCover(coverTrackItems[1]?.song) ||
-                            '/src/assets/img/default-cover.svg'
-                          "
-                          alt=""
-                          draggable="false"
-                        />
-                      </span>
-                      <span class="fm-play-overlay">
-                        <svg
-                          v-if="!isPlaying"
-                          width="40"
-                          height="40"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                        <svg
-                          v-else
-                          width="40"
-                          height="40"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                        </svg>
-                      </span>
-                    </div>
-                  </Transition>
+                    </span>
+                    <span v-if="item.role === 'center'" class="fm-play-overlay">
+                      <svg
+                        v-if="!isPlaying"
+                        width="40"
+                        height="40"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                      <svg
+                        v-else
+                        width="40"
+                        height="40"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                      </svg>
+                    </span>
+                    <span v-else class="slot-side-overlay" aria-hidden="true"></span>
+                  </template>
+                  <template v-else>
+                    <span class="slot-placeholder-text">
+                      {{ item.placeholderText }}
+                    </span>
+                  </template>
                 </button>
-
-                <!-- 右侧下一首槽位 -->
-                <button
-                  type="button"
-                  class="fm-cover-slot slot-right slot-side"
-                  :class="{
-                    'slot-placeholder': coverTrackItems[2]?.isPlaceholder,
-                    'slot-clickable': coverTrackItems[2]?.clickable,
-                  }"
-                  :disabled="!coverTrackItems[2]?.clickable"
-                  aria-label="播放下一首"
-                  @click="handleCoverSlotClick(coverTrackItems[2])"
-                >
-                  <Transition name="fm-slot-thumb" mode="out-in">
-                    <div
-                      :key="coverTrackItems[2]?.song?.id || 'no-next'"
-                      class="fm-slot-thumb-wrap"
-                    >
-                      <template v-if="coverTrackItems[2]?.song && !coverTrackItems[2]?.isPlaceholder">
-                        <img
-                          :src="
-                            getFmSongCover(coverTrackItems[2].song) ||
-                            '/src/assets/img/default-cover.svg'
-                          "
-                          alt=""
-                          draggable="false"
-                        />
-                        <span class="slot-side-overlay" aria-hidden="true"></span>
-                      </template>
-                      <template v-else>
-                        <span class="slot-placeholder-text">
-                          {{ coverTrackItems[2]?.placeholderText || rightPlaceholderText }}
-                        </span>
-                      </template>
-                    </div>
-                  </Transition>
-                </button>
-              </div>
+              </TransitionGroup>
               <span v-if="!isClassic" class="fm-water-surface" aria-hidden="true"></span>
             </div>
 
@@ -998,11 +950,11 @@ const coverNavigating = ref(false);
 const coverInterrupting = ref(false);
 const coverTransitionDirection = ref("neutral");
 const queuedDirections = ref([]);
-const COVER_TRANSITION_FALLBACK_MS = 320;
+const COVER_TRANSITION_FALLBACK_MS = 420;
 const COVER_RELEASE_RATIO_FALLBACK = 1;
-const COVER_RELEASE_MIN_MS = 280;
+const COVER_RELEASE_MIN_MS = 360;
 const COVER_RELEASE_BUFFER_MS = 20;
-const COVER_INTERRUPT_RELEASE_MS = 140;
+const COVER_INTERRUPT_RELEASE_MS = 160;
 const MAX_QUEUED_COVER_DIRECTIONS = 4;
 const PANEL_INTRO_DURATION_MS = 1500;
 const PANEL_INTRO_BUFFER_MS = 40;
@@ -2114,15 +2066,15 @@ const handleFmClearRecent = () => {
   --fm-intro-line-color: var(--border);
   --fm-intro-line-width: 1px;
   --fm-intro-content-offset: 12px;
-  --fm-cover-transition-duration: 0.32s;
+  --fm-cover-transition-duration: 0.42s;
   --fm-cover-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --fm-cover-ghost-fade-duration: 0.1s;
+  --fm-cover-ghost-fade-duration: 0.12s;
   --fm-cover-ghost-fade-delay: calc(
     var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration)
   );
   --fm-cover-placeholder-fade-duration: 0.15s;
   --fm-cover-overlap-release-ratio: 1;
-  --fm-cover-overlap-fade-duration: 0.14s;
+  --fm-cover-overlap-fade-duration: 0.16s;
   --fm-cover-overlap-release-delay: var(--fm-cover-transition-duration);
   --fm-cover-z-leaving: 1;
   --fm-cover-z-side: 2;
@@ -2626,9 +2578,14 @@ const handleFmClearRecent = () => {
   color: var(--fm-text) !important;
   appearance: none;
   transition:
+    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
     border-color 0.2s ease,
-    opacity 0.2s ease;
-  will-change: transform, opacity;
+    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  will-change: transform, opacity, width, height;
   backface-visibility: hidden;
 
   img {
@@ -2918,111 +2875,170 @@ const handleFmClearRecent = () => {
   }
 }
 
-.fm-center-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  img {
-    width: 100%;
-    height: 100%;
-    border-radius: 2px;
-    object-fit: cover;
-    background: var(--fm-slot-bg);
-    border: 0;
-    display: block;
-    transform: translateZ(0);
-  }
-}
-
-.fm-slot-thumb-wrap {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-
-  img {
-    width: 100%;
-    height: 100%;
-    border-radius: 2px;
-    object-fit: cover;
-    background: var(--fm-slot-bg);
-    border: 0;
-    display: block;
-    transform: translateZ(0);
-  }
-}
-
-.fm-cover-slot.slot-side.slot-clickable:active {
-  transform: scale(0.94);
-  transition: transform 0.1s ease;
-}
-
-/* 缩略图淡入淡出 */
-.fm-slot-thumb-enter-active,
-.fm-slot-thumb-leave-active {
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease;
-}
-
-.fm-slot-thumb-enter-from {
-  opacity: 0;
-  transform: scale(0.92);
-}
-
-.fm-slot-thumb-leave-to {
-  opacity: 0;
-  transform: scale(1.06);
-}
-
-/* 唱片主舞台切换过渡 */
-.fm-shift-next-enter-active,
-.fm-shift-next-leave-active,
-.fm-shift-prev-enter-active,
-.fm-shift-prev-leave-active {
+.fm-shift-next-move,
+.fm-shift-prev-move,
+.fm-shift-neutral-move {
   transition:
     transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    opacity var(--fm-cover-transition-duration) ease;
-  will-change: transform, opacity;
+    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
 }
 
-/* 下一首：当前唱片平滑向左滑出并淡出，新唱片从右侧滑入 */
+.fm-cover-slot.slot-side.fm-shift-next-move {
+  transition:
+    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-side-moving);
+  animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
+}
+
+.fm-cover-slot.slot-center.fm-shift-next-move,
+.fm-cover-slot.slot-center.fm-shift-neutral-move {
+  opacity: 1;
+  z-index: var(--fm-cover-z-center);
+}
+
+/* goPrev 三层顺序：新中间 > 旧中间 > right->leave（最低） */
+.fm-cover-slot.slot-side.fm-shift-prev-move {
+  transition:
+    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+  animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
+}
+
+.fm-cover-slot.slot-right.fm-shift-prev-move {
+  z-index: var(--fm-cover-z-prev-old-center-mid);
+}
+
+.fm-cover-slot.slot-center.fm-shift-prev-move {
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-new-center-top);
+}
+
+.fm-cover-slot.slot-center.fm-shift-prev-enter-active,
+.fm-cover-slot.slot-center.fm-shift-prev-enter-from,
+.fm-cover-slot.slot-center.fm-shift-prev-enter-to,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-active,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-from,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-to {
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+}
+
+.fm-shift-next-enter-active,
+.fm-shift-prev-enter-active,
+.fm-shift-neutral-enter-active {
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+}
+
+.fm-shift-next-leave-active {
+  position: absolute;
+  left: 0;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-ghost-fade-duration) linear
+      var(--fm-cover-ghost-fade-delay);
+}
+
+.fm-shift-prev-leave-active {
+  position: absolute;
+  right: 0;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-ghost-fade-duration) linear
+      var(--fm-cover-ghost-fade-delay);
+}
+
+.fm-shift-neutral-leave-active {
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-ghost-fade-duration) linear
+      var(--fm-cover-ghost-fade-delay);
+}
+
+.fm-cover-slot.slot-placeholder.fm-shift-next-leave-active,
+.fm-cover-slot.slot-placeholder.fm-shift-prev-leave-active,
+.fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-active {
+  transition: opacity var(--fm-cover-placeholder-fade-duration) linear;
+}
+
+.fm-shift-next-leave-from,
+.fm-shift-prev-leave-from,
+.fm-shift-neutral-leave-from {
+  opacity: 1;
+}
+
+.fm-cover-slot.slot-right.fm-shift-prev-leave-active,
+.fm-cover-slot.slot-right.fm-shift-prev-leave-from,
+.fm-cover-slot.slot-right.fm-shift-prev-leave-to {
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+}
+
 .fm-shift-next-enter-from {
   opacity: 0;
-  transform: translateX(42px);
+  transform: translateX(36px) scale(0.95);
 }
 
 .fm-shift-next-leave-to {
   opacity: 0;
-  transform: translateX(-42px);
+  transform: translateX(-36px) scale(0.95);
 }
 
-/* 上一首：当前唱片平滑向右滑出并淡出，新唱片从左侧滑入 */
 .fm-shift-prev-enter-from {
   opacity: 0;
-  transform: translateX(-42px);
+  transform: translateX(-36px) scale(0.95);
 }
 
 .fm-shift-prev-leave-to {
   opacity: 0;
-  transform: translateX(42px);
-}
-
-/* 默认/中立状态 */
-.fm-shift-neutral-enter-active,
-.fm-shift-neutral-leave-active {
-  transition: opacity 0.24s ease;
+  transform: translateX(36px) scale(0.95);
 }
 
 .fm-shift-neutral-enter-from,
 .fm-shift-neutral-leave-to {
   opacity: 0;
+  transform: scale(0.97);
+}
+
+.fm-cover-slot.slot-placeholder.fm-shift-next-leave-to,
+.fm-cover-slot.slot-placeholder.fm-shift-prev-leave-to,
+.fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-to {
+  opacity: 0;
+  transform: none;
+}
+
+@keyframes fm-cover-side-overlap-release {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: var(--fm-side-opacity);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3106,15 +3122,15 @@ const handleFmClearRecent = () => {
   --fm-intro-line-color: rgba(70, 246, 230, 0.42);
   --fm-intro-line-width: 1px;
   --fm-intro-content-offset: 12px;
-  --fm-cover-transition-duration: 0.32s;
+  --fm-cover-transition-duration: 0.42s;
   --fm-cover-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --fm-cover-ghost-fade-duration: 0.1s;
+  --fm-cover-ghost-fade-duration: 0.12s;
   --fm-cover-ghost-fade-delay: calc(
     var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration)
   );
   --fm-cover-placeholder-fade-duration: 0.15s;
   --fm-cover-overlap-release-ratio: 1;
-  --fm-cover-overlap-fade-duration: 0.14s;
+  --fm-cover-overlap-fade-duration: 0.16s;
   --fm-cover-overlap-release-delay: var(--fm-cover-transition-duration);
   --fm-cover-z-leaving: 1;
   --fm-cover-z-side: 2;
@@ -3674,9 +3690,14 @@ const handleFmClearRecent = () => {
   color: var(--fm-text) !important;
   appearance: none;
   transition:
+    width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    padding var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
     border-color 0.2s ease,
-    opacity 0.2s ease;
-  will-change: transform, opacity;
+    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  will-change: transform, opacity, width, height;
   backface-visibility: hidden;
 
   img {
@@ -4159,108 +4180,141 @@ const handleFmClearRecent = () => {
   }
 }
 
-.fm-center-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  img {
-    width: 100%;
-    height: 100%;
-    border-radius: 2px;
-    object-fit: cover;
-    background: var(--fm-slot-bg);
-    border: 0;
-    display: block;
-    transform: translateZ(0);
-  }
+.fm-shift-next-move,
+.fm-shift-prev-move,
+.fm-shift-neutral-move {
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
 }
 
-.fm-slot-thumb-wrap {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-
-  img {
-    width: 100%;
-    height: 100%;
-    border-radius: 2px;
-    object-fit: cover;
-    background: var(--fm-slot-bg);
-    border: 0;
-    display: block;
-    transform: translateZ(0);
-  }
+.fm-cover-slot.slot-side.fm-shift-next-move {
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-side-moving);
+  animation: classic-fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
 }
 
-.fm-cover-slot.slot-side.slot-clickable:active {
-  transform: scale(0.94);
-  transition: transform 0.1s ease;
+.fm-cover-slot.slot-center.fm-shift-next-move,
+.fm-cover-slot.slot-center.fm-shift-neutral-move {
+  opacity: 1;
+  z-index: var(--fm-cover-z-center);
 }
 
-/* 缩略图淡入淡出 */
-.fm-slot-thumb-enter-active,
-.fm-slot-thumb-leave-active {
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease;
+/* goPrev 三层顺序：新中间 > 旧中间 > right->leave（最低） */
+.fm-cover-slot.slot-side.fm-shift-prev-move {
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+  animation: classic-fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
 }
 
-.fm-slot-thumb-enter-from {
-  opacity: 0;
-  transform: scale(0.92);
+.fm-cover-slot.slot-right.fm-shift-prev-move {
+  z-index: var(--fm-cover-z-prev-old-center-mid);
 }
 
-.fm-slot-thumb-leave-to {
-  opacity: 0;
-  transform: scale(1.06);
+.fm-cover-slot.slot-center.fm-shift-prev-move {
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-new-center-top);
 }
 
-/* 唱片主舞台切换过渡 */
+.fm-cover-slot.slot-center.fm-shift-prev-enter-active,
+.fm-cover-slot.slot-center.fm-shift-prev-enter-from,
+.fm-cover-slot.slot-center.fm-shift-prev-enter-to,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-active,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-from,
+.fm-cover-slot.slot-left.fm-shift-prev-enter-to {
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+}
+
 .fm-shift-next-enter-active,
-.fm-shift-next-leave-active,
 .fm-shift-prev-enter-active,
-.fm-shift-prev-leave-active {
+.fm-shift-neutral-enter-active {
   transition:
-    transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-    opacity var(--fm-cover-transition-duration) ease;
-  will-change: transform, opacity;
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+}
+
+.fm-shift-next-leave-active,
+.fm-shift-prev-leave-active,
+.fm-shift-neutral-leave-active {
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-ghost-fade-duration) linear
+      var(--fm-cover-ghost-fade-delay);
+}
+
+.fm-cover-slot.slot-placeholder.fm-shift-next-leave-active,
+.fm-cover-slot.slot-placeholder.fm-shift-prev-leave-active,
+.fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-active {
+  transition: opacity var(--fm-cover-placeholder-fade-duration) linear;
+}
+
+.fm-cover-slot.fm-shift-next-leave-active,
+.fm-cover-slot.fm-shift-prev-leave-active,
+.fm-cover-slot.fm-shift-neutral-leave-active {
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
+}
+
+.fm-shift-next-leave-from,
+.fm-shift-prev-leave-from,
+.fm-shift-neutral-leave-from {
+  opacity: 1;
+}
+
+.fm-cover-slot.slot-right.fm-shift-prev-leave-active,
+.fm-cover-slot.slot-right.fm-shift-prev-leave-from,
+.fm-cover-slot.slot-right.fm-shift-prev-leave-to {
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
 }
 
 .fm-shift-next-enter-from {
   opacity: 0;
-  transform: translateX(42px);
+  transform: translateX(20px) scale(0.97);
 }
 
 .fm-shift-next-leave-to {
   opacity: 0;
-  transform: translateX(-42px);
+  transform: translateX(-20px) scale(0.97);
 }
 
 .fm-shift-prev-enter-from {
   opacity: 0;
-  transform: translateX(-42px);
+  transform: translateX(-20px) scale(0.97);
 }
 
 .fm-shift-prev-leave-to {
   opacity: 0;
-  transform: translateX(42px);
-}
-
-.fm-shift-neutral-enter-active,
-.fm-shift-neutral-leave-active {
-  transition: opacity 0.24s ease;
+  transform: translateX(20px) scale(0.97);
 }
 
 .fm-shift-neutral-enter-from,
 .fm-shift-neutral-leave-to {
   opacity: 0;
+  transform: scale(0.97);
+}
+
+.fm-cover-slot.slot-placeholder.fm-shift-next-leave-to,
+.fm-cover-slot.slot-placeholder.fm-shift-prev-leave-to,
+.fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-to {
+  opacity: 0;
+  transform: none;
+}
+
+@keyframes classic-fm-cover-side-overlap-release {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: var(--fm-side-opacity);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4765,6 +4819,12 @@ html .personal-fm.fm-layout-modern {
     padding: 0;
     border: 0;
     border-radius: 0;
+    transition:
+      width var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+      height var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+      margin var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+      transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
+      opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
 
     img { border-radius: 0; }
   }
@@ -4777,23 +4837,11 @@ html .personal-fm.fm-layout-modern {
     background: transparent !important;
     box-shadow: 0 20px 36px rgb(0 0 0 / 22%);
 
-    .fm-center-stage > img,
     > img { position: relative; z-index: 1; }
   }
 
   .fm-cover-slot.slot-right { margin-left: calc(var(--fm-cover-size) * 0.52); }
-  .fm-cover-slot.slot-side {
-    opacity: 0.48;
-    transition: opacity 0.2s ease, transform 0.12s ease;
-
-    &.slot-clickable:hover {
-      opacity: 0.82;
-    }
-
-    &.slot-clickable:active {
-      transform: scale(0.94);
-    }
-  }
+  .fm-cover-slot.slot-side { opacity: 0.48; }
   .fm-cover-slot.slot-placeholder { border: 1px dashed var(--border); }
   .slot-placeholder-text { font-size: 8px; letter-spacing: 0.06em; }
 
@@ -4805,6 +4853,11 @@ html .personal-fm.fm-layout-modern {
     height: 90%;
     border-radius: 50%;
     pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease),
+      visibility calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease);
     background:
       radial-gradient(circle, transparent 0 8%, rgb(245 247 248 / 90%) 8.5% 10%, transparent 10.5%),
       repeating-radial-gradient(circle, transparent 0 2px, rgb(255 255 255 / 18%) 3px, transparent 4px),
@@ -4812,6 +4865,11 @@ html .personal-fm.fm-layout-modern {
     border: 1px solid var(--fm-disc-metal);
     box-shadow: 8px 10px 24px rgb(0 0 0 / 15%), inset 0 0 0 4px rgb(255 255 255 / 35%);
     mask-image: radial-gradient(circle, transparent 0 7%, #000 7.5%);
+  }
+
+  .fm-cover-slot.slot-center .fm-cd {
+    opacity: 1;
+    visibility: visible;
   }
 
   .fm-cd-label {
@@ -4830,12 +4888,21 @@ html .personal-fm.fm-layout-modern {
     width: 152%;
     height: 100%;
     transform: scaleY(-1);
-    opacity: 0.42;
+    opacity: 0;
+    visibility: hidden;
     mask-image: linear-gradient(to top, #000, transparent 65%);
     pointer-events: none;
+    transition:
+      opacity calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease),
+      visibility calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease);
 
     > img { position: relative; z-index: 1; width: 65.79%; }
-    .fm-cd { left: 40.79%; width: 59.21%; box-shadow: none; }
+    .fm-cd { left: 40.79%; width: 59.21%; box-shadow: none; opacity: 1; visibility: visible; }
+  }
+
+  .fm-cover-slot.slot-center .fm-cover-reflection {
+    opacity: 0.42;
+    visibility: visible;
   }
 
   .fm-water-surface {
@@ -4859,8 +4926,20 @@ html .personal-fm.fm-layout-modern {
     height: 44px;
     border-radius: 0;
     transform: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease),
+      visibility calc(var(--fm-cover-transition-duration) * 0.75) var(--fm-cover-transition-ease);
 
     svg { width: 22px; height: 22px; }
+  }
+
+  .fm-cover-slot.slot-center .fm-play-overlay {
+    opacity: 0.86;
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .fm-cover-slot.slot-center:hover .fm-play-overlay { transform: scale(1.06); }
