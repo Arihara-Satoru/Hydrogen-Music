@@ -16,7 +16,7 @@
   const transitionTime = ref(0)
   const bannerTimer1 = ref(false)
   const bannerTimer2 = ref(false)
-  const bannerList = ref([{}])
+  const bannerList = ref([])
 
   // 根据 banner 数量动态计算选择器宽度，防止超出范围
   const selectorStyle = computed(() => {
@@ -33,7 +33,7 @@
           return
       }
       const bannerData = await getBanner(type)
-      const banners = Array.isArray(bannerData?.banners) ? bannerData.banners : [{}]
+      const banners = Array.isArray(bannerData?.banners) ? bannerData.banners : []
       bannerSessionCache.set(type, banners)
       bannerList.value = banners
       bannerLoaded.value = true
@@ -58,6 +58,7 @@
     //banner开始轮播
     function bannerStart() {
         clearInterval(timer1.value)
+        if (bannerList.value.length < 2) return
         timer1.value = setInterval(() => {
             nextImg()
         }, 3000);
@@ -139,11 +140,8 @@
 </script>
 
 <template>
-  <div>
-    <div v-if="!bannerLoaded" class="banner-skeleton">
-      <SkeletonBox width="35vw" height="13.7vw" />
-    </div>
-    <div v-else class="banner">
+  <div :aria-busy="!bannerLoaded">
+    <div class="banner">
         <div class="banner-header">
             <div class="banner-title">BREAKING NEWS</div>
             <div class="banner-timer">
@@ -153,13 +151,19 @@
                 </div>
             </div>
         </div>
-        <div class="banner-img" @mouseenter="bannerMouse(true)" @mouseleave="bannerMouse(false)">
+        <div v-if="!bannerLoaded" class="banner-img banner-skeleton" aria-hidden="true">
+            <SkeletonBox width="100%" height="100%" border-radius="0" />
+        </div>
+        <div v-else class="banner-img" @mouseenter="bannerMouse(true)" @mouseleave="bannerMouse(false)">
             <div class="img-box" :style="{ transform: `translate3d(-${leftVal}vw, 0, 0)`, transition: `transform ${transitionTime}s` }">
                 <img @click="bannerItem(item, index)" v-for="(item, index) in bannerList" :src="(item.pic || item.imageUrl) + '?param=720y280'" alt="">
-                <img :src="(bannerList[0].pic || bannerList[0].imageUrl) + '?param=720y280'" alt="">
+                <img v-if="bannerList.length" :src="(bannerList[0].pic || bannerList[0].imageUrl) + '?param=720y280'" alt="">
             </div>
         </div>
-        <div class="selector-box">
+        <div v-if="!bannerLoaded" class="selector-box skeleton-selectors" aria-hidden="true">
+            <SkeletonBox v-for="i in 8" :key="i" width="1.6vw" height="2px" border-radius="0" />
+        </div>
+        <div v-else class="selector-box">
             <div @click="imgSlect(index)" class="selector" v-for="(item, index) in bannerList.length" :key="index">
                 <div
                     :class="{'selector-style': true,'selector-style-active': currentIndex == index}"
@@ -170,7 +174,7 @@
                 ></div>
             </div>
         </div>
-        <div class="banner-next" @click="nextBanner()"></div>
+        <div v-if="bannerLoaded && bannerList.length > 1" class="banner-next" @click="nextBanner()"></div>
       </div>
   </div>
 </template>
@@ -178,6 +182,9 @@
 <style scoped lang="scss">
   .banner{
         position: relative;
+        .skeleton-selectors{
+            gap: 0.6vw;
+        }
         .banner-img{
             width: 35vw;
             height: 13.7vw;

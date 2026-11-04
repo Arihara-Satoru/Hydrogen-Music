@@ -17,26 +17,31 @@
   //0为歌单,1为歌手,2为专辑,3为排行榜
   const props = defineProps(['recType'])
   const recType = ref(props.recType)
-  const recTitle = ref('')
-  const recTitleEN = ref('')
-  const recommendationList = ref([{}])
+  const titles = [
+    ['推荐歌单', 'RECOMMENDED SONG LIST'],
+    ['推荐歌手', 'RECOMMENDED ARTISTS'],
+    ['最新专辑', 'NEWEST ALBUM'],
+    ['排行榜', 'TOP LIST'],
+  ]
+  const [recTitle, recTitleEN] = titles[Number(recType.value)] || titles[0]
+  const skeletonCount = recType.value == 0 || recType.value == 2 ? 10 : 5
+  const recommendationList = ref([])
+  const recommendationLoading = ref(true)
   let recommendationLoaded = false
 
   onActivated(() => {
-    if (recommendationLoaded && Array.isArray(recommendationList.value) && recommendationList.value.length > 0) return
+    if (recommendationLoaded) return
     /**
      * 第一个参数为推荐歌手的国家,第二个为推荐歌单请求数量，第三个为最新专辑的国家，
      * 最后为当前列表的类型
      */
     loadData(1, 10, 'all', recType.value)
       .catch(error => console.error('加载首页数据失败:', error))
-      .finally(() => homeSectionReady(String(recType.value)))
+      .finally(() => {
+        recommendationLoading.value = false
+        homeSectionReady(String(recType.value))
+      })
   })
-  //设置标题
-  const setTitle = (cn, en) => {
-    recTitle.value = cn
-    recTitleEN.value = en
-  }
   //随机选取数据
   const shuffleData = (originData, limit, total) => {
     const source = Array.isArray(originData) ? originData : []
@@ -77,25 +82,22 @@
   //加载数据
   async function loadData(artistNation,limit,albumNation,recType) {
       recommendationList.value = []
+      recommendationLoading.value = true
       recommendationLoaded = false
       if(recType == 0) {
           const listData = await getRecommendedSongList(limit)
           recommendationList.value = Array.isArray(listData.result) ? listData.result : []
-          setTitle("推荐歌单", "RECOMMENDED SONG LIST")
       } else if(recType == 1) {
           const listData = await getRecommendedArtists(artistNation)
-          setTitle("推荐歌手", "RECOMMENDED ARTISTS")
           recommendationList.value = shuffleData(listData.artists, 5, (listData.artists || []).length)
       } else if(recType == 2) {
         const listData = await getNewAlbum({
             limit: limit,
             area: albumNation
         })
-        setTitle("最新专辑", "NEWEST ALBUM")
         recommendationList.value = Array.isArray(listData.albums) ? listData.albums : []
       } else if(recType == 3) {
         const listData = await getTopList()
-        setTitle("排行榜", "TOP LIST")
         recommendationList.value = pickRankItems(listData.list, 5)
     }
     recommendationLoaded = true
@@ -150,7 +152,7 @@
 </script>
 
 <template>
-  <div class="rec-list-item">
+  <div class="rec-list-item" :aria-busy="recommendationLoading">
     <div class="item-header">
         <div class="header">
             <div class="header-title-en">{{recTitleEN}}</div>
@@ -159,11 +161,14 @@
         </div>
         <div class="header-title-cn">{{recTitle}}</div>
     </div>
-    <div class="item-list" v-if="!recommendationLoaded">
-        <div class="item" v-for="i in 5" :key="i">
-          <SkeletonBox width="100%" height="10vw" style="margin-bottom:8px" :border-radius="recType == 1 ? '50%' : '2px'" />
-          <SkeletonBox width="70%" height="1.5vw" style="margin-bottom:4px" />
-          <SkeletonBox width="45%" height="1.2vw" />
+    <div class="item-list" v-if="recommendationLoading" aria-hidden="true">
+        <div class="item skeleton-item" :class="{ 'skeleton-artist': recType == 1 }" v-for="i in skeletonCount" :key="i">
+          <SkeletonBox class="skeleton-cover" height="auto" :border-radius="recType == 1 ? '50%' : '0'" />
+          <div class="skeleton-name">
+            <SkeletonBox :width="i % 2 ? '88%' : '72%'" height="1.5vw" border-radius="0" />
+            <SkeletonBox v-if="recType != 1" :width="i % 2 ? '58%' : '42%'" height="1.5vw" border-radius="0" />
+          </div>
+          <SkeletonBox v-if="recType == 2 || recType == 3" class="skeleton-sub" width="45%" height="1.2vw" border-radius="0" />
         </div>
     </div>
     <div class="item-list" v-else>
@@ -228,7 +233,25 @@
         grid-template-columns: repeat(5, 1fr);
         gap: 3.4vw 2.5vw;
         .item{
+            min-width: 0;
+            .skeleton-cover{
+                aspect-ratio: 1;
+            }
+            .skeleton-name{
+                margin-top: 5px;
+                display: grid;
+                gap: 0.65vw;
+                padding: 0.35vw 0;
+            }
+            .skeleton-sub{
+                margin-top: 5px;
+            }
+            &.skeleton-artist .skeleton-name{
+                margin-top: 15px;
+                justify-items: center;
+            }
             .item-img{
+                aspect-ratio: 1;
                 // width: 168px;
                 // height: 168px;
                 overflow: hidden;

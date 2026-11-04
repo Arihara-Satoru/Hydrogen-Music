@@ -1,5 +1,5 @@
 <template>
-  <div class="skeleton-box" :style="{ width, height, borderRadius }"></div>
+  <div class="skeleton-box" :style="{ width, height, borderRadius }" aria-hidden="true"></div>
 </template>
 
 <script setup>
@@ -12,18 +12,35 @@ defineProps({
 
 <style scoped lang="scss">
 .skeleton-box {
-  background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.06) 75%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.4s infinite;
+  --skeleton-base: rgba(0, 0, 0, 0.07);
+  --skeleton-highlight: rgba(0, 0, 0, 0.055);
+  position: relative;
+  overflow: hidden;
+  background: var(--skeleton-base);
+  pointer-events: none;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--skeleton-highlight), transparent);
+    transform: translateX(-100%);
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  }
 }
 @keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  100% { transform: translateX(100%); }
 }
 
-:global(html.dark) .skeleton-box {
-  background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.13) 50%, rgba(255,255,255,0.06) 75%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.4s infinite;
+:global(html.dark .skeleton-box) {
+  --skeleton-base: rgba(255, 255, 255, 0.08);
+  --skeleton-highlight: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-box::after {
+    animation: none;
+    content: none;
+  }
 }
 </style>

@@ -13,19 +13,24 @@
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { songId, playing, showSongTranslation } = storeToRefs(playerStore)
-  const newestSongList = ref()
+  const newestSongList = ref([])
+  const newestSongLoading = ref(true)
   let newestSongLoaded = false
 
   onActivated(() => {
-      if (newestSongLoaded && Array.isArray(newestSongList.value) && newestSongList.value.length > 0) return
+      if (newestSongLoaded) return
+      newestSongLoading.value = true
       //参数:limit限制数量，默认为10
       loadData(10)
       .catch(error => console.error('加载首页数据失败:', error))
-      .finally(() => homeSectionReady('songs'))
+      .finally(() => {
+        newestSongLoading.value = false
+        homeSectionReady('songs')
+      })
   })
   async function loadData(limit) {
     const listData = await getNewestSong(limit)
-    newestSongList.value = listData.result
+    newestSongList.value = Array.isArray(listData?.result) ? listData.result : []
     newestSongLoaded = true
   }
   const getImgUrl = (item) => {
@@ -51,17 +56,18 @@
 </script>
 
 <template>
-  <div class="newest-song">
+  <div class="newest-song" :aria-busy="newestSongLoading">
     <div class="newest-song-title">最新歌曲</div>
-    <div class="song-list" v-if="!newestSongList">
-      <div class="list-item skeleton-item" v-for="i in 4" :key="i">
+    <div class="song-list" v-if="newestSongLoading" aria-hidden="true">
+      <div class="list-item skeleton-item" v-for="i in 3" :key="i">
         <div class="item-info">
-          <SkeletonBox width="3.45vw" height="3.45vw" style="margin-right:1vw;flex-shrink:0" />
+          <SkeletonBox width="3.45vw" height="3.45vw" border-radius="0" style="margin-right:1vw;flex-shrink:0" />
           <div class="song-other">
-            <SkeletonBox width="60%" height="1.2vw" style="margin-bottom:0.4vw" />
-            <SkeletonBox width="40%" height="1vw" />
+            <SkeletonBox :width="i % 2 ? '60%' : '75%'" height="1.2vw" border-radius="0" style="margin-bottom:0.4vw" />
+            <SkeletonBox width="40%" height="1vw" border-radius="0" />
           </div>
         </div>
+        <SkeletonBox width="1.3vw" height="1.3vw" border-radius="0" />
       </div>
     </div>
     <div class="song-list" v-else>
@@ -199,6 +205,9 @@
             padding-bottom: 0;
             margin-bottom: 0;
             border: none;
+        }
+        .skeleton-item:hover{
+            cursor: default;
         }
     }
   }
