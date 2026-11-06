@@ -52,7 +52,7 @@ const coverBgUrl = computed(() => {
 });
 
 const showCoverBackdrop = computed(() => {
-    return !!playerStore.coverBlur && !!coverBgUrl.value && !playerStore.videoIsPlaying;
+    return !!playerStore.coverBlur && !playerStore.videoIsPlaying;
 });
 
 // 当切到本地歌曲时，若右侧是评论区则自动切回歌词，避免无按钮无法关闭
@@ -217,7 +217,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
 <template>
     <div class="music-player">
         <Transition name="fade3">
-            <CoverBackdrop v-if="showCoverBackdrop" :key="coverBgUrl" class="back-drop" :src="coverBgUrl" />
+            <CoverBackdrop v-if="showCoverBackdrop" class="back-drop" :src="coverBgUrl || ''" />
         </Transition>
         <Player
             data-tour="player-cover"
