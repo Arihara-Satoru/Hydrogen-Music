@@ -1,5 +1,5 @@
 const THEME_CLASS = "dynamic-theme";
-const THEME_SATURATION_SCALE = 85;
+const THEME_SATURATION_SCALE = 62;
 const THEME_VARIABLES = [
   "--ambient-hue",
   "--ambient-saturation",
@@ -21,6 +21,14 @@ const THEME_VARIABLES = [
 let requestId = 0;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+export function getPerceptualHueDamping(hue) {
+  const distFromRed = Math.min(Math.abs(hue - 0), Math.abs(hue - 360));
+  if (distFromRed < 50) {
+    return 0.65 + (distFromRed / 50) * 0.25;
+  }
+  return 1.0;
+}
 
 export function getClosestHue(currentHue, nextHue) {
   if (!Number.isFinite(currentHue)) return nextHue;
@@ -51,12 +59,13 @@ export function rgbToHsl(red, green, blue) {
   };
 }
 
-function createThemeColor(red, green, blue) {
+function createThemeColor(red, green, blue, coverageFactor = 1) {
   const { hue, saturation } = rgbToHsl(red, green, blue);
   if (saturation < 0.12) return { hue: 210, saturation: 0 };
+  const damping = getPerceptualHueDamping(hue);
   return {
     hue: Math.round(hue),
-    saturation: Math.round(saturation * THEME_SATURATION_SCALE),
+    saturation: Math.round(clamp(saturation * THEME_SATURATION_SCALE * coverageFactor * damping, 0, 85)),
   };
 }
 
@@ -68,11 +77,13 @@ const hueDistance = (first, second) => Math.min(
 function getFallbackPalette() {
   return {
     hue: 210,
-    saturation: 28,
-    secondaryHue: 252,
-    secondarySaturation: 36,
+    saturation: 20,
+    secondaryHue: 210,
+    secondarySaturation: 20,
+    secondaryStrength: 0.4,
     tertiaryHue: 210,
-    tertiarySaturation: 28,
+    tertiarySaturation: 16,
+    tertiaryStrength: 0.2,
     primaryX: 12,
     primaryY: 8,
     secondaryX: 92,
@@ -89,8 +100,10 @@ function getNeutralPalette() {
     saturation: 0,
     secondaryHue: 210,
     secondarySaturation: 0,
+    secondaryStrength: 0,
     tertiaryHue: 210,
     tertiarySaturation: 0,
+    tertiaryStrength: 0,
     primaryX: 12,
     primaryY: 8,
     secondaryX: 92,
@@ -123,8 +136,8 @@ function createSpatialPalette(primary, secondary, tertiary) {
     secondaryHue: secondary?.hue ?? primary.hue,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
     secondaryStrength: secondary ? clamp(secondary.weight / primary.weight, 0, 1) : 0,
-    tertiaryHue: tertiary?.hue ?? primary.hue,
-    tertiarySaturation: tertiary?.saturation ?? primary.saturation,
+    tertiaryHue: tertiary?.hue ?? secondary?.hue ?? primary.hue,
+    tertiarySaturation: tertiary?.saturation ?? secondary?.saturation ?? primary.saturation,
     tertiaryStrength: tertiary ? clamp(tertiary.weight / primary.weight, 0, 1) : 0,
     primaryX,
     primaryY,
@@ -176,19 +189,25 @@ export function getDynamicPalette(imageData) {
     colorBuckets.set(key, bucket);
   }
 
+  const coverageRatio = pixelCount > 0 ? chromaticCoverage / pixelCount : 0;
+  if (!colorBuckets.size || coverageRatio < 0.18) return getNeutralPalette();
+
+  const coverageFactor = clamp((coverageRatio - 0.18) / 0.27, 0.15, 1.0);
+
   const colors = Array.from(colorBuckets.values())
     .map((bucket) => ({
       ...createThemeColor(
         bucket.red / bucket.weight,
         bucket.green / bucket.weight,
         bucket.blue / bucket.weight,
+        coverageFactor,
       ),
       x: bucket.x / bucket.weight,
       y: bucket.y / bucket.weight,
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  if (!colors.length || chromaticCoverage < pixelCount * 0.15) return getNeutralPalette();
+  if (!colors.length || colors[0].saturation < 6) return getNeutralPalette();
 
   const primary = colors[0];
   const secondary = colors
@@ -232,7 +251,7 @@ export function getThemePaletteFromColor(color) {
   );
   return {
     ...primary,
-    secondaryHue: (primary.hue + 48) % 360,
+    secondaryHue: (primary.hue + 16) % 360,
     secondarySaturation: primary.saturation,
     tertiaryHue: primary.hue,
     tertiarySaturation: primary.saturation,
@@ -382,14 +401,14 @@ function applyPalette(
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue")), hue)),
   );
   root.style.setProperty("--ambient-saturation", `${saturation}%`);
-  const nextSecondaryHue = secondaryHue ?? (hue + 48) % 360;
+  const nextSecondaryHue = secondaryHue ?? hue;
   root.style.setProperty(
     "--ambient-hue-secondary",
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-secondary")), nextSecondaryHue)),
   );
   root.style.setProperty("--ambient-saturation-secondary", `${secondarySaturation ?? saturation}%`);
   root.style.setProperty("--ambient-secondary-strength", String(secondaryStrength));
-  const nextTertiaryHue = tertiaryHue ?? secondaryHue ?? hue;
+  const nextTertiaryHue = tertiaryHue ?? nextSecondaryHue;
   root.style.setProperty(
     "--ambient-hue-tertiary",
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-tertiary")), nextTertiaryHue)),

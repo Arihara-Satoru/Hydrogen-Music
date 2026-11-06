@@ -160,7 +160,7 @@ const createSplashWindow = async (mainWindowOptions) => {
           const p = snapshot.palette;
           const hue = Number(p.hue) || 210;
           const sat = Number(p.saturation) || 28;
-          splashBgColor = isDark ? hslToHex(hue, 38, 13) : hslToHex(hue, sat, 86);
+          splashBgColor = isDark ? hslToHex(hue, Math.round(sat * 0.25), 12) : hslToHex(hue, Math.round(sat * 0.35), 94);
           splashQueryParams = {
             dynamic: "1",
             dark: isDark ? "1" : "0",

@@ -189,7 +189,17 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   return normalized;
 }
 
-function getThemePaletteFromRgb(red, green, blue) {
+const THEME_SATURATION_SCALE = 62;
+
+function getPerceptualHueDamping(hue) {
+  const distFromRed = Math.min(Math.abs(hue - 0), Math.abs(hue - 360));
+  if (distFromRed < 50) {
+    return 0.65 + (distFromRed / 50) * 0.25;
+  }
+  return 1.0;
+}
+
+function getThemePaletteFromRgb(red, green, blue, coverageFactor = 1) {
   const r = red / 255;
   const g = green / 255;
   const b = blue / 255;
@@ -206,9 +216,11 @@ function getThemePaletteFromRgb(red, green, blue) {
 
   const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
   if (saturation < 0.12) return { hue: 210, saturation: 0 };
+  const normalizedHue = Math.round((hue * 60 + 360) % 360);
+  const damping = getPerceptualHueDamping(normalizedHue);
   return {
-    hue: Math.round((hue * 60 + 360) % 360),
-    saturation: Math.round(saturation * 85),
+    hue: normalizedHue,
+    saturation: Math.round(Math.min(Math.max(saturation * THEME_SATURATION_SCALE * coverageFactor * damping, 0), 85)),
   };
 }
 
@@ -255,19 +267,41 @@ function getCoverThemePalette(data, width, height) {
     colorBuckets.set(key, bucket);
   }
 
+  const coverageRatio = pixelCount > 0 ? chromaticCoverage / pixelCount : 0;
+  if (!colorBuckets.size || coverageRatio < 0.18) {
+    return {
+      hue: 210,
+      saturation: 0,
+      secondaryHue: 210,
+      secondarySaturation: 0,
+      tertiaryHue: 210,
+      tertiarySaturation: 0,
+      primaryX: 12,
+      primaryY: 8,
+      secondaryX: 92,
+      secondaryY: 96,
+      tertiaryX: 52,
+      tertiaryY: 54,
+      gradientAngle: 160,
+    };
+  }
+
+  const coverageFactor = Math.min(Math.max((coverageRatio - 0.18) / 0.27, 0.15), 1.0);
+
   const colors = Array.from(colorBuckets.values())
     .map((bucket) => ({
       ...getThemePaletteFromRgb(
         bucket.red / bucket.weight,
         bucket.green / bucket.weight,
         bucket.blue / bucket.weight,
+        coverageFactor,
       ),
       x: bucket.x / bucket.weight,
       y: bucket.y / bucket.weight,
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  if (!colors.length || chromaticCoverage < pixelCount * 0.15) {
+  if (!colors.length || colors[0].saturation < 6) {
     return {
       hue: 210,
       saturation: 0,
@@ -329,8 +363,8 @@ function getCoverThemePalette(data, width, height) {
     secondaryHue: secondary?.hue ?? primary.hue,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
     secondaryStrength: secondary ? Math.min(secondary.weight / primary.weight, 1) : 0,
-    tertiaryHue: tertiary?.hue ?? primary.hue,
-    tertiarySaturation: tertiary?.saturation ?? primary.saturation,
+    tertiaryHue: tertiary?.hue ?? secondary?.hue ?? primary.hue,
+    tertiarySaturation: tertiary?.saturation ?? secondary?.saturation ?? primary.saturation,
     tertiaryStrength: tertiary ? Math.min(tertiary.weight / primary.weight, 1) : 0,
     primaryX,
     primaryY,
