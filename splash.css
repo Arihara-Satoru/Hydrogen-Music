@@ -101,8 +101,8 @@ html.dynamic-theme {
   --splash-surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 93% / 0.88);
   --splash-surface-border: hsl(var(--ambient-hue) var(--ambient-saturation) 30% / 0.16);
   --splash-text-primary: #111214;
-  --splash-text-secondary: hsl(var(--ambient-hue) 30% 28%);
-  --splash-text-muted: hsl(var(--ambient-hue) 20% 45%);
+  --splash-text-secondary: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.3) 28%);
+  --splash-text-muted: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.2) 45%);
   --splash-accent-primary: #111214;
   --splash-dock-shadow: 0 12px 28px hsl(var(--ambient-hue) var(--ambient-saturation) 36% / 0.16);
   --splash-dock-gradient:
@@ -124,10 +124,10 @@ html.dark.dynamic-theme {
   --splash-surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.25) 16% / 0.9);
   --splash-surface-border: hsl(var(--ambient-hue) var(--ambient-saturation) 70% / 0.18);
   --splash-text-primary: #f1f3f5;
-  --splash-text-secondary: hsl(var(--ambient-hue) 20% 75%);
-  --splash-text-muted: hsl(var(--ambient-hue) 15% 55%);
+  --splash-text-secondary: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.2) 75%);
+  --splash-text-muted: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.15) 55%);
   --splash-accent-primary: #ffffff;
-  --splash-dock-shadow: 0 16px 40px hsl(var(--ambient-hue) 40% 6% / 0.65);
+  --splash-dock-shadow: 0 16px 40px hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.4) 6% / 0.65);
   --splash-dock-gradient:
     radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 44% / 0.24), transparent 72%),
     radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 40% / calc(0.12 * var(--ambient-tertiary-strength))), transparent 72%),

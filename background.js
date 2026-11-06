@@ -158,27 +158,49 @@ const createSplashWindow = async (mainWindowOptions) => {
         const isDark = !!snapshot.isDark;
         if (snapshot.dynamicTheme && snapshot.palette) {
           const p = snapshot.palette;
-          const hue = Number(p.hue) || 210;
-          const sat = Number(p.saturation) || 28;
+          const rawHue = Number(p.hue);
+          const rawSat = Number(p.saturation);
+          const hue = Number.isFinite(rawHue) ? rawHue : 210;
+          const sat = Number.isFinite(rawSat) ? rawSat : 28;
+          const rawSecHue = Number(p.secondaryHue);
+          const rawSecSat = Number(p.secondarySaturation);
+          const rawSecStr = Number(p.secondaryStrength);
+          const secHue = Number.isFinite(rawSecHue) ? rawSecHue : hue;
+          const secSat = Number.isFinite(rawSecSat) ? rawSecSat : sat;
+          const secStr = Number.isFinite(rawSecStr) ? rawSecStr : 1;
+          const rawTerHue = Number(p.tertiaryHue);
+          const rawTerSat = Number(p.tertiarySaturation);
+          const rawTerStr = Number(p.tertiaryStrength);
+          const terHue = Number.isFinite(rawTerHue) ? rawTerHue : hue;
+          const terSat = Number.isFinite(rawTerSat) ? rawTerSat : sat;
+          const terStr = Number.isFinite(rawTerStr) ? rawTerStr : 1;
+          const priX = Number.isFinite(Number(p.primaryX)) ? Number(p.primaryX) : 12;
+          const priY = Number.isFinite(Number(p.primaryY)) ? Number(p.primaryY) : 8;
+          const secX = Number.isFinite(Number(p.secondaryX)) ? Number(p.secondaryX) : 92;
+          const secY = Number.isFinite(Number(p.secondaryY)) ? Number(p.secondaryY) : 96;
+          const terX = Number.isFinite(Number(p.tertiaryX)) ? Number(p.tertiaryX) : 52;
+          const terY = Number.isFinite(Number(p.tertiaryY)) ? Number(p.tertiaryY) : 54;
+          const gradAngle = Number.isFinite(Number(p.gradientAngle)) ? Number(p.gradientAngle) : 160;
+
           splashBgColor = isDark ? hslToHex(hue, Math.round(sat * 0.25), 12) : hslToHex(hue, Math.round(sat * 0.35), 94);
           splashQueryParams = {
             dynamic: "1",
             dark: isDark ? "1" : "0",
             hue: String(hue),
             sat: String(sat),
-            secHue: String(p.secondaryHue ?? hue),
-            secSat: String(p.secondarySaturation ?? sat),
-            secStr: String(p.secondaryStrength ?? 1),
-            terHue: String(p.tertiaryHue ?? hue),
-            terSat: String(p.tertiarySaturation ?? sat),
-            terStr: String(p.tertiaryStrength ?? 1),
-            priX: String(p.primaryX ?? 12),
-            priY: String(p.primaryY ?? 8),
-            secX: String(p.secondaryX ?? 92),
-            secY: String(p.secondaryY ?? 96),
-            terX: String(p.tertiaryX ?? 52),
-            terY: String(p.tertiaryY ?? 54),
-            gradAngle: String(p.gradientAngle ?? 160),
+            secHue: String(secHue),
+            secSat: String(secSat),
+            secStr: String(secStr),
+            terHue: String(terHue),
+            terSat: String(terSat),
+            terStr: String(terStr),
+            priX: String(priX),
+            priY: String(priY),
+            secX: String(secX),
+            secY: String(secY),
+            terX: String(terX),
+            terY: String(terY),
+            gradAngle: String(gradAngle),
           };
         } else if (snapshot.customColor && /^#[\da-f]{6}$/i.test(snapshot.customColor)) {
           splashBgColor = snapshot.customColor;

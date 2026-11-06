@@ -268,7 +268,7 @@ function getCoverThemePalette(data, width, height) {
   }
 
   const coverageRatio = pixelCount > 0 ? chromaticCoverage / pixelCount : 0;
-  if (!colorBuckets.size || coverageRatio < 0.18) {
+  if (!colorBuckets.size || coverageRatio < 0.25) {
     return {
       hue: 210,
       saturation: 0,
@@ -286,7 +286,7 @@ function getCoverThemePalette(data, width, height) {
     };
   }
 
-  const coverageFactor = Math.min(Math.max((coverageRatio - 0.18) / 0.27, 0.15), 1.0);
+  const coverageFactor = Math.min(Math.max((coverageRatio - 0.25) / 0.25, 0.15), 1.0);
 
   const colors = Array.from(colorBuckets.values())
     .map((bucket) => ({
@@ -301,7 +301,7 @@ function getCoverThemePalette(data, width, height) {
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  if (!colors.length || colors[0].saturation < 6) {
+  if (!colors.length || colors[0].saturation < 8) {
     return {
       hue: 210,
       saturation: 0,
