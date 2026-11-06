@@ -137,6 +137,7 @@ html.dynamic-theme .musicWidget {
 }
 
 html.dynamic-theme .music-widget,
+html.dynamic-theme .playlist-widget,
 html.dynamic-theme .title-container .title-player {
   background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 93% / 0.88) !important;
   background-image:
@@ -144,6 +145,10 @@ html.dynamic-theme .title-container .title-player {
     radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 68% / calc(0.14 * var(--ambient-tertiary-strength))), transparent 72%),
     linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.3) 96% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 89% / 0.9)) !important;
   background-blend-mode: normal !important;
+}
+
+html.dynamic-theme .music-widget,
+html.dynamic-theme .title-container .title-player {
   box-shadow: 0 8px 20px hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 38% / 0.12) !important;
   transition: none !important;
 }
@@ -191,6 +196,7 @@ html.dark.dynamic-theme .music-player {
 }
 
 html.dark.dynamic-theme .music-widget,
+html.dark.dynamic-theme .playlist-widget,
 html.dark.dynamic-theme .title-container .title-player {
   background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.25) 16% / 0.9) !important;
   background-image:
@@ -354,7 +360,8 @@ html.dark.dynamic-theme .title-container .title-player {
   background-color: var(--panel) !important;
 }
 
-.dark .playlist-widget .line {
+.dark .playlist-widget .line,
+.dark .playlist-widget .header-divider {
   background-color: var(--border) !important;
 }
 

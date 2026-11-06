@@ -1,5 +1,5 @@
 <script setup>
-  import { ref } from 'vue'
+  import { ref, watch, nextTick } from 'vue'
   import { RecycleScroller } from 'vue-virtual-scroller'
   import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
   import { pauseMusic } from '../utils/player';
@@ -23,7 +23,7 @@
       shuffledList.value = null
       currentIndex.value = 0
       shuffleIndex.value = 0
-      currentMusic.value.unload()
+      currentMusic.value?.unload?.()
       currentMusic.value = null
       progress.value = 0
       if(!widgetState.value) {
@@ -32,7 +32,7 @@
       }
       windowApi.setWindowTile('Hydrogen Music')
       clearTimeout(clearMusic)
-    }, 300);
+    }, 200);
   }
 
   const checkArtist = (artistId) => {
@@ -49,6 +49,7 @@
   }
 
   const delCurrentSong = async (index, id) => {
+    if (!songList.value) return
     //·删除的是当前播放歌曲之前的
     if(index < currentIndex.value) {
       songList.value.splice(index, 1)
@@ -87,194 +88,563 @@
       }
     }
   }
-  const locateCurrentSong = () => {
+
+  const locateCurrentSong = (smooth = true) => {
     const currentSong = songList.value?.[currentIndex.value]
     const targetIndex = findSongIndexById(songId.value, songList.value, currentSong)
     if(targetIndex < 0) return
-    playlistScroller.value?.scrollToItem(targetIndex, { align: 'center', smooth: true })
+    playlistScroller.value?.scrollToItem(targetIndex, { align: 'center', smooth })
   }
+
+  // 展开面板时自动定位到当前播放歌曲（极速无动画对齐，不消耗展开时算力）
+  watch(playlistWidgetShow, (show) => {
+    if (show) {
+      nextTick(() => {
+        locateCurrentSong(false)
+      })
+    }
+  })
 </script>
 
 <template>
-    <div class="playlist-widget">
+    <div class="playlist-widget" :inert="!playlistWidgetShow" :aria-hidden="!playlistWidgetShow">
+      <!-- 4 战术拐角标尺 (Arknights Frame Corner Ticks) -->
+      <span class="frame-corner frame-tl" aria-hidden="true"></span>
+      <span class="frame-corner frame-tr" aria-hidden="true"></span>
+      <span class="frame-corner frame-bl" aria-hidden="true"></span>
+      <span class="frame-corner frame-br" aria-hidden="true"></span>
+
+      <!-- 顶栏区域 -->
       <div class="playlist-widget-header">
         <div class="playlist-widget-info">
           <span class="info-title">当前播放</span>
-          <span class="info-num">({{songList.length}})</span>
+          <span class="info-sub">// QUEUE</span>
+          <span class="info-badge">
+            <span class="badge-bracket">[</span>
+            <span class="badge-count">{{ songList?.length || 0 }}</span>
+            <span class="badge-bracket">]</span>
+          </span>
         </div>
-        <div>
-          <svg t="1676113510483" @click="locateCurrentSong()" @keydown.enter.prevent="locateCurrentSong()" @keydown.space.prevent="locateCurrentSong()" class="playlist-widget-position" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2631" width="200" height="200" role="button" tabindex="0" aria-label="定位到当前歌曲"><path d="M927.282215 479.83544l-83.4629 0c-15.068184-158.75777-141.389194-285.078781-300.146964-300.146964L543.67235 95.835695c0-17.622356-14.285355-31.907711-31.907711-31.907711-17.622356 0-31.907711 14.285355-31.907711 31.907711l0 83.85278c-158.75777 15.068184-285.078781 141.389194-300.146964 300.146964l-83.826174 0c-17.622356 0-31.907711 14.285355-31.907711 31.907711 0 17.622356 14.285355 31.907711 31.907711 31.907711l83.826174 0c15.068184 158.75777 141.389194 285.078781 300.146964 300.146964l0 83.946924c0 17.622356 14.285355 31.907711 31.907711 31.907711 17.622356 0 31.907711-14.285355 31.907711-31.907711l0-83.946924c158.75777-15.068184 285.078781-141.389194 300.146964-300.146964l83.4629 0c17.622356 0 31.907711-14.285355 31.907711-31.907711C959.189925 494.120794 944.904571 479.83544 927.282215 479.83544zM511.76464 793.112446c-155.396209 0-281.369296-125.973086-281.369296-281.369296s125.973086-281.369296 281.369296-281.369296 281.369296 125.973086 281.369296 281.369296S667.159826 793.112446 511.76464 793.112446z" fill="#000000" p-id="2632"></path><path d="M511.76464 511.74315m-69.616544 0a68.031 68.031 0 1 0 139.233088 0 68.031 68.031 0 1 0-139.233088 0Z" fill="#000000" p-id="2633"></path></svg>
-          <svg t="1670563159799" @click="clearPlaylist()" class="playlist-widget-delete" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4514" width="200" height="200"><path d="M224.561403 320 224.561403 896 778.105263 896 778.105263 320 712.982456 320 712.982456 832 289.68421 832 289.68421 320 224.561403 320 224.561403 320ZM387.368421 320.664062 452.491228 320.664062 452.491228 768.664062 387.368421 768.664062 387.368421 320.664062 387.368421 320.664062ZM550.175438 320.664062 615.298246 320.664062 615.298246 768.664062 550.175438 768.664062 550.175438 320.664062 550.175438 320.664062ZM387.368421 192 192 192 192 256 810.666664 256 810.666664 192 647.859649 192 647.859649 128 387.368421 128 387.368421 192 387.368421 192Z" p-id="4515"></path></svg>
+        <div class="playlist-widget-actions">
+          <!-- 定位按钮 (战术准心) -->
+          <button
+            type="button"
+            class="playlist-btn locate-btn"
+            @click="locateCurrentSong(true)"
+            @keydown.enter.prevent="locateCurrentSong(true)"
+            @keydown.space.prevent="locateCurrentSong(true)"
+            v-delayed-tooltip="'定位当前歌曲'"
+            aria-label="定位到当前歌曲"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.6" fill="none" />
+              <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+              <line x1="12" y1="1" x2="12" y2="4" />
+              <line x1="12" y1="20" x2="12" y2="23" />
+              <line x1="1" y1="12" x2="4" y2="12" />
+              <line x1="20" y1="12" x2="23" y2="12" />
+            </svg>
+          </button>
+
+          <!-- 清空按钮 (战术清空) -->
+          <button
+            type="button"
+            class="playlist-btn clear-btn"
+            @click="clearPlaylist()"
+            v-delayed-tooltip="'清空播放列表'"
+            aria-label="清空播放列表"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v5" />
+              <path d="M14 11v5" />
+            </svg>
+          </button>
         </div>
       </div>
-      <div class="line"></div>
+
+      <!-- 战术指示分割线 -->
+      <div class="header-divider" aria-hidden="true">
+        <span class="divider-mark">PRTS // 01</span>
+      </div>
+
+      <!-- 队列为空状态 -->
+      <div v-if="!songList?.length" class="playlist-empty">
+        <div class="empty-code">// QUEUE.EMPTY</div>
+        <div class="empty-text">当前播放列表为空</div>
+      </div>
+
+      <!-- 虚拟歌曲列表 -->
       <RecycleScroller
+        v-else
         ref="playlistScroller"
         class="playlist-widget-item"
-        :items="songList.slice(0, songList.length + 1)"
+        :items="songList"
         :item-size="36"
         key-field="id"
         v-slot="{ item, index }"
       >
-        <div class="list-item" :class="{'list-item-playing': songId == item.id, 'list-item-disabled': item.playable !== undefined && !item.playable }" @dblclick="play(item.id, index)">
+        <div
+          class="list-item"
+          :class="{
+            'list-item-playing': songId == item.id,
+            'list-item-disabled': item.playable !== undefined && !item.playable
+          }"
+          @dblclick="play(item.id, index)"
+        >
+          <!-- 正在播放时左侧实体战术指示条 -->
+          <span class="active-indicator" aria-hidden="true"></span>
           <div class="item-info">
+            <span v-if="songId != item.id" class="item-index">{{ String(index + 1).padStart(2, '0') }}</span>
             <div class="playing-eq" v-show="(songId == item.id)" :class="{ 'is-paused': !playing }" aria-hidden="true">
               <span class="bar"></span>
               <span class="bar"></span>
               <span class="bar"></span>
               <span class="bar"></span>
             </div>
-            <span class="item-name">{{getSongDisplayName(item, '', showSongTranslation)}}</span>
-            <span class="item-separator"> - </span>
-            <span class="item-author" @dblclick.stop @click="checkArtist(singer.id)" v-for="(singer, index) in item.ar">{{singer.name}}{{index == item.ar.length -1 ? '' : '/'}}</span>
+            <span class="item-name" :title="getSongDisplayName(item, '', showSongTranslation)">
+              {{ getSongDisplayName(item, '', showSongTranslation) }}
+            </span>
+            <span class="item-separator">//</span>
+            <span class="item-artists">
+              <span
+                class="item-author"
+                @dblclick.stop
+                @click="checkArtist(singer.id)"
+                v-for="(singer, i) in item.ar"
+                :key="singer.id ?? i"
+              >
+                {{ singer.name }}{{ i == item.ar.length - 1 ? '' : ' / ' }}
+              </span>
+            </span>
           </div>
-          <svg t="1670569532229" @dblclick.stop @click="delCurrentSong(index, item.id)" class="item-delete" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2597" width="200" height="200"><path d="M558.933333 529.066667l285.866667 285.866666-29.866667 29.866667-285.866666-285.866667-285.866667 285.866667-29.866667-29.866667 285.866667-285.866666L213.333333 243.2l29.866667-29.866667 285.866667 285.866667L814.933333 213.333333l29.866667 29.866667-285.866667 285.866667z" fill="#444444" p-id="2598"></path></svg>
+
+          <button
+            type="button"
+            class="item-delete"
+            @dblclick.stop
+            @click.stop="delCurrentSong(index, item.id)"
+            v-delayed-tooltip="'从队列移除'"
+            aria-label="从列表移除"
+          >
+            <svg class="item-delete-svg" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square">
+              <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+            </svg>
+          </button>
         </div>
       </RecycleScroller>
     </div>
 </template>
 
 <style scoped lang="scss">
-  .playlist-widget{
-    width: 310Px;
-    height: 0;
-    background-color: rgba(225, 240, 240, 1);
-    transition: 0.3s cubic-bezier(.19,.8,.49,.99);
-    overflow: hidden;
+  .playlist-widget {
+    position: relative;
+    width: 320Px;
+    height: 460Px;
+    max-width: calc(100vw - 32Px);
+    max-height: calc(100vh - 180Px);
+    background-color: var(--panel, var(--bg));
+    backdrop-filter: blur(16Px);
+    color: var(--text);
+    border: 1Px solid var(--border);
+    box-shadow: 0 12Px 32Px rgba(0, 0, 0, 0.16), 0 2Px 6Px rgba(0, 0, 0, 0.06);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    .playlist-widget-header{
-      margin-top: 4px;
-      padding: 8Px 12Px 0 12Px;
+    overflow: hidden;
+
+    // GPU 合成层加速：彻底解决 clip-path 逐帧重绘卡顿
+    transform-origin: bottom right;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(10Px) scale(0.97);
+    transition:
+      opacity 0.14s cubic-bezier(0.4, 0, 1, 1),
+      transform 0.14s cubic-bezier(0.4, 0, 1, 1),
+      visibility 0.14s cubic-bezier(0.4, 0, 1, 1);
+    will-change: transform, opacity;
+
+    &.playlist-widget-open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+      transition:
+        opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    // 四角战术拐角标尺
+    .frame-corner {
+      position: absolute;
+      width: 6Px;
+      height: 6Px;
+      pointer-events: none;
+      z-index: 2;
+      border-color: var(--text);
+      opacity: 0.85;
+
+      &.frame-tl {
+        top: -1Px;
+        left: -1Px;
+        border-top: 2Px solid currentColor;
+        border-left: 2Px solid currentColor;
+      }
+      &.frame-tr {
+        top: -1Px;
+        right: -1Px;
+        border-top: 2Px solid currentColor;
+        border-right: 2Px solid currentColor;
+      }
+      &.frame-bl {
+        bottom: -1Px;
+        left: -1Px;
+        border-bottom: 2Px solid currentColor;
+        border-left: 2Px solid currentColor;
+      }
+      &.frame-br {
+        bottom: -1Px;
+        right: -1Px;
+        border-bottom: 2Px solid currentColor;
+        border-right: 2Px solid currentColor;
+      }
+    }
+
+    .playlist-widget-header {
+      padding: 12Px 12Px 10Px 14Px;
+      flex-shrink: 0;
       width: 100%;
       display: flex;
       flex-direction: row;
       justify-content: space-between;
       align-items: center;
-      .playlist-widget-info{
-        .info-title{
-          font: 16Px SourceHanSansCN-Bold;
-          color: black;
+
+      .playlist-widget-info {
+        display: flex;
+        align-items: baseline;
+        gap: 6Px;
+
+        .info-title {
+          font: 15Px/1.4 SourceHanSansCN-Bold;
+          color: var(--text);
+          letter-spacing: 0.5Px;
         }
-        .info-num{
-          font: 12Px SourceHanSansCN-Bold;
-          color: rgb(118, 118, 118);
-        }
-      }
-      .playlist-widget-position, .playlist-widget-delete{
-        margin-left: 14px;
-        width: 20Px;
-        height: 20Px;
-        transition: 0.2s;
-        &:hover{
-          cursor: pointer;
+        .info-sub {
+          font: 10Px/1.4 Bender-Bold, monospace;
+          color: var(--muted-text);
+          letter-spacing: 0.1em;
           opacity: 0.8;
         }
-        &:active{
-          transform: scale(0.9);
+        .info-badge {
+          display: inline-flex;
+          align-items: baseline;
+          font: 11Px/1.4 Bender-Bold, monospace;
+          color: var(--text);
+          margin-left: 2Px;
+          .badge-bracket {
+            color: var(--muted-text);
+            font-size: 10Px;
+          }
+          .badge-count {
+            padding: 0 2Px;
+            font-variant-numeric: tabular-nums;
+          }
+        }
+      }
+
+      .playlist-widget-actions {
+        display: flex;
+        align-items: center;
+        gap: 4Px;
+        flex-shrink: 0;
+      }
+
+      .playlist-btn {
+        width: 28Px;
+        height: 28Px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1Px solid transparent;
+        border-radius: 0;
+        color: var(--muted-text);
+        cursor: pointer;
+        transition:
+          color 0.12s ease,
+          background-color 0.12s ease,
+          border-color 0.12s ease,
+          transform 0.12s ease;
+
+        svg {
+          display: block;
+        }
+
+        &:hover {
+          color: var(--text);
+          background-color: color-mix(in srgb, var(--text) 8%, transparent);
+          border-color: color-mix(in srgb, var(--text) 18%, transparent);
+        }
+
+        &:active {
+          transform: scale(0.92);
+        }
+
+        &:focus-visible {
+          outline: 1Px solid var(--text);
+          outline-offset: -1Px;
         }
       }
     }
-    .line{
-      margin: 8Px 0;
-      width: 92%;
-      height: 0.5Px;
-      background-color: black;
+
+    .header-divider {
+      position: relative;
+      width: calc(100% - 24Px);
+      margin: 0 12Px 6Px;
+      height: 1Px;
+      background-color: var(--border);
+      flex-shrink: 0;
+      display: flex;
+      justify-content: flex-end;
+
+      .divider-mark {
+        position: absolute;
+        right: 0;
+        top: -4Px;
+        padding: 0 4Px;
+        background-color: var(--panel, var(--bg));
+        font: 8Px/1 Bender-Bold, monospace;
+        letter-spacing: 0.12em;
+        color: var(--muted-text);
+        opacity: 0.7;
+        pointer-events: none;
+      }
     }
-    .playlist-widget-item{
+
+    .playlist-empty {
+      flex: 1;
       width: 100%;
-      height: 100%;
-      overflow: auto;
       display: flex;
       flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6Px;
+      color: var(--muted-text);
+      user-select: none;
+
+      .empty-code {
+        font: 11Px Bender-Bold, monospace;
+        letter-spacing: 0.15em;
+        opacity: 0.6;
+      }
+
+      .empty-text {
+        font: 13Px SourceHanSansCN-Bold;
+      }
+    }
+
+    .playlist-widget-item {
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      margin-bottom: 4Px;
+      overflow-x: hidden;
+      overflow-y: auto;
+
       &::-webkit-scrollbar {
-        width: 5px;
-        height: 10px;
-        background-color: rgba(0, 0, 0, 0);
+        width: 4Px;
+        background: transparent;
       }
       &::-webkit-scrollbar-thumb {
-        background-color: rgba(0, 0, 0, 0.0);
+        background: transparent;
+        border-radius: 0;
+        transition: background 0.15s;
       }
       &::-webkit-scrollbar-track {
-        display: none;
+        background: transparent;
       }
-      &:hover::-webkit-scrollbar-thumb{
-        background-color: rgba(0, 0, 0, 0.04);
+      &:hover::-webkit-scrollbar-thumb {
+        background: var(--border);
       }
-      .list-item{
+
+      .list-item {
+        position: relative;
         width: 100%;
-        padding: 8Px 12Px;
+        height: 36Px;
+        padding: 0 10Px 0 12Px;
         display: flex;
         flex-direction: row;
         justify-content: space-between;
         align-items: center;
-        transition: 0.2s;
-        &:hover{
-            background-color: rgba(0, 0, 0, 0.045);
+        gap: 8Px;
+        cursor: default;
+        user-select: none;
+        transition: background-color 0.1s ease;
+
+        .active-indicator {
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3Px;
+          background-color: transparent;
+          transition: background-color 0.12s ease;
         }
-        .item-info{
-          width: 240Px;
-          text-align: left;
+
+        &:hover {
+          background-color: color-mix(in srgb, var(--text) 6%, transparent);
+        }
+
+        .item-info {
+          flex: 1;
+          min-width: 0;
           display: flex;
           align-items: center;
           white-space: nowrap;
           overflow: hidden;
           gap: 6Px;
-          svg{
-            margin-right: 6Px;
-            width: 14Px;
-            height: 14Px;
+
+          .item-index {
+            width: 20Px;
             flex-shrink: 0;
+            font: 11Px/1.4 Bender-Bold, monospace;
+            font-variant-numeric: tabular-nums;
+            color: var(--muted-text);
+            text-align: left;
           }
-          .playing-eq{
-            margin-right: 6Px;
-            width: 14Px;
-            height: 14Px;
+
+          .playing-eq {
+            width: 20Px;
+            height: 12Px;
             flex-shrink: 0;
+            display: inline-flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 2Px;
+            margin-right: 0;
+
+            .bar {
+              width: 2.5Px;
+              border-radius: 0;
+              background-color: var(--text);
+            }
           }
-          .item-name{
-            font: 14Px SourceHanSansCN-Bold;
-            color: black;
+
+          .item-name {
+            font: 13Px/1.4 SourceHanSansCN-Bold;
+            color: var(--text);
+            min-width: 0;
+            flex: 0 1 auto;
             overflow: hidden;
             text-overflow: ellipsis;
           }
-          .item-separator{
-            font: 12Px SourceHanSansCN-Bold;
-            color: rgb(169, 169, 169);
+
+          .item-separator {
+            font: 10Px/1.4 Bender-Bold, monospace;
+            color: var(--muted-text);
+            opacity: 0.6;
             flex-shrink: 0;
           }
-          .item-author{
-            font: 12Px SourceHanSansCN-Bold;
-            color: rgb(169, 169, 169);
-            transition: 0.2s;
+
+          .item-artists {
+            flex: 0 2 auto;
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
-            &:hover{
+          }
+
+          .item-author {
+            font: 12Px/1.4 SourceHanSansCN-Bold;
+            color: var(--muted-text);
+            transition: color 0.15s ease;
+            overflow: hidden;
+            text-overflow: ellipsis;
+
+            &:hover {
               cursor: pointer;
-              color: black;
+              color: var(--text);
+              text-decoration: underline;
+              text-underline-offset: 2Px;
             }
           }
         }
-        .item-delete{
-          width: 20Px;
-          height: 20px;
-          &:hover{
-            cursor: pointer;
+
+        .item-delete {
+          width: 22Px;
+          height: 22Px;
+          padding: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: transparent;
+          border: 1Px solid transparent;
+          border-radius: 0;
+          color: var(--muted-text);
+          opacity: 0;
+          cursor: pointer;
+          transition:
+            opacity 0.12s ease,
+            color 0.12s ease,
+            background-color 0.12s ease,
+            border-color 0.12s ease;
+
+          &:hover {
+            color: var(--text);
+            background-color: color-mix(in srgb, var(--text) 10%, transparent);
+            border-color: color-mix(in srgb, var(--text) 20%, transparent);
+          }
+
+          &:focus-visible {
+            opacity: 1;
+            outline: 1Px solid var(--text);
+            outline-offset: -1Px;
           }
         }
-      }
-      .list-item-playing{
-        background-color: rgba(0, 0, 0, 0.045);
-      }
-      .list-item-disabled{
-          opacity: 0.8;
+
+        &:hover .item-delete {
+          opacity: 0.65;
+          &:hover {
+            opacity: 1;
+          }
+        }
+
+        &.list-item-playing {
+          background-color: color-mix(in srgb, var(--text) 8%, transparent);
+
+          .active-indicator {
+            background-color: var(--text);
+          }
+
+          .item-name {
+            color: var(--text);
+          }
+        }
+
+        &.list-item-disabled {
+          opacity: 0.55;
           .item-info {
-            .item-name, .item-author{
-              color: rgba(156, 156, 156, 0.7);
+            .item-name, .item-author {
+              color: var(--muted-text);
             }
           }
+        }
       }
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .playlist-widget,
+    .playlist-widget * {
+      transition: none !important;
+      transform: none !important;
+    }
+    .playlist-widget .playing-eq .bar {
+      animation: none !important;
+      transform: scaleY(0.6);
     }
   }
 </style>

@@ -500,9 +500,7 @@
         position: absolute;
         bottom: 75Px;
         right: 0;
-    }
-    .playlist-widget-open{
-        height: 450Px;
+        z-index: 1000;
     }
     .widget-back{
         width: 5Px;

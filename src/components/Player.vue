@@ -1952,9 +1952,8 @@ const addToPlaylist = () => {
         position: absolute;
         right: -370px;
         bottom: 0;
-    }
-    .playlist-widget-open {
-        height: 450px;
+        z-index: 1000;
+        transform-origin: bottom left;
     }
     $boderPosition: -0.75 + vh;
     .border {
