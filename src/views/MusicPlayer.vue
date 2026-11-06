@@ -6,6 +6,7 @@ import ProgramIntro from '../components/ProgramIntro.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
+import CoverBackdrop from '../components/CoverBackdrop.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { useListenTogetherStore } from '../store/listenTogetherStore';
@@ -216,12 +217,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
 <template>
     <div class="music-player">
         <Transition name="fade3">
-            <div
-                v-if="showCoverBackdrop"
-                :key="coverBgUrl"
-                class="back-drop"
-                :style="{ backgroundImage: coverBgUrl ? `url(${coverBgUrl})` : 'none' }"
-            ></div>
+            <CoverBackdrop v-if="showCoverBackdrop" :key="coverBgUrl" class="back-drop" :src="coverBgUrl" />
         </Transition>
         <Player
             data-tour="player-cover"
@@ -295,12 +291,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         width: 120%;
         height: 120%;
         pointer-events: none;
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: cover;
-        filter: blur(50px) saturate(120%);
         transform: translate3d(-10%, -10%, 0);
-        will-change: transform, opacity;
         contain: strict;
         transition: opacity 0.3s;
     }
@@ -311,6 +302,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         position: absolute;
         top: 0;
         left: 0;
+        z-index: 1;
         width: 100%;
         height: 100%;
         background: var(--cover-backdrop-overlay, rgba(255, 255, 255, 0.3));
