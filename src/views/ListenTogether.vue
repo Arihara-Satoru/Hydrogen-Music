@@ -986,7 +986,7 @@ h3 {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.18s ease;
+    transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
     flex-shrink: 0;
     user-select: none;
 }
@@ -1226,7 +1226,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
     border: 1px solid var(--border);
     white-space: nowrap;
     flex-shrink: 0;
-    transition: all 0.16s ease;
+    transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
 }
 .together-page :deep(.base-button--primary) {
     color: var(--bg);

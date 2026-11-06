@@ -1179,6 +1179,7 @@ watch([playing, lyricShow], ([p, show]) => {
                 display: flex;
                 flex-direction: column;
                 align-items: flex-start;
+                transition-property: transform, background-color, filter;
                 transition-duration: 0.6s;
                 transition-timing-function: cubic-bezier(0.3, 0, 0.12, 1);
                 user-select: text;
@@ -1198,7 +1199,9 @@ watch([playing, lyricShow], ([p, show]) => {
                     color: black;
                     text-align: left;
                     display: inline-block;
-                    transition: 0.5s cubic-bezier(0.3, 0, 0.12, 1);
+                    transition-property: transform, color, font-size;
+                    transition-duration: 0.5s;
+                    transition-timing-function: cubic-bezier(0.3, 0, 0.12, 1);
                 }
                 .hilight {
                     width: 100%;
@@ -1209,11 +1212,11 @@ watch([playing, lyricShow], ([p, show]) => {
                     top: 0;
                     left: 0;
                     transform: translateX(-101%);
-                    transition: 0.55s cubic-bezier(0.3, 0, 0.12, 1);
+                    transition: transform 0.55s cubic-bezier(0.3, 0, 0.12, 1), background-color 0.55s cubic-bezier(0.3, 0, 0.12, 1);
                 }
                 .hilight-active {
                     transform: translateX(0);
-                    transition: 0.62s cubic-bezier(0.3, 0, 0.12, 1);
+                    transition: transform 0.62s cubic-bezier(0.3, 0, 0.12, 1), background-color 0.62s cubic-bezier(0.3, 0, 0.12, 1);
                 }
             }
             .lyric-inactive {
@@ -1230,7 +1233,7 @@ watch([playing, lyricShow], ([p, show]) => {
                     transform-origin: left center;
                     transform: scale(1.15) translateX(26px);
                     color: white;
-                    transition: 0.4s cubic-bezier(0.3, 0, 0.12, 1);
+                    transition-duration: 0.4s;
                 }
             }
             .music-interlude {

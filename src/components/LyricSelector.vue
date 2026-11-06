@@ -472,10 +472,10 @@ onUnmounted(() => {
 }
 
 .panel-switch-enter-active {
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.12, 1);
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.12, 1), transform 0.4s cubic-bezier(0.4, 0, 0.12, 1);
 }
 .panel-switch-leave-active {
-    transition: all 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+    transition: opacity 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99), transform 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
 }
 .panel-switch-enter-from {
     opacity: 0;

@@ -1373,7 +1373,7 @@ const reopenVideo = () => {
                 height: 100%;
                 border-radius: 0;
                 background-color: rgb(189, 189, 189);
-                transition: all 0.3s;
+                transition: background-color 0.3s;
             }
         }
         .add-timing {
@@ -1653,7 +1653,7 @@ const reopenVideo = () => {
 .list-move,
 .list-enter-active,
 .list-leave-active {
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease;
 }
 .list-enter-from,
 .list-leave-to {

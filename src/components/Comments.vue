@@ -1592,7 +1592,7 @@ onUnmounted(() => {
             cursor: pointer;
             font-size: 16px;
             line-height: 1;
-            transition: all 0.2s;
+            transition: background-color 0.2s, transform 0.2s;
 
             &:hover {
                 background: rgba(0, 0, 0, 0.2);
@@ -1668,7 +1668,7 @@ onUnmounted(() => {
             font-size: 12px;
             font-weight: bold;
             letter-spacing: 1px;
-            transition: all 0.2s;
+            transition: background-color 0.2s, transform 0.2s;
             text-transform: uppercase;
 
             &:hover:not(:disabled) {
@@ -2139,7 +2139,7 @@ onUnmounted(() => {
         align-items: center;
         gap: 5px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background-color 0.2s, color 0.2s, opacity 0.2s, transform 0.2s;
         padding: 3px 7px;
         border: none;
         background: rgba(0, 0, 0, 0.05);
@@ -2209,7 +2209,7 @@ onUnmounted(() => {
         font-weight: bold;
         letter-spacing: 0.2px;
         color: rgba(0, 0, 0, 0.76);
-        transition: all 0.2s;
+        transition: background-color 0.2s, color 0.2s, opacity 0.2s;
         border-radius: 0;
         outline: none;
         box-shadow: none;
@@ -2344,7 +2344,7 @@ onUnmounted(() => {
         border: none;
         background: rgba(0, 0, 0, 0.05);
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background-color 0.2s, transform 0.2s;
         border-radius: 0;
 
         &:hover {
@@ -2425,7 +2425,7 @@ onUnmounted(() => {
         letter-spacing: 0.2px;
         padding: 4px 8px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background-color 0.2s, color 0.2s, opacity 0.2s;
         border-radius: 0;
         outline: none;
         box-shadow: none;
@@ -2617,7 +2617,7 @@ onUnmounted(() => {
             cursor: pointer;
             font-size: 12px;
             line-height: 1;
-            transition: all 0.2s;
+            transition: background-color 0.2s, transform 0.2s;
 
             &:hover {
                 background: rgba(0, 0, 0, 0.2);
@@ -2696,7 +2696,7 @@ onUnmounted(() => {
             font-size: 10px;
             font-weight: bold;
             letter-spacing: 0.5px;
-            transition: all 0.2s;
+            transition: background-color 0.2s, color 0.2s, transform 0.2s;
             text-transform: uppercase;
 
             &:hover {

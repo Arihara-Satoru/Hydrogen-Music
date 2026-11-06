@@ -229,7 +229,7 @@ const handleKeydown = (event) => {
 <style lang="scss">
 .selector-enter-active,
 .selector-leave-active {
-  transition: all .225s;
+  transition: height .225s, padding .225s;
   overflow: hidden;
   box-sizing: content-box;
 }

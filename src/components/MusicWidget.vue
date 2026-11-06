@@ -481,7 +481,7 @@
 
     .chorus-toggle {
         opacity: 0.5;
-        transition: all 0.2s ease;
+        transition: opacity 0.2s ease, transform 0.2s ease;
 
         path {
             fill: #8a8a8a;

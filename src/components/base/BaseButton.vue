@@ -84,7 +84,7 @@ const handleClick = (event) => {
     cursor: pointer;
     font-family: inherit;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
     outline: none;
     position: relative;
     user-select: none;

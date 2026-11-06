@@ -1983,7 +1983,7 @@ const addToPlaylist = () => {
     // 歌词候选图标样式
     .lyric-select-icon {
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
         color: rgba(0, 0, 0, 0.6);
         overflow: visible;
         width: 3.16vh !important;
@@ -2020,7 +2020,7 @@ const addToPlaylist = () => {
     // 评论图标样式
     .comment-icon {
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: color 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
         color: rgba(0, 0, 0, 0.6);
         overflow: visible;
         width: 3.16vh !important;
@@ -2077,7 +2077,7 @@ const addToPlaylist = () => {
 
     .desktop-lyric-btn {
         opacity: 0.5;
-        transition: all 0.2s ease;
+        transition: opacity 0.2s ease, transform 0.2s ease;
 
         path {
             fill: #8a8a8a;
@@ -2103,7 +2103,7 @@ const addToPlaylist = () => {
 
     .chorus-toggle {
         opacity: 0.5;
-        transition: all 0.2s ease;
+        transition: opacity 0.2s ease, transform 0.2s ease;
 
         path {
             fill: #8a8a8a;

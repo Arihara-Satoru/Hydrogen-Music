@@ -753,7 +753,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(244, 246, 246, 0.15);
   color: var(--ark-paper);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
 
   &:hover {
     background: rgba(255, 255, 255, 0.12);
@@ -786,7 +786,7 @@ onBeforeUnmount(() => {
   border: none;
   cursor: pointer;
   color: var(--ark-muted);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   .color-pill {
     width: 8px;
@@ -1076,7 +1076,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   font: 13px SourceHanSansCN-Bold, sans-serif;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   border: none;
   border-radius: 0;
 

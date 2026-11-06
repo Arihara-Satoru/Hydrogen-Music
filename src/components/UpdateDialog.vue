@@ -244,7 +244,7 @@ const retryUpdate = () => {
                 line-height: 27px;
                 text-align: center;
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: background-color 0.2s, color 0.2s, opacity 0.2s;
                 
                 &:hover:not(.disabled){
                     background-color: rgba(255, 255, 255, 0.9);

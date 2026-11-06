@@ -283,7 +283,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    transition: 0.2s;
+    transition: background-color 0.2s;
     position: relative;
     overflow: hidden;
 
@@ -302,7 +302,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         transform: translate3d(-10%, -10%, 0);
         will-change: transform, opacity;
         contain: strict;
-        transition: 0.3s;
+        transition: opacity 0.3s;
     }
 
     .back-drop::before {
@@ -395,10 +395,10 @@ watch([currentTrack, isDj], ([song, djMode]) => {
 
     // 只让稳定外壳参与过渡，避免评论内容刷新打断 out-in 的离场回调
     .panel-switch-enter-active {
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.12, 1);
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.12, 1), transform 0.4s cubic-bezier(0.4, 0, 0.12, 1);
     }
     .panel-switch-leave-active {
-        transition: all 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+        transition: opacity 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99), transform 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
     }
     .panel-switch-enter-from {
         opacity: 0;

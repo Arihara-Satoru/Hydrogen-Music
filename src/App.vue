@@ -229,7 +229,6 @@ const handleTitleBarDoubleClick = () => {
         margin-left: 30px;
         transform: translate3d(calc(-1 * var(--visualizer-shift)), 0, 0);
         transition: transform 0.72s cubic-bezier(0.16, 1, 0.3, 1);
-        will-change: transform;
         pointer-events: auto;
         -webkit-app-region: no-drag;
     }
