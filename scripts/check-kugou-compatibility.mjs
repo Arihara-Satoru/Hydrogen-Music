@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { createContext, SourceTextModule, SyntheticModule } from 'node:vm'
+import { reactive, computed } from 'vue'
 
 // Run with node --experimental-vm-modules scripts/check-kugou-compatibility.mjs.
 const storage = new Map()
@@ -19,7 +20,7 @@ const requestModule = mock({ default: config => {
   return responder(config)
 } })
 const pinia = mock({ defineStore: (_id, options) => () => {
-  const store = options.state()
+  const store = reactive(options.state())
   for (const [name, action] of Object.entries(options.actions)) store[name] = action.bind(store)
   return store
 } })
@@ -118,6 +119,29 @@ assert.equal(store.searchLoading, false)
 
 const playlist = await load('src/api/playlist.js', { '../utils/request': requestModule })
 const { getPlaylistAll } = playlist.namespace
+const { updatePlaylist, createPlaylist, deletePlaylist } = playlist.namespace
+responder = async () => ({ status: 1, data: { status: 1 } })
+for (const [track, expected] of [
+  [{ name: '歌|曲,名', hash: 'HASH', id: 'f'.repeat(32), album_id: 'invalid' }, '歌 曲 名|HASH'],
+  [{ name: '歌曲', hash_320: 'HQ', id: 81, audio_id: 81, album_id: 9 }, '歌曲|HQ|9|0'],
+  [{ base: { audio_name: '专辑歌曲', album_audio_id: 42, album_id: 9 }, audio_info: { hash: 'BASE' } }, '专辑歌曲|BASE|9|42'],
+  [{ SongName: '搜索歌曲', SQFileHash: 'SQ', AlbumID: '9', MixSongID: '42' }, '搜索歌曲|SQ|9|42'],
+  [{ name: '歌曲', hash: 'HASH', album_audio_id: 0, mixsongid: 42, al: { id: 0 }, album_id: 9 }, '歌曲|HASH|9|42'],
+]) {
+  await updatePlaylist({ op: 'add', pid: 2, tracks: track, timestamp: 1234 })
+  assert.equal(requests.at(-1).params.data, expected)
+  assert.equal(requests.at(-1).params.timestamp, 1234, 'write timestamps must survive the adapter')
+}
+for (const run of [
+  () => updatePlaylist({ op: 'add', pid: 2, tracks: { name: '歌曲', hash: 'HASH' } }),
+  () => updatePlaylist({ op: 'del', pid: 2, fileids: '859' }),
+  () => createPlaylist({ name: '新歌单' }),
+  () => deletePlaylist({ id: 2 }),
+]) {
+  const before = Date.now()
+  await run()
+  assert.ok(requests.at(-1).params.timestamp >= before, 'all playlist writes bypass URL-based response caches')
+}
 const pageOne = Array.from({ length: 300 }, (_, index) => ({
   hash: `hash-${index}`, fileid: index + 1, filename: `歌手 - 歌曲${index}`,
   shield: index === 0 ? 1 : 0,
@@ -198,5 +222,39 @@ for (const collected of [false, true]) {
   const upstream = pages.flat().filter(song => song.shield !== 1).map(song => song.hash).reverse()
   assert.deepEqual(Array.from(library.librarySongs, song => song.hash), upstream, 'retain existing created and collected display order')
 }
+
+const favoriteLibrary = libraryModule.namespace.useLibraryStore()
+favoriteLibrary.libraryInfo = { id: 2, trackCount: 1 }
+favoriteLibrary.librarySongs = [{ id: 42, hash: 'abc', fileid: 856, name: '歌曲' }]
+favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'add', song: { id: 43, hash: 'ABC', fileid: 859, name: '歌曲' } })
+assert.equal(favoriteLibrary.librarySongs.length, 1)
+assert.equal(favoriteLibrary.librarySongs[0].fileid, 859, 're-add replaces stale fileid')
+assert.equal(favoriteLibrary.libraryInfo.trackCount, 1, 'replacement does not increment count')
+favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'del', song: { hash: 'abc' } })
+assert.equal(favoriteLibrary.librarySongs.length, 0)
+
+// Match the user's view: detail and sidebar may start with different stale counts.
+favoriteLibrary.libraryInfo = { id: 2, trackCount: 648, count: 648 }
+const sidebarFavorite = { id: 2, trackCount: 647, count: 647 }
+favoriteLibrary.playlistUserCreated = [sidebarFavorite]
+favoriteLibrary.libraryList = [sidebarFavorite] // shared references must not double-increment
+favoriteLibrary.librarySongs = [{ id: 1, name: '原有歌曲', hash: 'existing' }]
+const previousSongs = favoriteLibrary.librarySongs
+const visibleSongs = computed(() => favoriteLibrary.librarySongs.map(song => song.id))
+assert.deepEqual(visibleSongs.value, [1])
+const newSong = { id: 2, name: '新增歌曲', hash: 'new', fileid: 860 }
+favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'add', song: newSong })
+assert.notEqual(favoriteLibrary.librarySongs, previousSongs, 'publish a fresh array for virtualized and filtered views')
+assert.equal(favoriteLibrary.librarySongs[0].id, 2, 'new favorites appear at the top without reloading')
+assert.deepEqual(Array.from(visibleSongs.value), [2, 1], 'the Vue list projection reacts immediately without refreshing')
+assert.equal(favoriteLibrary.libraryInfo.trackCount, 649)
+assert.equal(sidebarFavorite.trackCount, 649, 'sidebar matches the detail count rather than incrementing an outdated count')
+assert.equal(sidebarFavorite.count, 649)
+favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'add', song: { ...newSong, fileid: 861 } })
+assert.equal(favoriteLibrary.librarySongs.length, 2, 'acknowledgement metadata must not insert a duplicate')
+assert.equal(sidebarFavorite.trackCount, 649)
+favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'del', song: newSong })
+assert.equal(sidebarFavorite.trackCount, 648)
+assert.equal(favoriteLibrary.libraryInfo.trackCount, 648)
 
 console.log('KuGou search and playlist compatibility check passed')

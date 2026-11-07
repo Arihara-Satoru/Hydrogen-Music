@@ -488,7 +488,7 @@ const isClassic = computed(() => userStore.personalFMLayout === "classic");
 const { songId, playing, progress, quality, showSongTranslation, time, chorusMode, lyricsObjArr, currentLyricIndex } =
   storeToRefs(playerStore);
 const { likelist } = storeToRefs(userStore);
-const isCurrentSongLiked = computed(() => isSongLiked(currentSong.value?.id, likelist.value));
+const isCurrentSongLiked = computed(() => isSongLiked(currentSong.value, likelist.value));
 const currentSongArtists = computed(() => getFmSongArtists(currentSong.value));
 const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value));
 
@@ -1828,22 +1828,20 @@ const likeSong = async () => {
   if (!currentSong.value || likeLoading.value) return;
 
   const targetSong = currentSong.value;
-  const targetSongId = targetSong.id;
-  const shouldLike = !isSongLiked(targetSongId, likelist.value);
-  const currentLikelist = Array.isArray(likelist.value) ? likelist.value : [];
+  const shouldLike = !isSongLiked(targetSong, likelist.value);
   likeLoading.value = true;
   try {
-    // 酷狗没有 /like；直接写入“我喜欢的音乐”，完整歌曲对象用于生成 name|hash|albumId|mixsongId。
+    // 酷狗没有 /like；直接写入“我喜欢”，完整歌曲对象用于生成 name|hash|albumId|mixsongId。
     const result = await updateFavoritePlaylistTrack(targetSong, shouldLike);
     if (!result.success) throw new Error(result.message || "歌单 tracks 返回异常");
 
     // ponytail: 酷狗没有 /likelist；本次会话先乐观更新，跨会话状态应由账号初始化加载喜欢歌单时恢复。
     userStore.updateLikelist(
-      applyOptimisticLikeState(targetSongId, shouldLike, currentLikelist),
+      applyOptimisticLikeState(targetSong, shouldLike, likelist.value),
     );
     noticeOpen(
       shouldLike
-        ? `已添加到${result.favoritePlaylist?.name || "我喜欢的音乐"}`
+        ? `已添加到${result.favoritePlaylist?.name || "我喜欢"}`
         : "已取消喜欢",
       2,
     );

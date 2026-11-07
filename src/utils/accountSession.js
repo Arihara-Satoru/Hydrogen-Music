@@ -2,7 +2,7 @@ import pinia from '../store/pinia'
 import { getUserPlaylist, getUserProfile, logout } from '../api/user'
 import { refreshLoginToken } from '../api/login'
 import { useUserStore } from '../store/userStore'
-import { resolveFavoritePlaylistMeta } from './player'
+import { resolveFavoritePlaylistMeta, syncFavoritePlaylistLikelist } from './player'
 import { isLogin, setCookies, getCookie } from './authority'
 import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
@@ -156,7 +156,11 @@ async function hydrateAccountSession(token) {
             pagesize: 50,
         })
         if (isAccountSessionTokenActive(token)) {
-            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(extractPlaylistItems(playlistResult)))
+            const favoritePlaylist = resolveFavoritePlaylistMeta(extractPlaylistItems(playlistResult))
+            userStore.updateFavoritePlaylistMeta(favoritePlaylist)
+            if (favoritePlaylist?.id) {
+                await syncFavoritePlaylistLikelist(favoritePlaylist.id, { forceRefresh: true })
+            }
         }
     } catch (error) {
         if (isAccountSessionTokenActive(token)) {
@@ -171,6 +175,7 @@ async function hydrateAccountSession(token) {
 async function clearCurrentAccountSessionState(token) {
     invalidateNcmApiCookieCache()
     await clearAccountScopedState({ clearSessionCookies: true })
+    await syncFavoritePlaylistLikelist(null)
     if (!isAccountSessionTokenActive(token)) return
     invalidateNcmApiCookieCache()
 }

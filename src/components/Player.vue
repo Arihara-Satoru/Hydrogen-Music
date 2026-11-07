@@ -5,10 +5,11 @@ import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus, likeSong, isSongLiked, syncFavoritePlaylistLikelist } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
+import { useUserStore } from '../store/userStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
 import { getSongDisplayName } from '../utils/songName';
@@ -67,6 +68,8 @@ const router = useRouter();
 const localStore = useLocalStore();
 const otherStore = useOtherStore();
 const playerStore = usePlayerStore();
+const userStore = useUserStore();
+const { likelist } = storeToRefs(userStore);
 const {
     playing,
     progress,
@@ -106,6 +109,17 @@ const isInFMMode = computed(() => {
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 const currentSong = computed(() => songList.value?.[currentIndex.value] || null);
 const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren');
+const isCurrentSongLiked = computed(() => isSongLiked(currentSong.value, likelist.value));
+
+watch(
+    () => [userStore.user?.userId, userStore.favoritePlaylistId],
+    ([userId, favPlaylistId]) => {
+        if (userId || favPlaylistId) {
+            void syncFavoritePlaylistLikelist(favPlaylistId);
+        }
+    },
+    { immediate: true }
+);
 const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '加载中...', showSongTranslation.value));
 const canSelectLyrics = computed(() => !!currentSong.value && currentSong.value.type !== 'local' && !isCurrentSirenSong.value && !isDjMode.value);
 const songInfoShow = ref(false);
@@ -1028,6 +1042,61 @@ const addToPlaylist = () => {
                 >
                     <path d="M545.472 32v837.504L947.2 467.712l44.544 46.144-478.08 478.144L32.128 510.4l44.48-44.544 405.248 403.712V32h63.616z" p-id="5312"></path>
                 </svg>
+                <!-- 喜欢 / 取消喜欢（添加到“我喜欢”歌单） -->
+                <svg
+                    v-if="!isDjMode && currentSong && currentSong.type !== 'local' && !isCurrentSirenSong"
+                    v-show="!isCurrentSongLiked"
+                    t="1668786418014"
+                    data-tour="player-like"
+                    @click="likeSong(true)"
+                    role="button"
+                    tabindex="0"
+                    aria-label="添加到我喜欢"
+                    :aria-pressed="false"
+                    @keydown.enter.prevent="likeSong(true)"
+                    @keydown.space.prevent="likeSong(true)"
+                    v-delayed-tooltip="'添加到我喜欢'"
+                    class="icon like-icon"
+                    viewBox="0 0 1024 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    p-id="1417"
+                    width="200"
+                    height="200"
+                >
+                    <path
+                        d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674zM888.196 544.065C785.507 705.207 513.139 915.679 513.139 915.679S240.802 705.206 138.081 544.065c-37.884-59.491-71.805-116.034-71.805-194.158 0-134.904 100.025-244.309 223.433-244.309 91.199 0 169.491 59.833 204.225 145.493l0-0.427 0.094 0c2.588 8.933 10.132 15.445 19.113 15.445 9.013 0 16.558-6.512 19.128-15.445l0.265 0c34.813-85.404 112.996-145.066 204.07-145.066 123.378 0 223.433 109.405 223.433 244.309C960.035 428.031 926.111 484.574 888.196 544.065z"
+                        fill="#000000"
+                        p-id="1418"
+                    ></path>
+                </svg>
+                <svg
+                    v-if="!isDjMode && currentSong && currentSong.type !== 'local' && !isCurrentSirenSong"
+                    v-show="isCurrentSongLiked"
+                    t="1668786896650"
+                    data-tour="player-like"
+                    @click="likeSong(false)"
+                    role="button"
+                    tabindex="0"
+                    aria-label="取消喜欢"
+                    :aria-pressed="true"
+                    @keydown.enter.prevent="likeSong(false)"
+                    @keydown.space.prevent="likeSong(false)"
+                    v-delayed-tooltip="'取消喜欢'"
+                    class="icon like-icon liked"
+                    viewBox="0 0 1025 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    p-id="9975"
+                    width="200"
+                    height="200"
+                >
+                    <path
+                        d="M1024.549 360.609c0-170.492-133.815-309.265-298.055-309.265-81.129 0-157.91 34.998-213.344 94.701-55.509-59.702-132.367-94.701-213.344-94.701C135.49 51.344 1.751 190.041 1.751 360.609c0 5.719 0.534 10.827 0.991 15.021-0.076 1.373-0.152 2.745-0.152 4.194 0 30.193 7.319 63.361 21.73 98.59 0.458 1.295 0.915 2.516 1.449 3.657 90.812 217.844 440.412 468.474 455.279 479.985 9.227 7.092 20.205 10.6 31.263 10.6 11.209 0 22.266-3.659 31.566-10.903 12.733-9.911 310.941-224.551 429.279-427.603 4.498-6.861 7.854-13.494 10.828-19.215 0.914-1.829 1.753-3.658 2.744-5.413l0.382-0.839c0.382-0.686 0.839-1.449 1.296-2.059 7.091-13.802 12.732-26.611 17.232-39.116 12.274-32.177 18.3-60.847 18.3-87.61 0-2.058-0.077-3.888-0.229-5.414C1024.093 370.979 1024.549 366.251 1024.549 360.609z"
+                        p-id="9976"
+                        fill="#E5404F"
+                    ></path>
+                </svg>
                 <svg
                     v-if="!isDjMode && currentSong && currentSong.type !== 'local' && !isCurrentSirenSong"
                     data-tour="player-add-playlist"
@@ -1935,7 +2004,7 @@ const addToPlaylist = () => {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 3vh;
+            gap: 2.7vh;
             position: absolute;
             bottom: 2vh;
             right: -50px;
@@ -1945,6 +2014,9 @@ const addToPlaylist = () => {
                 width: 2.5vh;
                 height: 2.5vh;
                 display: block;
+            }
+            .like-icon.liked path {
+                fill: #E5404F;
             }
         }
     }

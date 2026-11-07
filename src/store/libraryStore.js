@@ -241,7 +241,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             if (playlist.count !== undefined) playlist.count = nextTrackCount
             if (playlist.songcount !== undefined) playlist.songcount = nextTrackCount
         },
-        bumpKnownPlaylistTrackCounts(playlist, delta) {
+        bumpKnownPlaylistTrackCounts(playlist, delta, trackCount = null) {
             if (!playlist || !delta) return
             const lists = [this.playlistUserCreated, this.playlistUserSub, this.libraryList]
             const updated = new Set()
@@ -251,7 +251,11 @@ export const useLibraryStore = defineStore('libraryStore', {
                     if (item === this.libraryInfo) return
                     if (!isSamePlaylist(item, playlist) || updated.has(item)) return
                     updated.add(item)
-                    this.bumpPlaylistTrackCount(item, delta)
+                    if (trackCount !== null) {
+                        for (const key of ['trackCount', 'size', 'count', 'songcount']) {
+                            if (item[key] !== undefined) item[key] = trackCount
+                        }
+                    } else this.bumpPlaylistTrackCount(item, delta)
                 })
             })
         },
@@ -263,20 +267,33 @@ export const useLibraryStore = defineStore('libraryStore', {
             let changedCurrentSongs = false
             const isCurrentPlaylist = this.libraryInfo && isSamePlaylist(this.libraryInfo, playlist)
             if (isCurrentPlaylist) {
-                const currentSongs = Array.isArray(this.librarySongs) ? this.librarySongs : []
+                // Publish a new array so filtered/virtualized views invalidate immediately.
+                const currentSongs = Array.isArray(this.librarySongs) ? [...this.librarySongs] : []
                 const songKey = getSongIdentity(song)
+                const matchesSong = item => {
+                    if (songKey && getSongIdentity(item) == songKey) return true
+                    return ['id', 'mixsongid', 'album_audio_id', 'hash', 'FileHash'].some(key =>
+                        song?.[key] && String(item?.[key] || '').toLowerCase() == String(song[key]).toLowerCase())
+                }
 
                 if (delta > 0 && song && typeof song == 'object') {
-                    if (!songKey || !currentSongs.some(item => getSongIdentity(item) == songKey)) {
-                        currentSongs.push(song)
+                    const existingIndex = currentSongs.findIndex(matchesSong)
+                    if (existingIndex === -1) {
+                        // User playlists are displayed newest-first, matching getPlaylistAll.
+                        currentSongs.unshift(song)
                         this.librarySongs = currentSongs
                         changedCurrentSongs = true
+                    } else {
+                        // Re-adding can replace the server's playlist-scoped fileid without changing the count.
+                        currentSongs.splice(existingIndex, 1, { ...currentSongs[existingIndex], ...song })
+                        this.librarySongs = currentSongs
+                        this.indexLibrarySongs(currentSongs)
                     }
                 }
 
                 if (delta < 0) {
                     const songIndex = currentSongs.findIndex(item => {
-                        if (songKey && getSongIdentity(item) == songKey) return true
+                        if (matchesSong(item)) return true
                         return ['id', 'fileid', 'file_id', 'audio_id'].some(key => song?.[key] && String(item?.[key] || '') == String(song[key]))
                     })
                     if (songIndex !== -1) {
@@ -298,7 +315,10 @@ export const useLibraryStore = defineStore('libraryStore', {
                 }
             }
 
-            if (!isCurrentPlaylist || changedCurrentSongs) this.bumpKnownPlaylistTrackCounts(playlist, delta)
+            if (!isCurrentPlaylist || changedCurrentSongs) {
+                const currentCount = isCurrentPlaylist ? Number(this.libraryInfo?.trackCount ?? this.libraryInfo?.count) : NaN
+                this.bumpKnownPlaylistTrackCounts(playlist, delta, Number.isFinite(currentCount) ? currentCount : null)
+            }
             return changedCurrentSongs
         },
         getSongSearchText(song, fallbackKey = '0') {

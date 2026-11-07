@@ -4,7 +4,7 @@ import { formatDuration } from "./time";
 import { noticeOpen } from "./dialog";
 import { checkMusic, likeMusic, getLyric, getSongClimax } from "../api/song";
 import { getSirenLyricText, getSirenSong } from "../api/siren";
-import { updatePlaylist } from "../api/playlist";
+import { getPlaylistAll, updatePlaylist } from "../api/playlist";
 import { getLikelist, getUserPlaylist } from "../api/user";
 import { useUserStore } from "../store/userStore";
 import { usePlayerStore } from "../store/playerStore";
@@ -1192,13 +1192,22 @@ let lastPoolVideoPath = "";
 const failedPoolVideoPaths = new Set();
 const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3]);
 let preFmPlayMode = null;
-const DEFAULT_FAVORITE_PLAYLIST_NAME = "我喜欢的音乐";
+const DEFAULT_FAVORITE_PLAYLIST_NAME = "我喜欢";
 const LIKE_SYNC_RETRY_DELAY = 280;
 const LIKE_SYNC_RETRY_LIMIT = 2;
 const LIKE_REQUEST_COOLDOWN_MS = 1200;
 let likeActionToken = 0;
 let likeRequestQueue = Promise.resolve();
 let nextLikeRequestAvailableAt = 0;
+let favoritePlaylistTracksCache = [];
+let favoritePlaylistHydratedId = null;
+let favoritePlaylistSyncPromise = null;
+let pendingLikedTracks = [];
+let pendingUnlikedTracks = [];
+let favoritePlaylistScope = null;
+let favoritePlaylistRevision = 0;
+let favoritePlaylistSyncToken = 0;
+const FAVORITE_MUTATION_GRACE_MS = 5000;
 let unauthenticatedRestoreNoticeShown = false;
 const CHORUS_MIN_SEGMENT_SECONDS = 3;
 let chorusStopTimer = null;
@@ -3193,39 +3202,397 @@ export function getLikeActionErrorMessage(result, fallback = "未知错误") {
   return (
     result?.response?.data?.message ||
     result?.response?.data?.msg ||
+    result?.data?.errmsg ||
+    result?.data?.error_msg ||
+    result?.data?.msg ||
+    result?.errmsg ||
+    result?.error_msg ||
     result?.response?.data?.error ||
     result?.body?.message ||
     result?.body?.msg ||
     result?.message ||
     result?.msg ||
     result?.error ||
+    getPlaylistOperationStatusMessage(result) ||
     fallback
   );
 }
 
-export function isSongLiked(songId, likelist = userStore.likelist) {
-  const targetSongId = String(songId ?? "");
-  if (!targetSongId || !Array.isArray(likelist)) return false;
-  return likelist.some((id) => String(id) === targetSongId);
+function normalizeLikeKeyValue(value) {
+  if (value === null || value === undefined) return "";
+  const str = String(value).trim();
+  if (!str || str === "0" || str === "null" || str === "undefined") return "";
+  return str;
+}
+
+export function extractSongLikeKeys(songInput) {
+  const raw =
+    songInput &&
+    typeof songInput === "object" &&
+    songInput.value &&
+    typeof songInput.value === "object"
+      ? songInput.value
+      : songInput;
+
+  const keys = new Set();
+  const addKey = (val, isHash = false) => {
+    const normalized = normalizeLikeKeyValue(val);
+    if (!normalized) return;
+    keys.add(normalized);
+    if (isHash || /^[0-9a-f]{32}$/i.test(normalized)) {
+      keys.add(normalized.toUpperCase());
+      keys.add(normalized.toLowerCase());
+    }
+  };
+
+  if (!raw || typeof raw !== "object") {
+    addKey(raw);
+    return Array.from(keys);
+  }
+
+  const idCandidates = [
+    raw.id,
+    raw.album_audio_id,
+    raw.albumAudioId,
+    raw.mixsongid,
+    raw.mixsong_id,
+    raw.MixSongID,
+    raw.add_mixsongid,
+    raw.audio_id,
+    raw.audioId,
+    raw.Audioid,
+    raw.AudioID,
+    raw.songId,
+    raw.songid,
+    raw.base?.album_audio_id,
+    raw.base?.audio_id,
+  ];
+  for (const candidate of idCandidates) {
+    addKey(candidate, false);
+  }
+
+  const hashCandidates = [
+    raw.hash,
+    raw.FileHash,
+    raw.file_hash,
+    raw.hash_128,
+    raw.hash_320,
+    raw.hash_flac,
+    raw.SQFileHash,
+    raw.HQFileHash,
+    raw.audio_info?.hash,
+    raw.audio_info?.hash_128,
+    raw.audio_info?.hash_320,
+    raw.audio_info?.hash_flac,
+    raw.base?.hash,
+    raw.deprecated?.hash,
+    raw.relate_goods?.[0]?.hash,
+    raw.trans_param?.hash_offset?.offset_hash,
+  ];
+  for (const candidate of hashCandidates) {
+    addKey(candidate, true);
+  }
+  for (const key of raw.favoriteLikeKeys || []) addKey(key);
+
+  return Array.from(keys);
+}
+
+function isSameFavoriteTrack(trackA, trackB) {
+  const keysA = extractSongLikeKeys(trackA);
+  if (keysA.length === 0) return false;
+  const keySetA = new Set(keysA);
+  return extractSongLikeKeys(trackB).some((key) => keySetA.has(key));
+}
+
+function ensureFavoritePlaylistScope(playlistId = userStore.favoritePlaylistId) {
+  const scope = `${userStore.user?.userId || ""}:${playlistId || ""}`;
+  if (scope === favoritePlaylistScope) return;
+  favoritePlaylistScope = scope;
+  favoritePlaylistTracksCache = [];
+  favoritePlaylistHydratedId = null;
+  favoritePlaylistSyncPromise = null;
+  pendingLikedTracks = [];
+  pendingUnlikedTracks = [];
+  favoritePlaylistRevision += 1;
+  favoritePlaylistSyncToken += 1;
+}
+
+function getPlaylistOperationStatusMessage(result) {
+  const fields = [];
+  for (const [prefix, value] of [["", result], ["data.", result?.data], ["body.", result?.body]]) {
+    if (!value || typeof value !== "object") continue;
+    for (const key of ["status", "code", "error_code"]) {
+      if (["string", "number"].includes(typeof value[key])) fields.push(`${prefix}${key}=${String(value[key]).slice(0, 32)}`);
+    }
+  }
+  if (Array.isArray(result?.data?.info) && !result.data.info.length) fields.push("info为空");
+  return fields.length ? `接口返回 ${fields.join("，")}` : "";
+}
+
+function recordPendingFavoriteMutation(track, like) {
+  if (!track) return;
+  ensureFavoritePlaylistScope();
+  let normalizedTrack =
+    track && typeof track === "object"
+      ? { ...(track.value && typeof track.value === "object" ? track.value : track) }
+      : { id: track };
+
+  const previous = [...pendingLikedTracks, ...pendingUnlikedTracks].find((item) => isSameFavoriteTrack(item.track, normalizedTrack));
+  if (previous) {
+    normalizedTrack = {
+      ...normalizedTrack,
+      favoriteLikeKeys: [...extractSongLikeKeys(normalizedTrack), ...extractSongLikeKeys(previous.track)],
+    };
+  }
+
+  const now = Date.now();
+  favoritePlaylistRevision += 1;
+  pendingLikedTracks = pendingLikedTracks.filter(
+    (item) => item.expiresAt > now && !isSameFavoriteTrack(item.track, normalizedTrack),
+  );
+  pendingUnlikedTracks = pendingUnlikedTracks.filter(
+    (item) => item.expiresAt > now && !isSameFavoriteTrack(item.track, normalizedTrack),
+  );
+
+  const entry = { track: normalizedTrack, expiresAt: now + FAVORITE_MUTATION_GRACE_MS };
+  if (like) {
+    pendingLikedTracks.unshift(entry);
+  } else {
+    pendingUnlikedTracks.unshift(entry);
+  }
+}
+
+function reconcileFavoriteSongsWithPendingMutations(songs = []) {
+  const now = Date.now();
+  pendingLikedTracks = pendingLikedTracks.filter((item) => item.expiresAt > now);
+  pendingUnlikedTracks = pendingUnlikedTracks.filter((item) => item.expiresAt > now);
+  const baseSongs = Array.isArray(songs) ? songs.slice() : [];
+  const filteredSongs =
+    pendingUnlikedTracks.length > 0
+      ? baseSongs.filter(
+          (song) =>
+            !pendingUnlikedTracks.some((unliked) =>
+              isSameFavoriteTrack(song, unliked.track),
+            ),
+        )
+      : baseSongs;
+
+  if (pendingLikedTracks.length === 0) return filteredSongs;
+
+  const mergedSongs = filteredSongs.map((song) => {
+    const matchedPending = pendingLikedTracks.find((liked) =>
+      isSameFavoriteTrack(song, liked.track),
+    );
+    if (!matchedPending) return song;
+    return {
+      ...matchedPending.track,
+      ...song,
+      fileid: matchedPending.track?.fileid ?? song?.fileid ?? song?.file_id,
+      favoriteLikeKeys: extractSongLikeKeys(matchedPending.track),
+    };
+  });
+
+  const missingLiked = pendingLikedTracks.map((item) => item.track).filter(
+    (liked) => !mergedSongs.some((song) => isSameFavoriteTrack(song, liked)),
+  );
+
+  return missingLiked.length > 0
+    ? [...missingLiked, ...mergedSongs]
+    : mergedSongs;
+}
+
+export function syncLikelistFromFavoriteSongs(songs = [], playlistId = null) {
+  ensureFavoritePlaylistScope(playlistId || userStore.favoritePlaylistId);
+  const validSongs = reconcileFavoriteSongsWithPendingMutations(Array.isArray(songs)
+    ? songs.filter(
+        (song) => song && typeof song === "object" && song.shield !== 1,
+      )
+    : []);
+  const previousCache = Array.isArray(favoritePlaylistTracksCache)
+    ? favoritePlaylistTracksCache.slice()
+    : [];
+  // Preserve source aliases without retaining stale playlist fileids.
+  const previousByKey = new Map();
+  for (const track of previousCache) {
+    for (const key of extractSongLikeKeys(track)) previousByKey.set(key, track);
+  }
+  favoritePlaylistTracksCache = validSongs.map((song) => {
+    const aliases = new Set(extractSongLikeKeys(song));
+    for (const key of Array.from(aliases)) {
+      const cached = previousByKey.get(key);
+      if (cached) for (const alias of extractSongLikeKeys(cached)) aliases.add(alias);
+    }
+    return { ...song, favoriteLikeKeys: Array.from(aliases) };
+  });
+  if (playlistId !== null && playlistId !== undefined && playlistId !== "") {
+    favoritePlaylistHydratedId = String(playlistId);
+  }
+
+  const likeKeySet = new Set();
+  for (const song of favoritePlaylistTracksCache) {
+    for (const key of extractSongLikeKeys(song)) {
+      likeKeySet.add(key);
+    }
+  }
+  const nextLikelist = Array.from(likeKeySet);
+  userStore.updateLikelist?.(nextLikelist);
+  return nextLikelist;
+}
+
+export async function syncFavoritePlaylistLikelist(
+  playlistId = null,
+  { forceRefresh = false } = {},
+) {
+  if (!userStore.user?.userId && !playlistId && !userStore.favoritePlaylistId) {
+    ensureFavoritePlaylistScope();
+    favoritePlaylistSyncToken += 1;
+    favoritePlaylistTracksCache = [];
+    favoritePlaylistHydratedId = null;
+    pendingLikedTracks = [];
+    pendingUnlikedTracks = [];
+    return [];
+  }
+
+  const targetId =
+    playlistId ||
+    userStore.favoritePlaylistId ||
+    (await getFavoritePlaylistId())?.id;
+  if (!targetId) return cloneLikelist();
+
+  const normalizedTargetId = String(targetId);
+  ensureFavoritePlaylistScope(normalizedTargetId);
+  if (
+    !forceRefresh &&
+    favoritePlaylistHydratedId === normalizedTargetId &&
+    Array.isArray(userStore.likelist)
+  ) {
+    return cloneLikelist();
+  }
+
+  if (!forceRefresh && favoritePlaylistSyncPromise) {
+    return favoritePlaylistSyncPromise;
+  }
+
+  const syncToken = ++favoritePlaylistSyncToken;
+  const revision = favoritePlaylistRevision;
+  const scope = favoritePlaylistScope;
+  const userId = userStore.user?.userId;
+  const runSync = (async () => {
+    try {
+      const res = await getPlaylistAll({
+        id: normalizedTargetId,
+        ...(forceRefresh ? { timestamp: Date.now() } : {}),
+      });
+      if (syncToken !== favoritePlaylistSyncToken ||
+          revision !== favoritePlaylistRevision || scope !== favoritePlaylistScope ||
+          userId !== userStore.user?.userId) return cloneLikelist();
+      if (!Array.isArray(res?.songs)) throw new Error("歌单响应格式异常");
+      return syncLikelistFromFavoriteSongs(res.songs, normalizedTargetId);
+    } catch (error) {
+      console.warn(
+        "加载我喜欢歌单曲目失败:",
+        getLikeActionErrorMessage(error),
+      );
+      return cloneLikelist();
+    } finally {
+      if (favoritePlaylistSyncPromise === runSync) {
+        favoritePlaylistSyncPromise = null;
+      }
+    }
+  })();
+
+  favoritePlaylistSyncPromise = runSync;
+  return runSync;
+}
+
+export function isSongLiked(songInput, likelist = userStore.likelist) {
+  if (!Array.isArray(likelist) || likelist.length === 0) return false;
+  const resolvedSong =
+    songInput && typeof songInput === "object"
+      ? songInput
+      : resolveSongForPlaylistTrackOperation(songInput);
+  const targetKeys = new Set([
+    ...extractSongLikeKeys(songInput),
+    ...(resolvedSong ? extractSongLikeKeys(resolvedSong) : []),
+  ]);
+  if (targetKeys.size === 0) return false;
+
+  return likelist.some((entry) => {
+    if (entry && typeof entry === "object") {
+      return extractSongLikeKeys(entry).some((key) => targetKeys.has(key));
+    }
+    const normalized = normalizeLikeKeyValue(entry);
+    if (!normalized) return false;
+    return (
+      targetKeys.has(normalized) ||
+      targetKeys.has(normalized.toUpperCase()) ||
+      targetKeys.has(normalized.toLowerCase())
+    );
+  });
 }
 
 export function applyOptimisticLikeState(
-  songId,
+  songInput,
   like,
   likelist = userStore.likelist,
 ) {
   const nextLikelist = cloneLikelist(likelist);
-  const likedIndex = nextLikelist.findIndex(
-    (id) => String(id) === String(songId),
+  const resolvedSong =
+    songInput && typeof songInput === "object"
+      ? songInput?.value || songInput
+      : resolveSongForPlaylistTrackOperation(songInput);
+
+  const matchedCachedTracks = favoritePlaylistTracksCache.filter((item) =>
+    isSameFavoriteTrack(item, resolvedSong || songInput),
   );
 
+  const targetKeys = new Set([
+    ...extractSongLikeKeys(songInput),
+    ...(resolvedSong ? extractSongLikeKeys(resolvedSong) : []),
+    ...matchedCachedTracks.flatMap((item) => extractSongLikeKeys(item)),
+  ]);
+  recordPendingFavoriteMutation({
+    ...(resolvedSong || { id: songInput }),
+    ...(matchedCachedTracks[0] || {}),
+    favoriteLikeKeys: Array.from(targetKeys),
+  }, like);
+
   if (like) {
-    if (likedIndex === -1) nextLikelist.unshift(songId);
+    if (resolvedSong && typeof resolvedSong === "object") {
+      const existsInCache = favoritePlaylistTracksCache.some((item) =>
+        isSameFavoriteTrack(item, resolvedSong),
+      );
+      if (!existsInCache) {
+        favoritePlaylistTracksCache.unshift({ ...resolvedSong });
+      }
+    }
+    const existingSet = new Set(
+      nextLikelist.map((item) => normalizeLikeKeyValue(item)),
+    );
+    const keysToAdd = Array.from(targetKeys).filter(
+      (key) => key && !existingSet.has(key),
+    );
+    if (keysToAdd.length > 0) {
+      nextLikelist.unshift(...keysToAdd);
+    }
     return nextLikelist;
   }
 
-  if (likedIndex !== -1) nextLikelist.splice(likedIndex, 1);
-  return nextLikelist;
+  if (matchedCachedTracks.length > 0) {
+    favoritePlaylistTracksCache = favoritePlaylistTracksCache.filter(
+      (item) => !isSameFavoriteTrack(item, resolvedSong || songInput),
+    );
+  }
+
+  return nextLikelist.filter((item) => {
+    const normalized = normalizeLikeKeyValue(item);
+    if (!normalized) return false;
+    return !(
+      targetKeys.has(normalized) ||
+      targetKeys.has(normalized.toUpperCase()) ||
+      targetKeys.has(normalized.toLowerCase())
+    );
+  });
 }
 
 export function createLikeActionToken() {
@@ -3299,8 +3666,23 @@ async function resolveLikelistAfterLikeAction(songId, like, fallbackLikelist) {
   return cloneLikelist(fallbackLikelist);
 }
 
+function isFavoritePlaylistTitle(name) {
+  const trimmed =
+    typeof name == "string" ? name.trim() : String(name || "").trim();
+  return (
+    trimmed === "我喜欢" ||
+    trimmed === "我喜欢的音乐" ||
+    trimmed.endsWith("我喜欢") ||
+    trimmed.endsWith("喜欢的音乐")
+  );
+}
+
 function normalizeFavoritePlaylistMeta(playlist) {
-  const playlistId = playlist?.id ?? null;
+  const playlistId =
+    playlist?.list_create_listid ??
+    playlist?.listid ??
+    playlist?.id ??
+    null;
   if (!playlistId) return null;
 
   const rawName = playlist?.name ?? playlist?.title ?? "";
@@ -3308,14 +3690,20 @@ function normalizeFavoritePlaylistMeta(playlist) {
     typeof rawName == "string" ? rawName.trim() : String(rawName || "").trim();
   const isFavoritePlaylist =
     Number(playlist?.specialType) === 5 ||
-    playlistName === DEFAULT_FAVORITE_PLAYLIST_NAME ||
-    playlistName.endsWith("喜欢的音乐");
+    isFavoritePlaylistTitle(playlistName);
+
+  let normalizedName = playlistName || DEFAULT_FAVORITE_PLAYLIST_NAME;
+  if (
+    isFavoritePlaylist &&
+    playlistName !== "我喜欢" &&
+    playlistName !== "我喜欢的音乐"
+  ) {
+    normalizedName = DEFAULT_FAVORITE_PLAYLIST_NAME;
+  }
 
   return {
     id: playlistId,
-    name: isFavoritePlaylist
-      ? DEFAULT_FAVORITE_PLAYLIST_NAME
-      : playlistName || DEFAULT_FAVORITE_PLAYLIST_NAME,
+    name: normalizedName,
   };
 }
 
@@ -3332,49 +3720,69 @@ export function resolveFavoritePlaylistMeta(playlists) {
 
   const userId = userStore.user?.userId;
   const ownedPlaylists = playlistList.filter(
-    (playlist) => !userId || playlist?.creator?.userId === userId,
+    (playlist) =>
+      playlist?.is_mine === 1 ||
+      !userId ||
+      String(
+        playlist?.creator?.userId ??
+          playlist?.list_create_userid ??
+          playlist?.userid ??
+          "",
+      ) === String(userId),
   );
   const candidatePlaylists =
     ownedPlaylists.length > 0 ? ownedPlaylists : playlistList;
 
+  const getTrimmedName = (playlist) => {
+    const raw = playlist?.name ?? playlist?.title ?? "";
+    return typeof raw == "string" ? raw.trim() : String(raw || "").trim();
+  };
+
   const favoritePlaylist =
+    candidatePlaylists.find((playlist) => {
+      const name = getTrimmedName(playlist);
+      return name === "我喜欢" || name === "我喜欢的音乐";
+    }) ||
     candidatePlaylists.find(
       (playlist) => Number(playlist?.specialType) === 5,
     ) ||
-    candidatePlaylists.find((playlist) => {
-      const playlistName =
-        typeof playlist?.name == "string" ? playlist.name : "";
-      return (
-        playlistName === DEFAULT_FAVORITE_PLAYLIST_NAME ||
-        playlistName.endsWith("喜欢的音乐")
-      );
-    }) ||
-    candidatePlaylists[0];
+    candidatePlaylists.find((playlist) =>
+      isFavoritePlaylistTitle(getTrimmedName(playlist)),
+    ) ||
+    null;
 
   return normalizeFavoritePlaylistMeta(favoritePlaylist);
 }
 
+function extractRawPlaylistArray(result) {
+  if (Array.isArray(result?.playlist)) return result.playlist;
+  if (Array.isArray(result?.info)) return result.info;
+  if (Array.isArray(result?.data?.info)) return result.data.info;
+  if (Array.isArray(result?.data?.playlist)) return result.data.playlist;
+  return [];
+}
+
 export async function getFavoritePlaylistId() {
-  const cachedId = userStore.favoritePlaylistId;
-  const cachedName =
-    typeof userStore.favoritePlaylistName == "string"
-      ? userStore.favoritePlaylistName.trim()
-      : "";
-
-  if (cachedId && cachedName) {
-    return {
-      id: cachedId,
-      name: cachedName,
-    };
-  }
-
   const cachedFavoritePlaylist = resolveFavoritePlaylistMeta(
     libraryStore.playlistUserCreated,
   );
   if (cachedFavoritePlaylist)
     return cacheFavoritePlaylistMeta(cachedFavoritePlaylist);
 
-  if (cachedId) {
+  const cachedId = userStore.favoritePlaylistId;
+  const cachedName =
+    typeof userStore.favoritePlaylistName == "string"
+      ? userStore.favoritePlaylistName.trim()
+      : "";
+
+  if (cachedId && isFavoritePlaylistTitle(cachedName)) {
+    return {
+      id: cachedId,
+      name: cachedName,
+    };
+  }
+
+  if (cachedId && !cachedName) {
     return {
       id: cachedId,
       name: cachedName || DEFAULT_FAVORITE_PLAYLIST_NAME,
@@ -3393,14 +3801,13 @@ export async function getFavoritePlaylistId() {
     };
 
     const result = await getUserPlaylist(params);
-    if (result && result.playlist && result.playlist.length > 0) {
-      const favoritePlaylist = resolveFavoritePlaylistMeta(result.playlist);
+    const items = extractRawPlaylistArray(result);
+    if (items.length > 0) {
+      const favoritePlaylist = resolveFavoritePlaylistMeta(items);
       if (favoritePlaylist) return cacheFavoritePlaylistMeta(favoritePlaylist);
     }
   } catch (error) {}
 
-  if (cachedName) return { id: cachedId || null, name: cachedName };
-  if (cachedId) return { id: cachedId, name: DEFAULT_FAVORITE_PLAYLIST_NAME };
   return null;
 }
 
@@ -3412,13 +3819,31 @@ export async function getFavoritePlaylistNoticeText(like) {
 }
 
 export function isPlaylistTrackOperationSuccess(result) {
+  if (!result) return false;
+  const failed = (value) => value && (
+    (value.status != null && Number(value.status) === 0) ||
+    (value.error_code != null && Number(value.error_code) !== 0) ||
+    (value.code != null && ![0, 200].includes(Number(value.code)))
+  );
+  if ([result, result.body, result.data].some(failed)) return false;
+  const info = result?.data?.info;
+  // An acknowledged playlist record (fileid > 0) is stronger evidence than a
+  // song metadata status field; still reject explicit per-item error codes.
+  const itemFailed = (item) => (
+    (item?.error_code != null && Number(item.error_code) !== 0) ||
+    (item?.status != null && Number(item.status) === 0 &&
+      !(Number(item.fileid ?? item.file_id) > 0))
+  );
+  if (Array.isArray(info) && info.some(itemFailed)) return false;
+  if (info && !Array.isArray(info) && itemFailed(info)) return false;
   return !!(
     result &&
     ((result.status === 200 && result.body && result.body.code === 200) ||
       result.code === 200 ||
       result.status === 200 ||
       result.status === 1 ||
-      result.error_code === 0)
+      result.error_code === 0 ||
+      result.data?.status === 1)
   );
 }
 
@@ -3446,16 +3871,21 @@ function resolveSongForPlaylistTrackOperation(songInput) {
 }
 
 export async function updateFavoritePlaylistTrack(songInput, like) {
+  const requestUserId = userStore.user?.userId;
   const favoritePlaylist = await getFavoritePlaylistId();
   if (!favoritePlaylist?.id) {
     return {
       success: false,
       result: null,
       favoritePlaylist: null,
-      message: "未找到我喜欢的音乐歌单",
+      message: "未找到我喜欢歌单",
     };
   }
 
+  if (requestUserId !== userStore.user?.userId) return { success: false, message: "账号已切换" };
+  ensureFavoritePlaylistScope(favoritePlaylist.id);
+  const requestScope = favoritePlaylistScope;
+  const isCurrentAccount = () => requestUserId === userStore.user?.userId && requestScope === favoritePlaylistScope;
   const selectedSong = resolveSongForPlaylistTrackOperation(songInput);
   if (like && !selectedSong) {
     return {
@@ -3465,16 +3895,127 @@ export async function updateFavoritePlaylistTrack(songInput, like) {
       message: "未找到可添加的歌曲信息",
     };
   }
+
+  if (like) {
+    const params = {
+      op: "add",
+      pid: favoritePlaylist.id,
+      tracks: selectedSong,
+      timestamp: new Date().getTime(),
+    };
+
+    const result = await updatePlaylist(params);
+    let success = isCurrentAccount() && isPlaylistTrackOperationSuccess(result);
+    let confirmedTrack = null;
+    // A successful acknowledgement remains successful even if info is empty.
+    // The read endpoint may lag; only ambiguous/failed acknowledgements need
+    // membership verification before we can report success.
+    if (isCurrentAccount() && !success) {
+      success = false;
+      try {
+        const snapshot = await getPlaylistAll({ id: favoritePlaylist.id, timestamp: Date.now() });
+        confirmedTrack = snapshot?.songs?.find((song) => isSameFavoriteTrack(song, selectedSong)) || null;
+        success = isCurrentAccount() && !!confirmedTrack;
+      } catch (_) {
+        // Preserve the original operation error if verification itself fails.
+      }
+    }
+    if (success) {
+      const responseInfo = result?.data?.info;
+      const addedTrack = confirmedTrack || (Array.isArray(responseInfo) ? responseInfo[0] : responseInfo) || {};
+      const addedFileId =
+        confirmedTrack?.fileid ?? confirmedTrack?.file_id ??
+        result?.data?.info?.[0]?.fileid ??
+        result?.data?.info?.fileid ??
+        result?.data?.[0]?.fileid ??
+        result?.data?.fileid ??
+        result?.fileid ??
+        null;
+      const trackToCache = {
+        ...selectedSong,
+        ...addedTrack,
+        id: addedTrack.mixsongid || addedTrack.album_audio_id || selectedSong.id,
+        name: selectedSong.name || addedTrack.name,
+        // A source-playlist fileid is not valid in the favorites playlist.
+        fileid: addedFileId,
+        file_id: null,
+        favoriteLikeKeys: [...extractSongLikeKeys(selectedSong), ...extractSongLikeKeys(addedTrack)],
+      };
+      favoritePlaylistTracksCache = [
+        trackToCache,
+        ...favoritePlaylistTracksCache.filter(
+          (item) => !isSameFavoriteTrack(item, selectedSong),
+        ),
+      ];
+      userStore.updateLikelist(applyOptimisticLikeState(trackToCache, true));
+      updateFavoritePlaylistIfViewing(trackToCache, true);
+      schedulePlaylistCacheInvalidation();
+      void syncFavoritePlaylistLikelist(favoritePlaylist.id, {
+        forceRefresh: true,
+      });
+    }
+    return {
+      success,
+      result,
+      favoritePlaylist,
+      message: isCurrentAccount()
+        ? getLikeActionErrorMessage(result, "未能确认歌曲已加入歌单，请刷新后重试")
+        : "账号已切换，请重试",
+    };
+  }
+
+  const targetSong = selectedSong || songInput;
+  let matchedTracks = favoritePlaylistTracksCache.filter((item) =>
+    isSameFavoriteTrack(item, targetSong),
+  );
+  let fileids = matchedTracks
+    .map((item) => item?.fileid ?? item?.file_id)
+    .filter(Boolean);
+
+  if (fileids.length === 0) {
+    await syncFavoritePlaylistLikelist(favoritePlaylist.id, {
+      forceRefresh: true,
+    });
+    matchedTracks = favoritePlaylistTracksCache.filter((item) =>
+      isSameFavoriteTrack(item, targetSong),
+    );
+    fileids = matchedTracks
+      .map((item) => item?.fileid ?? item?.file_id)
+      .filter(Boolean);
+  }
+
+  if (fileids.length === 0 || !isCurrentAccount()) {
+    return { success: false, result: null, favoritePlaylist, message: "未找到我喜欢歌单中的歌曲记录，请刷新后重试" };
+  }
+
+  const trackWithFileId =
+    selectedSong && fileids[0]
+      ? { ...selectedSong, fileid: fileids[0] }
+      : targetSong;
+
   const params = {
-    op: like ? "add" : "del",
+    op: "del",
     pid: favoritePlaylist.id,
-    tracks: like ? selectedSong : selectedSong || songInput,
+    tracks: trackWithFileId,
+    ...(fileids.length > 0 ? { fileids: fileids.join(",") } : {}),
     timestamp: new Date().getTime(),
   };
 
   const result = await updatePlaylist(params);
+  const success = isCurrentAccount() && isPlaylistTrackOperationSuccess(result);
+  if (success) {
+    const deleteReference = matchedTracks[0] || trackWithFileId;
+    // Remove all source aliases before evicting the cache entry used to discover them.
+    userStore.updateLikelist(applyOptimisticLikeState(deleteReference, false));
+    favoritePlaylistTracksCache = favoritePlaylistTracksCache.filter(
+      (item) => !isSameFavoriteTrack(item, targetSong),
+    );
+    updateFavoritePlaylistIfViewing(deleteReference, false);
+    schedulePlaylistCacheInvalidation();
+    void syncFavoritePlaylistLikelist(favoritePlaylist.id, { forceRefresh: true });
+  }
   return {
-    success: isPlaylistTrackOperationSuccess(result),
+    success,
     result,
     favoritePlaylist,
     message: getLikeActionErrorMessage(result, "未知错误"),
@@ -3503,24 +4044,16 @@ export async function syncLikelistAfterLikeAction({
 function finalizeLikeActionSideEffects() {
   otherStore.addPlaylistShow = false;
   schedulePlaylistCacheInvalidation();
-
-  try {
-    if (libraryStore.listType1 == 0 && libraryStore.listType2 == 0) {
-      const myPlaylistElement = document.getElementById("myPlaylist");
-      if (myPlaylistElement) {
-        myPlaylistElement.click();
-      }
-    }
-  } catch (e) {
-    console.error("点击myPlaylist失败，忽略:", e);
-  }
+  // The store already updates rows/counts. Reloading the tab here can replace
+  // those changes with a lagging /user/playlist response.
 }
 
 export async function likeSong(like) {
-  const songIdValue = songId.value;
+  const currentSong = songList.value?.[currentIndex.value] || null;
+  const songIdValue = songId.value || currentSong?.id;
 
   // 检查前置条件
-  if (!songIdValue) {
+  if (!songIdValue && !currentSong) {
     console.error("likeSong失败: 没有当前歌曲ID");
     noticeOpen("操作失败：没有选中的歌曲", 2);
     return;
@@ -3528,101 +4061,84 @@ export async function likeSong(like) {
 
   if (!userStore.user || !userStore.user.userId) {
     console.error("likeSong失败: 用户信息未加载");
-    noticeOpen("操作失败：用户信息未加载，请稍后重试", 2);
+    noticeOpen("请先登录账号", 2);
     return;
   }
 
   if (!Array.isArray(userStore.likelist)) {
-    console.error("likeSong失败: 喜欢列表未加载");
-    noticeOpen("操作失败：喜欢列表未加载，请稍后重试", 2);
-    return;
+    userStore.updateLikelist([]);
   }
 
+  const targetTrack = currentSong || songIdValue;
   const actionToken = createLikeActionToken();
-  const attemptFavoritePlaylistFallback = async (fallbackSource) => {
-    const fallbackResult = await updateFavoritePlaylistTrack(songIdValue, like);
-    if (fallbackResult.success) {
+
+  try {
+    const trackResult = await queueLikeRequest(actionToken, () =>
+      updateFavoritePlaylistTrack(targetTrack, like),
+    );
+    if (trackResult?.skipped) return;
+
+    if (trackResult?.success) {
       if (!isActiveLikeActionToken(actionToken)) return;
-      const fallbackLikelist = applyOptimisticLikeState(songIdValue, like);
-      userStore.updateLikelist(fallbackLikelist);
+      const nextLikelist = applyOptimisticLikeState(
+        targetTrack,
+        like,
+        userStore.likelist,
+      );
+      userStore.updateLikelist(nextLikelist);
       noticeOpen(
         like
-          ? `已添加到${fallbackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}`
+          ? `已添加到${trackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}`
           : "已取消喜欢",
         2,
       );
-      await syncLikelistAfterLikeAction({
-        songId: songIdValue,
-        like,
-        actionToken,
-        fallbackLikelist,
-      });
-      if (!isActiveLikeActionToken(actionToken)) return;
       finalizeLikeActionSideEffects();
-      return true;
+      return;
     }
 
-    console.error(
-      "歌单 tracks 降级也失败:",
-      fallbackResult.result || fallbackResult.message,
-    );
-    const errorMsg =
-      fallbackResult.message || getLikeActionErrorMessage(fallbackSource);
-    noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2);
-    return false;
-  };
-
-  try {
-    console.log(
-      "调用官方 /like API, songId:",
-      songIdValue,
-      "like:",
-      like,
-      "userId:",
-      userStore.user.userId,
-    );
-    const result = await queueLikeRequest(actionToken, () =>
-      likeMusic(songIdValue, like),
-    );
-    if (result?.skipped) return;
-    console.log("likeMusic 返回结果:", result);
-
-    if (result && result.code == 200) {
-      if (!isActiveLikeActionToken(actionToken)) return;
-      console.log("官方 /like API 成功");
-      const fallbackLikelist = applyOptimisticLikeState(songIdValue, like);
-      userStore.updateLikelist(fallbackLikelist);
-      noticeOpen(await getFavoritePlaylistNoticeText(like), 2);
-      await syncLikelistAfterLikeAction({
-        songId: songIdValue,
-        like,
-        actionToken,
-        fallbackLikelist,
-      });
-      if (!isActiveLikeActionToken(actionToken)) return;
-      finalizeLikeActionSideEffects();
-    } else {
-      console.warn(
-        "官方 /like API 失败，尝试使用歌单 tracks:",
-        getLikeActionErrorMessage(result),
-      );
-      await attemptFavoritePlaylistFallback(result);
-    }
+    const errorMsg = trackResult?.message || "未知错误";
+    noticeOpen(`${like ? "喜欢" : "取消喜欢"}失败：${errorMsg}`, 2);
   } catch (error) {
-    console.error("调用 /like API 异常:", getLikeActionErrorMessage(error));
-    await attemptFavoritePlaylistFallback(error);
+    console.error("喜欢/取消喜欢操作异常:", error);
+    const errorMsg = getLikeActionErrorMessage(error);
+    noticeOpen(`${like ? "喜欢" : "取消喜欢"}失败：${errorMsg}`, 2);
   }
 }
 
-function updateFavoritePlaylistIfViewing(targetSongId, like) {
+function updateFavoritePlaylistIfViewing(targetSong, like) {
   if (!userStore.favoritePlaylistId) return;
-  const currentSong = resolveSongForPlaylistTrackOperation(targetSongId);
-  libraryStore.applyPlaylistTrackChange({
+  const currentSong = resolveSongForPlaylistTrackOperation(targetSong);
+  libraryStore.applyPlaylistTrackChange?.({
     playlist: { id: userStore.favoritePlaylistId },
     op: like ? "add" : "del",
-    song: currentSong || { id: targetSongId },
+    song: currentSong || (typeof targetSong === "object" ? targetSong : { id: targetSong }),
   });
 }
+
+watch(
+  () => userStore.user?.userId,
+  () => ensureFavoritePlaylistScope(),
+  { flush: "sync" },
+);
+
+watch(
+  () => [
+    libraryStore.libraryInfo?.id ?? libraryStore.libraryInfo?.listid ?? null,
+    libraryStore.playlistHydration?.status ?? null,
+    libraryStore.librarySongs?.length ?? 0,
+  ],
+  ([currentPlaylistId, hydrationStatus]) => {
+    const favId = userStore.favoritePlaylistId;
+    if (!favId || !currentPlaylistId) return;
+    if (
+      String(currentPlaylistId) === String(favId) &&
+      hydrationStatus === "completed" &&
+      Array.isArray(libraryStore.librarySongs)
+    ) {
+      syncLikelistFromFavoriteSongs(libraryStore.librarySongs, favId);
+    }
+  },
+);
 
 export function addToNext(nextSong, autoplay) {
   if (interceptTogetherControl('external')) return;

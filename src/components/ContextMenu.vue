@@ -1,8 +1,8 @@
 <script setup>
   import { ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
-  import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
-  import { addToNext, addToNextLocal, localMusicHandle } from '../utils/player'
+  import { createPlaylist, updatePlaylist, deletePlaylist, normalizePlaylistSong } from '../api/playlist'
+  import { addToNext, addToNextLocal, applyOptimisticLikeState, extractSongLikeKeys, isPlaylistTrackOperationSuccess, localMusicHandle, syncFavoritePlaylistLikelist } from '../utils/player'
   import { dialogOpen, noticeOpen } from '../utils/dialog';
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';
@@ -10,7 +10,7 @@
   import { usePlayerStore } from '../store/playerStore'
   import { useUserStore } from '../store/userStore';
   import { resolveImageUrl } from '../utils/imageUtils'
-  import { getLikelist, getUserPlaylist } from '../api/user';
+  import { getUserPlaylist } from '../api/user';
   import { extractPlaylistItems } from '../utils/accountSession'
   import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
   import { storeToRefs } from 'pinia';
@@ -27,23 +27,25 @@
   const justNewPlaylist = ref(false)
   const newPlaylistTitle = ref(null)
 
-  const isPlaylistUpdateSuccess = result => !!(result && (
-    (result.status === 200 && result.body && result.body.code === 200) ||
-    result.code === 200 ||
-    result.status === 200 ||
-    result.status === 1 ||
-    result.error_code === 0
-  ))
+  const isPlaylistUpdateSuccess = isPlaylistTrackOperationSuccess
+
+  const isFavoritePlaylistTarget = playlist => {
+    if (!playlist) return false
+    const rawName = playlist?.name ?? playlist?.title ?? ''
+    const playlistName = typeof rawName == 'string' ? rawName.trim() : String(rawName || '').trim()
+    return (userStore.favoritePlaylistId && String(playlist?.id ?? playlist?.listid ?? '') === String(userStore.favoritePlaylistId))
+      || Number(playlist?.specialType) === 5
+      || playlistName === '我喜欢'
+      || playlistName === '我喜欢的音乐'
+      || playlistName.endsWith('我喜欢')
+      || playlistName.endsWith('喜欢的音乐')
+  }
 
   const getPlaylistDisplayName = playlist => {
     const rawName = playlist?.name ?? playlist?.title ?? ''
     const playlistName = typeof rawName == 'string' ? rawName.trim() : String(rawName || '').trim()
-    const isFavoritePlaylist = playlist?.id == userStore.favoritePlaylistId
-      || Number(playlist?.specialType) === 5
-      || playlistName === '我喜欢的音乐'
-      || playlistName.endsWith('喜欢的音乐')
-
-    if (isFavoritePlaylist) return '我喜欢的音乐'
+    if (playlistName === '我喜欢' || playlistName === '我喜欢的音乐') return playlistName
+    if (isFavoritePlaylistTarget(playlist)) return userStore.favoritePlaylistName || '我喜欢'
     return playlistName || '歌单'
   }
 
@@ -190,10 +192,9 @@
       const isSuccess = isPlaylistUpdateSuccess(result)
       
       if(isSuccess) {
-        tracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist: otherStore.selectedPlaylist, op: 'del', song }))
-        
         // 检查是否从"我喜欢的音乐"歌单删除，如果是则同步更新喜欢列表
         await updateLikelistIfFromFavorite(tracks)
+        tracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist: otherStore.selectedPlaylist, op: 'del', song }))
 
         updatePlaylistCache()
         const isFavoritePlaylist = userStore.favoritePlaylistId && otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
@@ -212,42 +213,19 @@
     otherStore.justNewPlaylist = false
     createActive.value = false
     schedulePlaylistCacheInvalidation()
-    try {
-      if(listType1.value == 0 && listType2.value == 0) {
-        const myPlaylistElement = document.getElementById('myPlaylist')
-        if (myPlaylistElement) {
-          myPlaylistElement.click()
-        }
-      }
-    } catch (e) {
-      console.error('点击myPlaylist失败，忽略:', e)
-    }
   }
 
-  // 检查是否从"我喜欢的音乐"删除歌曲，如果是则同步更新喜欢列表
+  // 检查是否从"我喜欢"删除歌曲，如果是则同步更新喜欢列表
   const updateLikelistIfFromFavorite = async (tracks = selectedTracks()) => {
     try {
-      // 检查被删除的歌单是否是"我喜欢的音乐"歌单
-      const isFromFavoritePlaylist = userStore.favoritePlaylistId && 
-        otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
+      const isFromFavoritePlaylist = isFavoritePlaylistTarget(otherStore.selectedPlaylist)
       
       if (isFromFavoritePlaylist) {
-        console.log('从我喜欢的音乐删除歌曲，同步更新喜欢列表...')
-        
-        // 从本地喜欢列表中移除该歌曲
-        if (Array.isArray(userStore.likelist)) tracks.forEach(track => {
-          const likeIndex = userStore.likelist.indexOf(track.id)
-          if (likeIndex !== -1) userStore.likelist.splice(likeIndex, 1)
+        let nextLikelist = Array.isArray(userStore.likelist) ? userStore.likelist : []
+        tracks.forEach(track => {
+          nextLikelist = applyOptimisticLikeState(track, false, nextLikelist)
         })
-        
-        // 异步获取最新的喜欢列表以确保数据最终一致
-        try {
-          const res = await getLikelist(userStore.user.userId)
-          userStore.updateLikelist(res?.ids)
-          console.log('喜欢列表已同步更新')
-        } catch (error) {
-          console.error('同步喜欢列表失败:', error)
-        }
+        userStore.updateLikelist(nextLikelist)
       }
     } catch (error) {
       console.error('检查并更新喜欢列表失败:', error)
@@ -388,7 +366,26 @@
       try {
         const result = await updatePlaylist(params)
         if(isPlaylistUpdateSuccess(result)) {
-          tracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist, op: 'add', song: toLibrarySong(song) }))
+          const addedInfo = result?.data?.info
+          const addedTracks = tracks.map((song, index) => {
+            const added = Array.isArray(addedInfo) ? addedInfo[index] : tracks.length === 1 ? addedInfo : null
+            return added ? {
+              ...song,
+              ...normalizePlaylistSong(added),
+              name: song.name || added.name,
+              favoriteLikeKeys: [...extractSongLikeKeys(song), ...extractSongLikeKeys(added)],
+            } : song
+          })
+          if (isFavoritePlaylistTarget(playlist)) {
+            let nextLikelist = Array.isArray(userStore.likelist) ? userStore.likelist : []
+            tracks.forEach((song, index) => {
+              nextLikelist = applyOptimisticLikeState(song, true, nextLikelist)
+              nextLikelist = applyOptimisticLikeState(addedTracks[index], true, nextLikelist)
+            })
+            userStore.updateLikelist(nextLikelist)
+            void syncFavoritePlaylistLikelist(playlist.id, { forceRefresh: true })
+          }
+          addedTracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist, op: 'add', song: toLibrarySong(song) }))
           updatePlaylistCache()
           noticeOpen(`已添加到${playlist.name}`, 2)
         }else {

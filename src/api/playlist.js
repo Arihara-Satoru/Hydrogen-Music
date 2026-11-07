@@ -453,6 +453,7 @@ export function createPlaylist(params) {
     type: playlistType,
     source: params?.source ?? (playlistType === 1 ? 1 : 0),
     is_pri: params?.is_pri ?? params?.privacy ?? 0,
+    timestamp: params?.timestamp ?? Date.now(),
   }
 
   if (params?.list_create_userid != null) requestParams.list_create_userid = params.list_create_userid
@@ -489,11 +490,42 @@ export function collectPlaylist(params) {
 function normalizePlaylistTrackName(track = {}) {
     const filePath = getLocalTrackFilePath(track)
     const fallbackLocalName = filePath ? filePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') : ''
-    return String(track?.name || track?.songname || track?.filename || track?.common?.title || track?.common?.localTitle || track?.localName || fallbackLocalName || '').replace(/[|,]/g, ' ').trim()
+    return String(
+        track?.name ||
+        track?.songname ||
+        track?.song_name ||
+        track?.audio_name ||
+        track?.SongName ||
+        track?.filename ||
+        track?.FileName ||
+        track?.base?.audio_name ||
+        track?.common?.title ||
+        track?.common?.localTitle ||
+        track?.localName ||
+        fallbackLocalName ||
+        ''
+    ).replace(/[|,]/g, ' ').trim()
 }
 
 function normalizePlaylistTrackHash(track = {}) {
-    return String(track?.hash || track?.FileHash || track?.file_hash || track?.deprecated?.hash || track?.audio_info?.hash_128 || track?.audio_info?.hash_320 || '').trim()
+    return String(
+        track?.hash ||
+        track?.FileHash ||
+        track?.file_hash ||
+        track?.audio_info?.hash ||
+        track?.audio_info?.hash_128 ||
+        track?.audio_info?.hash_320 ||
+        track?.audio_info?.hash_flac ||
+        track?.hash_128 ||
+        track?.hash_320 ||
+        track?.hash_flac ||
+        track?.SQFileHash ||
+        track?.HQFileHash ||
+        track?.base?.hash ||
+        track?.deprecated?.hash ||
+        track?.relate_goods?.[0]?.hash ||
+        ''
+    ).trim()
 }
 
 function getLocalTrackFilePath(track = {}) {
@@ -544,14 +576,42 @@ function unwrapPlaylistTrack(track) {
     return track
 }
 
+function toPositiveTrackInteger(value) {
+    if (value === null || value === undefined || value === '' || typeof value === 'boolean') return 0
+    const str = String(value).trim()
+    if (!/^\d+$/.test(str)) return 0
+    const parsed = Number(str)
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0
+}
+
 function normalizePlaylistTrackAlbumId(track = {}) {
     if (isLocalTrack(track)) return 0
-    return track?.al?.id || track?.album_id || track?.albumid || track?.albumId || track?.album?.id || 0
+    return [track?.al?.id, track?.album_id, track?.albumid, track?.albumId,
+        track?.AlbumID, track?.album?.id, track?.album_info?.album_id,
+        track?.albuminfo?.id, track?.base?.album_id]
+        .map(toPositiveTrackInteger).find(Boolean) || 0
 }
 
 function normalizePlaylistTrackMixsongId(track = {}) {
     if (isLocalTrack(track)) return 0
-    return track?.album_audio_id || track?.mixsongid || track?.mixsong_id || track?.id || 0
+    const normalizedExplicit = [track?.album_audio_id, track?.albumAudioId,
+        track?.mixsongid, track?.mixsong_id, track?.MixSongID,
+        track?.add_mixsongid, track?.base?.album_audio_id]
+        .map(toPositiveTrackInteger).find(Boolean) || 0
+    if (normalizedExplicit) return normalizedExplicit
+
+    const fallbackId = toPositiveTrackInteger(track?.id)
+    const audioId = toPositiveTrackInteger(
+        track?.audio_id ??
+        track?.audioId ??
+        track?.Audioid ??
+        track?.AudioID ??
+        track?.base?.audio_id
+    )
+    if (fallbackId && (!audioId || fallbackId !== audioId)) {
+        return fallbackId
+    }
+    return 0
 }
 
 async function buildPlaylistTrackAddEntry(track = {}) {
@@ -571,6 +631,8 @@ async function buildPlaylistTrackAddEntry(track = {}) {
 export function updatePlaylist(params) {
     const operation = String(params?.op || '').toLowerCase()
     const listid = params?.listid || params?.pid || ''
+    // The local API caches even POST responses by URL; every mutation needs a fresh cache key.
+    const timestamp = params?.timestamp ?? Date.now()
 
     if (operation == 'add') {
         const tracks = Array.isArray(params?.tracks) ? params.tracks : [params?.trackDetail || params?.selectedItem || params?.tracks]
@@ -591,6 +653,7 @@ export function updatePlaylist(params) {
               params: {
                 listid,
                 data,
+                timestamp,
               },
             });
         })
@@ -609,6 +672,7 @@ export function updatePlaylist(params) {
           params: {
             listid,
             fileids,
+            timestamp,
           },
         });
     }
@@ -628,6 +692,7 @@ export function deletePlaylist(params) {
       method: 'post',
       params: {
         listid: params?.id || params?.listid,
+        timestamp: params?.timestamp ?? Date.now(),
       },
     });
 }
