@@ -1438,17 +1438,24 @@ watch([playing, lyricShow], ([p, show]) => {
     .song-quality {
         display: flex;
         align-items: center;
-        gap: 0.4em;
+        gap: 0.5em;
         white-space: nowrap;
-        font: 1.5vh Bender-Bold;
+        font: 1.5vh/1 Bender-Bold, SourceHanSansCN-Bold, sans-serif;
         color: black;
         position: absolute;
-        bottom: -0.9vh;
+        bottom: 0;
         right: 1.5vh;
+        transform: translateY(50%);
         .loudness-badge {
-            width: 7em;
-            height: 1.75em;
-            object-fit: cover;
+            height: 1.35em;
+            width: auto;
+            aspect-ratio: 1823 / 443;
+            object-fit: contain;
+            display: block;
+        }
+        span {
+            display: inline-block;
+            line-height: 1;
         }
     }
 

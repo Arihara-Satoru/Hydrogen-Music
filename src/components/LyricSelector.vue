@@ -268,7 +268,8 @@ onUnmounted(() => {
     width: 100%;
     height: 100%;
     position: relative;
-    overflow: hidden;
+    // 四角装饰和音质信息伸出面板，不能在外壳裁切绘制内容。
+    contain: layout;
 }
 
 .selector-toolbar {
