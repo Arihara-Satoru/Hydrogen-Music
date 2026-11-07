@@ -1,5 +1,6 @@
 <script setup>
   import { ref, watch, nextTick } from 'vue'
+  import { preventPlaybackTextSelection } from '../utils/songTextInteraction.mjs'
   import { RecycleScroller } from 'vue-virtual-scroller'
   import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
   import { pauseMusic } from '../utils/player';
@@ -193,6 +194,7 @@
             'list-item-disabled': item.playable !== undefined && !item.playable
           }"
           @dblclick="play(item.id, index)"
+          @mousedown="preventPlaybackTextSelection"
         >
           <!-- 正在播放时左侧实体战术指示条 -->
           <span class="active-indicator" aria-hidden="true"></span>

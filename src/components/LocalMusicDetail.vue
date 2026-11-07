@@ -1,5 +1,6 @@
 <script setup>
   import { ref, computed, nextTick, watch } from 'vue'
+  import { preventPlaybackTextSelection } from '../utils/songTextInteraction.mjs'
   import { useRouter, onBeforeRouteUpdate} from 'vue-router';
   import { songTime2 } from '../utils/player';
   import { addLocalMusicTOList, setShuffledList } from '../utils/player'
@@ -114,7 +115,7 @@
             <span class="empty-title">未找到相关歌曲</span>
           </div>
           <template v-else>
-            <div class="list-item" :key="entry.rowKey" :class="{'list-item-playing': songId == entry.song.id}" @dblclick="play(entry.song, entry.sourceIndex)" @contextmenu="openMenu($event,entry.song)" v-for="entry in filteredSongEntries">
+            <div class="list-item" :key="entry.rowKey" :class="{'list-item-playing': songId == entry.song.id}" @mousedown="preventPlaybackTextSelection" @dblclick="play(entry.song, entry.sourceIndex)" @contextmenu="openMenu($event,entry.song)" v-for="entry in filteredSongEntries">
               <div class="item-title">
                 <div class="item-state">
                     <div class="playing-eq" v-show="(songId == entry.song.id)" :class="{ 'is-paused': !playing }" aria-hidden="true">

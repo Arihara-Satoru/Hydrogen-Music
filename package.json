@@ -17,6 +17,7 @@
     "check:kugou-compatibility": "node --experimental-vm-modules scripts/check-kugou-compatibility.mjs",
     "check:favorite-playlist": "node --experimental-vm-modules scripts/check-favorite-playlist.mjs",
     "check:playlist-addition": "node scripts/check-playlist-addition.mjs",
+    "check:song-text-interaction": "node scripts/check-song-text-interaction.mjs",
     "bench:playlist": "node --experimental-vm-modules scripts/check-kugou-compatibility.mjs --benchmark",
     "check:cloud-api": "node --experimental-vm-modules scripts/check-cloud-api.mjs",
     "check:cloud-metadata": "node scripts/check-cloud-metadata.cjs",

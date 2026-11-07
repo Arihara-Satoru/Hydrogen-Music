@@ -13,6 +13,7 @@ import { storeToRefs } from 'pinia'
 import { noticeOpen } from '../utils/dialog'
 import { getSongDisplayName } from '../utils/songName'
 import { selectSongRange } from '../utils/songSelection.mjs'
+import { preventPlaybackTextSelection } from '../utils/songTextInteraction.mjs'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -297,6 +298,7 @@ const openMenu = (e, item) => {
                 :aria-checked="props.multiSelect ? selectedRowKeys.has(item.rowKey) : undefined"
                 :aria-label="props.multiSelect ? getSongDisplayName(item.song, '', showSongTranslation) : undefined"
                 @pointerdown="startSelection($event, item)"
+                @mousedown="preventPlaybackTextSelection"
                 @keydown="selectWithKeyboard($event, item)"
                 @mouseenter="hoverRowKey = item.rowKey"
                 @mouseleave="hoverRowKey = null"

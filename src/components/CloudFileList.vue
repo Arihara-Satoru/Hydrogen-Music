@@ -1,5 +1,6 @@
 <script setup>
   import { computed, ref, watch } from 'vue'
+  import { preventPlaybackTextSelection } from '../utils/songTextInteraction.mjs'
   import { formatTime } from '../utils/time'
   import { dialogOpen, noticeOpen } from '../utils/dialog'
   import { deleteCloudSong } from '../api/cloud'
@@ -194,7 +195,7 @@
   <div class="file-container">
     <div class="file-list" :class="{ 'file-list-selected': hasSelection }">
       <template v-if="visibleItems.length">
-        <div class="list-item" @dblclick="play(item)" v-for="(item, index) in visibleItems" :key="getItemKey(item, index)">
+        <div class="list-item" @mousedown="preventPlaybackTextSelection" @dblclick="play(item)" v-for="(item, index) in visibleItems" :key="getItemKey(item, index)">
           <div class="item-info">
             <div class="item-img" :class="{ disabled: !canSelectItem(item) }" @click="fileEdit(item)">
               <img v-if="getItemCover(item)" v-lazy :src="getItemCover(item)" alt="">

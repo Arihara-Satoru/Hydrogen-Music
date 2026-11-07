@@ -1,5 +1,6 @@
 <script setup>
   import { onActivated, ref, inject } from 'vue'
+  import { preventPlaybackTextSelection } from '../utils/songTextInteraction.mjs'
   import { useRouter } from 'vue-router';
   import { getNewestSong } from '../api/song';
   import { addToNext, startMusic, pauseMusic } from '../utils/player';
@@ -71,7 +72,7 @@
       </div>
     </div>
     <div class="song-list" v-else>
-        <div class="list-item" @dblclick="play(item)" v-for="(item, index) in newestSongList" :key="item.id || index">
+        <div class="list-item" @mousedown="preventPlaybackTextSelection" @dblclick="play(item)" v-for="(item, index) in newestSongList" :key="item.id || index">
             <div class="item-info">
                 <div class="song-img">
                     <img v-lazy :src="getImgUrl(item)" alt="">

@@ -149,16 +149,18 @@ watch(
                 <div
                     class="header-router"
                     data-tour="navigation"
+                    @dragstart.prevent
                     :class="{ 'router-closed': !userStore.homePage && !userStore.cloudDiskPage && !userStore.personalFMPage && !userStore.togetherPage && !userStore.sirenPage }"
                     ref="routerContainer"
                 >
                     <div class="primary-nav">
                         <!-- <div class="logout" @click="userLogout()">退出登录</div> -->
-                        <router-link ref="homeLink" class="button-home" :style="{ color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535' }" to="/" v-if="userStore.homePage">
+                        <router-link ref="homeLink" draggable="false" class="button-home" :style="{ color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535' }" to="/" v-if="userStore.homePage">
                             首页
                         </router-link>
                         <router-link
                             ref="cloudLink"
+                            draggable="false"
                             class="button-cloud"
                             :style="{ color: router.currentRoute.value.name == 'clouddisk' ? 'black' : '#353535' }"
                             to="/cloud"
@@ -168,6 +170,7 @@ watch(
                         </router-link>
                         <router-link
                             ref="fmLink"
+                            draggable="false"
                             class="button-fm"
                             :style="{ color: router.currentRoute.value.name == 'personalfm' ? 'black' : '#353535' }"
                             to="/personalfm"
@@ -177,6 +180,7 @@ watch(
                         </router-link>
                         <router-link
                             ref="musicLink"
+                            draggable="false"
                             class="button-music"
                             :style="{ color: router.currentRoute.value.name === 'mymusic' || router.currentRoute.value.fullPath.startsWith('/mymusic') ? 'black' : '#353535' }"
                             to="/mymusic"
@@ -185,6 +189,7 @@ watch(
                         </router-link>
                         <router-link
                             ref="togetherLink"
+                            draggable="false"
                             class="button-together"
                             :style="{ color: router.currentRoute.value.name === 'together' ? 'black' : '#353535' }"
                             to="/together"
@@ -196,6 +201,7 @@ watch(
                     <div class="header-router-right">
                         <router-link
                             ref="sirenLink"
+                            draggable="false"
                             class="button-siren"
                             :style="{ color: router.currentRoute.value.fullPath.startsWith('/siren') ? 'black' : '#353535' }"
                             to="/siren"
@@ -301,6 +307,8 @@ main {
             align-items: center;
             flex-shrink: 0;
             -webkit-app-region: no-drag;
+            -webkit-user-drag: none;
+            user-select: none;
         }
         .primary-nav a {
             margin-right: 40px;
