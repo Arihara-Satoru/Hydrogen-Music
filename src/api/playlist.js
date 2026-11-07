@@ -113,9 +113,9 @@ function mergeLocalHashTrack(song = {}, localTrack = null) {
     }
 }
 
-async function applyLocalHashTrackFallback(songs = []) {
+async function applyLocalHashTrackFallback(songs = [], localTrackMap = null) {
     // ponytail: only hashes recorded while adding local tracks are whitelisted; upgrade path is a background local-library hash index.
-    const localTrackMap = await getLocalHashTrackMap()
+    localTrackMap = localTrackMap || await getLocalHashTrackMap()
     if (!Object.keys(localTrackMap).length) return songs.filter(song => song?.shield !== 1)
 
     return songs
@@ -267,7 +267,7 @@ export function getPlaylistDetail(params) {
  * @param {*} params 
  * @returns 
  */
-async function fetchPlaylistPageByListId(id, page, pagesize, rest) {
+async function fetchPlaylistPageByListId(id, page, pagesize, rest, getLocalTracks) {
     const result = await request({
         url: '/playlist/track/all/new',
         method: 'get',
@@ -278,12 +278,12 @@ async function fetchPlaylistPageByListId(id, page, pagesize, rest) {
         throw new Error(result?.errmsg || result?.msg || result?.message || '歌单响应格式异常')
     }
     return {
-        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(rawSongs, { filterShield: false })),
+        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(rawSongs, { filterShield: false }), await getLocalTracks()),
         rawCount: rawSongs.length,
     }
 }
 
-async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
+async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest, getLocalTracks) {
     const result = await request({
         url: '/playlist/track/all',
         method: 'get',
@@ -295,55 +295,66 @@ async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
     }
     return {
         raw: result,
-        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(rawSongs, { filterShield: false })),
+        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(rawSongs, { filterShield: false }), await getLocalTracks()),
         rawCount: rawSongs.length,
         privileges: Array.isArray(result?.privileges) ? result.privileges : [],
     }
 }
 
+// A count is only a concurrency hint, never a completion condition: sidebar
+// counts may lag writes. Raw page length (before shield filtering) ends a load.
+async function fetchAllPlaylistPages(fetchPage, startPage, pagesize, totalHint) {
+    const first = await fetchPage(startPage)
+    const pages = [first]
+    if (first.rawCount < pagesize) return pages
+    let page = startPage + 1
+    while (true) {
+        const hintedPages = Math.ceil(Number(totalHint) / pagesize)
+        const remainingHint = hintedPages - page + 1
+        const width = Math.min(4, Math.max(1, Number.isFinite(hintedPages) && hintedPages > 0 && remainingHint >= 0
+            ? remainingHint : page - startPage))
+        // allSettled also consumes errors from speculative pages beyond the end.
+        const batch = await Promise.allSettled(Array.from({ length: width }, (_, index) => fetchPage(page + index)))
+        for (const result of batch) {
+            if (result.status === 'rejected') throw result.reason
+            pages.push(result.value)
+            if (result.value.rawCount < pagesize) return pages
+        }
+        page += width
+    }
+}
+
 export async function getPlaylistAll(params) {
-    const { id, gid, limit, offset, ...rest } = params || {}
+    const { id, gid, limit, offset, totalHint, ...rest } = params || {}
     const pagesize = 300
     const startPage = offset != null && limit ? Math.floor(offset / limit) + 1 : 1
     const normalizedId = String(id || '')
     // 酷狗公开/推荐歌单统一走 collection 接口，只有用户自建/收藏歌单才走新版 listid 接口。
     const collectionId = gid || rest?.global_collection_id || (/^collection_\d+_\d+_\d+_\d+$/.test(normalizedId) ? normalizedId : '')
+    let localTracksPromise
+    const getLocalTracks = () => localTracksPromise || (localTracksPromise = getLocalHashTrackMap())
 
     if (collectionId) {
-        const allSongs = []
-        let page = startPage
-        let rawResult = null
-        let privileges = []
-        while (true) {
-            const pageResult = await fetchPlaylistPageByCollectionId(collectionId, page, pagesize, rest)
-            rawResult = pageResult?.raw || rawResult
-            privileges = Array.isArray(pageResult?.privileges) ? pageResult.privileges : privileges
-            const songs = pageResult?.songs || []
-            allSongs.push(...songs)
-            if (pageResult.rawCount < pagesize) break
-            page++
-        }
+        const pages = await fetchAllPlaylistPages(page => fetchPlaylistPageByCollectionId(collectionId, page, pagesize, rest, getLocalTracks), startPage, pagesize, totalHint)
         return {
-            ...(rawResult || {}),
-            songs: allSongs,
-            privileges,
+            ...(pages.at(-1)?.raw || {}),
+            songs: pages.flatMap(page => page.songs),
+            privileges: pages.flatMap(page => page.privileges),
             complete: true,
         }
     }
 
-    let page = startPage
+    let firstPageLoaded = false
     try {
-        const allSongs = []
-        while (true) {
-            const pageResult = await fetchPlaylistPageByListId(id, page, pagesize, rest)
-            allSongs.push(...pageResult.songs)
-            if (pageResult.rawCount < pagesize) break
-            page++
-        }
+        const pages = await fetchAllPlaylistPages(async page => {
+            const result = await fetchPlaylistPageByListId(id, page, pagesize, rest, getLocalTracks)
+            if (page === startPage) firstPageLoaded = true
+            return result
+        }, startPage, pagesize, totalHint)
         // ponytail: retain the existing listid order until an authenticated upstream sample establishes its sort direction.
-        return { songs: allSongs.reverse(), privileges: [], complete: true }
+        return { songs: pages.flatMap(page => page.songs).reverse(), privileges: [], complete: true }
     } catch (error) {
-        if (page !== startPage) throw error
+        if (firstPageLoaded) throw error
         if (!id) {
             return { songs: [], privileges: [], complete: true }
         }

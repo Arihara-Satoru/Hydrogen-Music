@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { createContext, SourceTextModule, SyntheticModule } from 'node:vm'
 import { reactive, computed } from 'vue'
+import { performance } from 'node:perf_hooks'
 
 // Run with node --experimental-vm-modules scripts/check-kugou-compatibility.mjs.
 const storage = new Map()
@@ -25,6 +26,7 @@ const pinia = mock({ defineStore: (_id, options) => () => {
   return store
 } })
 const songStatus = mock({ mapSongsPlayableStatus: songs => songs })
+let searchTextBuilds = 0
 async function load(path, dependencies) {
   const module = new SourceTextModule(await readFile(path, 'utf8'), { context, identifier: path })
   await module.link(name => {
@@ -118,6 +120,8 @@ assert.equal(Object.keys(store.searchErrors).length, 0)
 assert.equal(store.searchLoading, false)
 
 const playlist = await load('src/api/playlist.js', { '../utils/request': requestModule })
+let localMapReads = 0
+context.windowApi = { getLocalMusicHashTracks: async () => { localMapReads++; return {} } }
 const { getPlaylistAll } = playlist.namespace
 const { updatePlaylist, createPlaylist, deletePlaylist } = playlist.namespace
 responder = async () => ({ status: 1, data: { status: 1 } })
@@ -196,12 +200,13 @@ await assert.rejects(() => getPlaylistAll({ id: 'collection_3_123_4_0' }), /歌�
 // Exercise the real detail action so filtering cannot trigger a second hydration and duplicate tracks.
 const libraryModule = await load('src/store/libraryStore.js', {
   pinia,
+  vue: mock({ computed }),
   '../api/playlist': playlist,
   '../api/album': mock({ getAlbumDetail() {}, albumDynamic() {} }),
   '../api/artist': mock({ getArtistDetail() {}, getArtistTopSong() {}, getArtistAlbum() {} }),
   '../api/mv': mock({ getArtistMV() {} }),
   '../utils/songStatus': songStatus,
-  '../utils/songFilter': mock({ buildAlbumSearchText() {}, buildCloudSongSearchText: song => song.name, buildMVSearchText() {} }),
+  '../utils/songFilter': mock({ buildAlbumSearchText() {}, buildCloudSongSearchText: song => { searchTextBuilds++; return song.name }, buildMVSearchText() {} }),
 })
 for (const collected of [false, true]) {
   const library = libraryModule.namespace.useLibraryStore()
@@ -257,4 +262,77 @@ favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'del', song:
 assert.equal(sidebarFavorite.trackCount, 648)
 assert.equal(favoriteLibrary.libraryInfo.trackCount, 648)
 
+// Search text is built lazily, reused, and invalidated by metadata changes.
+searchTextBuilds = 0
+favoriteLibrary.indexLibrarySongs(favoriteLibrary.librarySongs)
+assert.equal(searchTextBuilds, 0, 'opening a playlist does not eagerly build search text')
+const searchable = favoriteLibrary.librarySongs[0]
+assert.equal(favoriteLibrary.getSongSearchText(searchable), searchable.name)
+favoriteLibrary.getSongSearchText(searchable)
+assert.equal(searchTextBuilds, 1, 'repeated searches reuse a per-song computed value')
+searchable.name = '更新后的歌曲'
+assert.equal(favoriteLibrary.getSongSearchText(searchable), '更新后的歌曲')
+assert.equal(searchTextBuilds, 2, 'in-place metadata edits invalidate cached text')
+favoriteLibrary.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'add', song: newSong })
+assert.equal(searchTextBuilds, 2, 'adding a track does not rebuild other songs search text')
+
+// Controlled promises prove pages overlap, results stay in page order, and one
+// load shares one IPC lookup. A hint is not trusted to truncate the playlist.
+for (const totalHint of [648, 1, 99999, undefined]) {
+  requests.length = 0
+  localMapReads = 0
+  let active = 0, maxActive = 0
+  responder = async ({ params }) => {
+    active++; maxActive = Math.max(maxActive, active)
+    await new Promise(resolve => setTimeout(resolve, params.page === 2 ? 3 : 1))
+    active--
+    const length = Math.max(0, Math.min(300, 1248 - (params.page - 1) * 300))
+    return { data: { info: Array.from({ length }, (_, i) => ({ hash: `hash-${(params.page - 1) * 300 + i}`, filename: '歌曲' })) } }
+  }
+  const result = await getPlaylistAll({ id: 123, totalHint })
+  assert.equal(result.songs.length, 1248, 'stale count hints must not truncate tracks')
+  assert.equal(result.songs[0].hash, 'hash-1247')
+  assert.equal(result.songs.at(-1).hash, 'hash-0')
+  assert.ok(maxActive > 1 && maxActive <= 4, 'bounded concurrency, not sequential or unbounded requests')
+  assert.equal(localMapReads, 1, 'read local hash mappings once per full load, not per page')
+  assert.ok(requests.every(request => request.params.totalHint === undefined), 'client scheduling hints never leak to upstream')
+}
+
+// A failed required page must reject even if later speculative pages are empty.
+responder = async ({ params }) => {
+  if (params.page === 3) throw new Error('required page failed')
+  return { data: { info: params.page <= 2 ? pageOne : [] } }
+}
+await assert.rejects(() => getPlaylistAll({ id: 123, totalHint: 1200 }), /required page failed/)
+// Conversely, errors beyond an already observed end do not break a valid load.
+responder = async ({ params }) => {
+  if (params.page > 2) throw new Error('past the end')
+  return { data: { info: params.page === 1 ? pageOne : pageTwo } }
+}
+assert.equal((await getPlaylistAll({ id: 123, totalHint: 1200 })).songs.length, 301)
+
+if (process.argv.includes('--benchmark')) {
+  for (const count of [648, 10000]) {
+    let active = 0, maxActive = 0, calls = 0
+    responder = async ({ params }) => {
+      calls++; active++; maxActive = Math.max(maxActive, active)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      active--
+      const length = Math.max(0, Math.min(300, count - (params.page - 1) * 300))
+      return { data: { info: Array.from({ length }, (_, i) => ({ hash: `hash-${params.page}-${i}`, filename: `歌曲${i}` })) } }
+    }
+    const started = performance.now()
+    const result = await getPlaylistAll({ id: 123, totalHint: count })
+    console.log(JSON.stringify({ benchmark: 'playlist-load', songs: count, loaded: result.songs.length, simulatedPageLatencyMs: 10, elapsedMs: Math.round(performance.now() - started), requests: calls, maxActive }))
+  }
+  const large = libraryModule.namespace.useLibraryStore()
+  large.libraryInfo = { id: 2, trackCount: 10000 }
+  large.librarySongs = Array.from({ length: 10000 }, (_, id) => ({ id, name: `歌曲${id}`, hash: `hash-${id}` }))
+  searchTextBuilds = 0
+  large.indexLibrarySongs(large.librarySongs)
+  const initialBuilds = searchTextBuilds
+  const started = performance.now()
+  large.applyPlaylistTrackChange({ playlist: { id: 2 }, op: 'add', song: { id: 10001, name: '新增歌曲' } })
+  console.log(JSON.stringify({ benchmark: 'playlist-search-index', songs: 10000, initialBuilds, addBuilds: searchTextBuilds - initialBuilds, addElapsedMs: Math.round(performance.now() - started) }))
+}
 console.log('KuGou search and playlist compatibility check passed')

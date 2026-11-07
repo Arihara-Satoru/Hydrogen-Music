@@ -16,6 +16,8 @@
     "check:chorus": "node scripts/check-chorus-feature.mjs",
     "check:kugou-compatibility": "node --experimental-vm-modules scripts/check-kugou-compatibility.mjs",
     "check:favorite-playlist": "node --experimental-vm-modules scripts/check-favorite-playlist.mjs",
+    "check:playlist-addition": "node scripts/check-playlist-addition.mjs",
+    "bench:playlist": "node --experimental-vm-modules scripts/check-kugou-compatibility.mjs --benchmark",
     "check:cloud-api": "node --experimental-vm-modules scripts/check-cloud-api.mjs",
     "check:cloud-metadata": "node scripts/check-cloud-metadata.cjs",
     "check:comment-api": "node --experimental-vm-modules scripts/check-comment-api.mjs",

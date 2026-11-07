@@ -248,7 +248,7 @@ const songFilterEntries = computed(() => {
         .filter(entry => !showSongSearch.value || !hasSongSearchKeyword.value || matchSearchText(libraryStore.getSongSearchText(entry.song, `song-${entry.sourceIndex}`), normalizedSongSearchKeyword.value));
 });
 const visibleLibrarySongs = computed(() => {
-    if (!showSongSearch.value) return Array.isArray(librarySongs.value) ? librarySongs.value : [];
+    if (!showSongSearch.value || !hasSongSearchKeyword.value) return Array.isArray(librarySongs.value) ? librarySongs.value : [];
     return songFilterEntries.value.map(entry => entry.song);
 });
 const visibleLibrarySourceIndexes = computed(() => {

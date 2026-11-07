@@ -463,7 +463,6 @@ import { schedulePlaylistCacheInvalidation } from "../utils/cacheInvalidation";
 import { getSongDisplayName } from "../utils/songName";
 import { mapSongsPlayableStatus } from "../utils/songStatus";
 import {
-  applyOptimisticLikeState,
   isSongLiked,
   updateFavoritePlaylistTrack,
   play,
@@ -1835,10 +1834,7 @@ const likeSong = async () => {
     const result = await updateFavoritePlaylistTrack(targetSong, shouldLike);
     if (!result.success) throw new Error(result.message || "歌单 tracks 返回异常");
 
-    // ponytail: 酷狗没有 /likelist；本次会话先乐观更新，跨会话状态应由账号初始化加载喜欢歌单时恢复。
-    userStore.updateLikelist(
-      applyOptimisticLikeState(targetSong, shouldLike, likelist.value),
-    );
+    // The shared action has already updated membership and playlist rows.
     noticeOpen(
       shouldLike
         ? `已添加到${result.favoritePlaylist?.name || "我喜欢"}`

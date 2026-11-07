@@ -6,8 +6,19 @@ import { createContext, SourceTextModule, SyntheticModule } from 'node:vm'
 let now = 10000
 class Clock extends Date { static now() { return now } }
 const noop = () => {}
+const timers = new Map()
+let timerId = 0
+const advance = async ms => {
+  now += ms
+  for (const [id, timer] of [...timers]) {
+    if (timer.at <= now) { timers.delete(id); timer.callback() }
+  }
+  await settle()
+}
 const bridge = new Proxy({}, { get: () => noop })
-const context = createContext({ console, Date: Clock, setTimeout, clearTimeout, setInterval: () => 1,
+const context = createContext({ console, Date: Clock,
+  setTimeout: (callback, delay) => { const id = ++timerId; timers.set(id, { callback, at: now + delay }); return id },
+  clearTimeout: id => timers.delete(id), setInterval: () => 1,
   clearInterval: noop, windowApi: bridge, window: { playerApi: bridge, addEventListener: noop }, navigator: {} })
 const mock = exports => new SyntheticModule(Object.keys(exports), function () {
   for (const [key, value] of Object.entries(exports)) this.setExport(key, value)
@@ -43,6 +54,7 @@ const player = module.namespace
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
 const sync = () => player.syncFavoritePlaylistLikelist(2, { forceRefresh: true })
 const reset = () => {
+  timers.clear()
   now += 6000
   player.syncLikelistFromFavoriteSongs([], 2)
   writes.length = 0
@@ -151,10 +163,12 @@ let releaseFirst
 readSongs = () => new Promise(resolve => { releaseFirst = resolve })
 const firstSync = sync()
 readSongs = async () => ({ songs: [canonical] })
-await sync()
+const duplicateSync = sync()
 releaseFirst({ songs: [] })
-await firstSync
-assert.equal(player.isSongLiked(canonical), true, 'out-of-order refreshes retain the latest result')
+await Promise.all([firstSync, duplicateSync])
+assert.equal(player.isSongLiked(canonical), false, 'same-revision forced syncs reuse the in-flight read')
+await sync()
+assert.equal(player.isSongLiked(canonical), true, 'a later refresh still sees newer server state')
 
 reset()
 state.listInfo = { id: 9 }
@@ -187,6 +201,88 @@ assert.equal(player.isSongLiked(canonical), false, 'old-account response cannot 
 readSongs = async () => ({ songs: [] })
 await sync()
 assert.equal(player.isSongLiked(original), false)
+
+// Successful mutations update immediately but share one deferred full refresh.
+reset()
+let backgroundReads = 0
+writeResult = { status: 1, data: { status: 1, info: [canonical] } }
+readSongs = async () => { backgroundReads++; return { songs: [canonical] } }
+await player.updateFavoritePlaylistTrack(original, true)
+await player.updateFavoritePlaylistTrack(original, true)
+assert.equal(backgroundReads, 0, 'acknowledged writes do not immediately reload the full playlist')
+assert.equal(player.isSongLiked(original), true)
+await advance(1500)
+assert.equal(backgroundReads, 1, 'a burst of successful writes coalesces into one read')
+
+// A burst during a running background read queues only one follow-up.
+reset()
+backgroundReads = 0
+let releaseBackground
+readSongs = () => { backgroundReads++; return new Promise(resolve => { releaseBackground = resolve }) }
+await player.updateFavoritePlaylistTrack(original, true)
+await advance(1500)
+assert.equal(backgroundReads, 1)
+await player.updateFavoritePlaylistTrack(original, true)
+await player.updateFavoritePlaylistTrack(original, true)
+await advance(1500)
+assert.equal(backgroundReads, 1, 'background reconciliation cannot overlap another background read')
+await player.updateFavoritePlaylistTrack(original, true)
+await advance(1500)
+assert.equal(backgroundReads, 1, 'multiple expired timers still wait for the active read')
+readSongs = async () => { backgroundReads++; return { songs: [canonical] } }
+releaseBackground({ songs: [] })
+await settle()
+assert.equal(backgroundReads, 2)
+assert.equal(player.isSongLiked(original), true, 'older read cannot overwrite newer mutations')
+
+reset()
+backgroundReads = 0
+readSongs = async () => { backgroundReads++; return { songs: [canonical] } }
+for (let i = 0; i < 7; i++) {
+  await player.updateFavoritePlaylistTrack(original, true)
+  await advance(500)
+}
+assert.equal(backgroundReads, 1, 'continuous writes cannot postpone reconciliation beyond max wait')
+
+// A required explicit read satisfies a scheduled refresh without another read.
+reset()
+backgroundReads = 0
+readSongs = async () => { backgroundReads++; return { songs: [canonical] } }
+await player.updateFavoritePlaylistTrack(original, true)
+await sync()
+await advance(1500)
+assert.equal(backgroundReads, 1, 'explicit synchronization cancels redundant deferred work')
+
+// Account changes cancel deferred work, not only in-flight responses.
+reset()
+backgroundReads = 0
+readSongs = async () => { backgroundReads++; return { songs: [] } }
+await player.updateFavoritePlaylistTrack(original, true)
+user.user = { userId: 'user-c' }
+watchers.find(item => typeof item.source === 'function' && item.source() === 'user-c').callback()
+await advance(6000)
+assert.equal(backgroundReads, 0, 'logout/account switch cancels deferred account reads')
+
+// Large membership checks reuse the shared key index between song changes.
+reset()
+const largeFavorites = Array.from({ length: 10000 }, (_, id) => ({ id: id + 1000, hash: `large-${id}`, fileid: id + 1 }))
+player.syncLikelistFromFavoriteSongs(largeFavorites, 2)
+assert.equal(player.isSongLiked({ id: 10999 }), true)
+assert.equal(player.isSongLiked({ hash: 'LARGE-9999' }), true)
+assert.equal(player.isSongLiked({ id: 20000 }), false)
+user.updateLikelist([])
+assert.equal(player.isSongLiked({ id: 10999 }), false, 'replacing membership invalidates the key index')
+let membershipReads = 0
+user.updateLikelist(new Proxy(Array.from({ length: 10000 }, (_, id) => String(id + 1000)), {
+  get(target, key, receiver) {
+    if (/^\d+$/.test(String(key))) membershipReads++
+    return Reflect.get(target, key, receiver)
+  },
+}))
+assert.equal(player.isSongLiked({ id: 10999 }), true)
+const firstLookupReads = membershipReads
+for (let i = 0; i < 100; i++) player.isSongLiked({ id: 1000 + i })
+assert.equal(membershipReads, firstLookupReads, 'switching songs reuses the index instead of rescanning 10000 memberships')
 
 const playerVue = await readFile('src/components/Player.vue', 'utf8')
 const toolbar = playerVue.slice(playerVue.indexOf('class="song-control"'))

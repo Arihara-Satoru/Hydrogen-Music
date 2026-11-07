@@ -1208,6 +1208,18 @@ let favoritePlaylistScope = null;
 let favoritePlaylistRevision = 0;
 let favoritePlaylistSyncToken = 0;
 const FAVORITE_MUTATION_GRACE_MS = 5000;
+const FAVORITE_REFRESH_DELAY_MS = 1500;
+const FAVORITE_REFRESH_MAX_WAIT_MS = 3500;
+let favoritePlaylistRefreshTimer = null;
+let favoritePlaylistRefreshStartedAt = null;
+let favoritePlaylistRefreshRunning = null;
+let favoritePlaylistSyncRevision = null;
+let favoritePlaylistSyncForced = false;
+let favoriteTracksByKey = new Map();
+let favoriteLikeKeyIndex = new Set();
+let indexedLikelist = null;
+let locallyUpdatedFavoriteSongs = new WeakSet();
+let favoritePlaylistRefreshVersion = 0;
 let unauthenticatedRestoreNoticeShown = false;
 const CHORUS_MIN_SEGMENT_SECONDS = 3;
 let chorusStopTimer = null;
@@ -3311,10 +3323,81 @@ function ensureFavoritePlaylistScope(playlistId = userStore.favoritePlaylistId) 
   favoritePlaylistTracksCache = [];
   favoritePlaylistHydratedId = null;
   favoritePlaylistSyncPromise = null;
+  clearTimeout(favoritePlaylistRefreshTimer);
+  favoritePlaylistRefreshTimer = null;
+  favoritePlaylistRefreshStartedAt = null;
+  favoritePlaylistRefreshRunning = null;
+  favoriteTracksByKey = new Map();
+  indexedLikelist = null;
+  favoriteLikeKeyIndex = new Set();
+  locallyUpdatedFavoriteSongs = new WeakSet();
+  favoritePlaylistRefreshVersion += 1;
   pendingLikedTracks = [];
   pendingUnlikedTracks = [];
   favoritePlaylistRevision += 1;
   favoritePlaylistSyncToken += 1;
+}
+
+function indexFavoriteTracks() {
+  favoriteTracksByKey = new Map();
+  for (const track of favoritePlaylistTracksCache) addFavoriteTrackIndex(track);
+}
+
+function addFavoriteTrackIndex(track) {
+  for (const key of extractSongLikeKeys(track)) {
+    if (!favoriteTracksByKey.has(key)) favoriteTracksByKey.set(key, new Set());
+    favoriteTracksByKey.get(key).add(track);
+  }
+}
+
+function removeCachedFavoriteTracks(tracks) {
+  if (!tracks.length) return;
+  const removed = new Set(tracks);
+  favoritePlaylistTracksCache = favoritePlaylistTracksCache.filter(track => !removed.has(track));
+  for (const track of removed) {
+    for (const key of extractSongLikeKeys(track)) {
+      const entries = favoriteTracksByKey.get(key);
+      entries?.delete(track);
+      if (!entries?.size) favoriteTracksByKey.delete(key);
+    }
+  }
+}
+
+function findCachedFavoriteTracks(track) {
+  const matches = new Set();
+  for (const key of extractSongLikeKeys(track)) {
+    for (const match of favoriteTracksByKey.get(key) || []) matches.add(match);
+  }
+  return Array.from(matches);
+}
+
+// Coalesce successful writes, without postponing reconciliation indefinitely.
+// Background work waits for a running read; required deletion/verification reads
+// still use syncFavoritePlaylistLikelist directly and are never delayed here.
+export function scheduleFavoritePlaylistRefresh(playlistId = userStore.favoritePlaylistId) {
+  if (!playlistId) return;
+  ensureFavoritePlaylistScope(playlistId);
+  const scope = favoritePlaylistScope;
+  const refreshVersion = ++favoritePlaylistRefreshVersion;
+  if (favoritePlaylistRefreshStartedAt === null) favoritePlaylistRefreshStartedAt = Date.now();
+  clearTimeout(favoritePlaylistRefreshTimer);
+  const delay = Math.min(FAVORITE_REFRESH_DELAY_MS,
+    Math.max(0, FAVORITE_REFRESH_MAX_WAIT_MS - (Date.now() - favoritePlaylistRefreshStartedAt)));
+  favoritePlaylistRefreshTimer = setTimeout(() => {
+    favoritePlaylistRefreshTimer = null;
+    favoritePlaylistRefreshStartedAt = null;
+    const active = favoritePlaylistRefreshRunning || favoritePlaylistSyncPromise;
+    const task = (async () => {
+      if (active) await active;
+      if (scope !== favoritePlaylistScope || refreshVersion !== favoritePlaylistRefreshVersion ||
+          favoritePlaylistRefreshTimer !== null) return;
+      await syncFavoritePlaylistLikelist(playlistId, { forceRefresh: true });
+    })();
+    favoritePlaylistRefreshRunning = task;
+    void task.finally(() => {
+      if (favoritePlaylistRefreshRunning === task) favoritePlaylistRefreshRunning = null;
+    });
+  }, delay);
 }
 
 function getPlaylistOperationStatusMessage(result) {
@@ -3366,39 +3449,35 @@ function reconcileFavoriteSongsWithPendingMutations(songs = []) {
   const now = Date.now();
   pendingLikedTracks = pendingLikedTracks.filter((item) => item.expiresAt > now);
   pendingUnlikedTracks = pendingUnlikedTracks.filter((item) => item.expiresAt > now);
-  const baseSongs = Array.isArray(songs) ? songs.slice() : [];
-  const filteredSongs =
-    pendingUnlikedTracks.length > 0
-      ? baseSongs.filter(
-          (song) =>
-            !pendingUnlikedTracks.some((unliked) =>
-              isSameFavoriteTrack(song, unliked.track),
-            ),
-        )
-      : baseSongs;
-
-  if (pendingLikedTracks.length === 0) return filteredSongs;
-
-  const mergedSongs = filteredSongs.map((song) => {
-    const matchedPending = pendingLikedTracks.find((liked) =>
-      isSameFavoriteTrack(song, liked.track),
-    );
-    if (!matchedPending) return song;
-    return {
+  const baseSongs = Array.isArray(songs) ? songs : [];
+  if (!pendingLikedTracks.length && !pendingUnlikedTracks.length) return baseSongs;
+  const removedKeys = new Set(pendingUnlikedTracks.flatMap(item => extractSongLikeKeys(item.track)));
+  const likedByKey = new Map();
+  const pendingKeys = new Map();
+  for (const item of pendingLikedTracks) {
+    const keys = extractSongLikeKeys(item.track);
+    pendingKeys.set(item, keys);
+    for (const key of keys) if (!likedByKey.has(key)) likedByKey.set(key, item);
+  }
+  const seenPending = new Set();
+  const mergedSongs = [];
+  for (const song of baseSongs) {
+    const keys = extractSongLikeKeys(song);
+    if (keys.some(key => removedKeys.has(key))) continue;
+    let matchedPending = null;
+    for (const key of keys) {
+      const pending = likedByKey.get(key);
+      if (pending) { seenPending.add(pending); matchedPending ||= pending; }
+    }
+    mergedSongs.push(matchedPending ? {
       ...matchedPending.track,
       ...song,
       fileid: matchedPending.track?.fileid ?? song?.fileid ?? song?.file_id,
-      favoriteLikeKeys: extractSongLikeKeys(matchedPending.track),
-    };
-  });
-
-  const missingLiked = pendingLikedTracks.map((item) => item.track).filter(
-    (liked) => !mergedSongs.some((song) => isSameFavoriteTrack(song, liked)),
-  );
-
-  return missingLiked.length > 0
-    ? [...missingLiked, ...mergedSongs]
-    : mergedSongs;
+      favoriteLikeKeys: pendingKeys.get(matchedPending),
+    } : song);
+  }
+  const missingLiked = pendingLikedTracks.filter(item => !seenPending.has(item)).map(item => item.track);
+  return missingLiked.length ? [...missingLiked, ...mergedSongs] : mergedSongs;
 }
 
 export function syncLikelistFromFavoriteSongs(songs = [], playlistId = null) {
@@ -3414,16 +3493,18 @@ export function syncLikelistFromFavoriteSongs(songs = [], playlistId = null) {
   // Preserve source aliases without retaining stale playlist fileids.
   const previousByKey = new Map();
   for (const track of previousCache) {
-    for (const key of extractSongLikeKeys(track)) previousByKey.set(key, track);
+    const keys = extractSongLikeKeys(track);
+    for (const key of keys) previousByKey.set(key, keys);
   }
   favoritePlaylistTracksCache = validSongs.map((song) => {
     const aliases = new Set(extractSongLikeKeys(song));
     for (const key of Array.from(aliases)) {
       const cached = previousByKey.get(key);
-      if (cached) for (const alias of extractSongLikeKeys(cached)) aliases.add(alias);
+      if (cached) for (const alias of cached) aliases.add(alias);
     }
     return { ...song, favoriteLikeKeys: Array.from(aliases) };
   });
+  indexFavoriteTracks();
   if (playlistId !== null && playlistId !== undefined && playlistId !== "") {
     favoritePlaylistHydratedId = String(playlistId);
   }
@@ -3469,18 +3550,26 @@ export async function syncFavoritePlaylistLikelist(
     return cloneLikelist();
   }
 
-  if (!forceRefresh && favoritePlaylistSyncPromise) {
+  if (favoritePlaylistSyncPromise && favoritePlaylistSyncRevision === favoritePlaylistRevision &&
+      (!forceRefresh || favoritePlaylistSyncForced)) {
     return favoritePlaylistSyncPromise;
   }
 
+  clearTimeout(favoritePlaylistRefreshTimer);
+  favoritePlaylistRefreshTimer = null;
+  favoritePlaylistRefreshStartedAt = null;
+  favoritePlaylistRefreshVersion += 1;
   const syncToken = ++favoritePlaylistSyncToken;
   const revision = favoritePlaylistRevision;
+  favoritePlaylistSyncRevision = revision;
+  favoritePlaylistSyncForced = forceRefresh;
   const scope = favoritePlaylistScope;
   const userId = userStore.user?.userId;
   const runSync = (async () => {
     try {
       const res = await getPlaylistAll({
         id: normalizedTargetId,
+        totalHint: favoritePlaylistTracksCache.length || undefined,
         ...(forceRefresh ? { timestamp: Date.now() } : {}),
       });
       if (syncToken !== favoritePlaylistSyncToken ||
@@ -3506,7 +3595,13 @@ export async function syncFavoritePlaylistLikelist(
 }
 
 export function isSongLiked(songInput, likelist = userStore.likelist) {
-  if (!Array.isArray(likelist) || likelist.length === 0) return false;
+  if (!Array.isArray(likelist) || likelist.length === 0) {
+    if (likelist === userStore.likelist) {
+      indexedLikelist = null;
+      favoriteLikeKeyIndex.clear();
+    }
+    return false;
+  }
   const resolvedSong =
     songInput && typeof songInput === "object"
       ? songInput
@@ -3517,18 +3612,22 @@ export function isSongLiked(songInput, likelist = userStore.likelist) {
   ]);
   if (targetKeys.size === 0) return false;
 
-  return likelist.some((entry) => {
-    if (entry && typeof entry === "object") {
-      return extractSongLikeKeys(entry).some((key) => targetKeys.has(key));
+  // Store actions publish new arrays. Cache only that shared list; externally
+  // supplied lists retain compatibility without accumulating permanent caches.
+  const buildIndex = () => new Set(likelist.flatMap(entry => {
+    if (entry && typeof entry === "object") return extractSongLikeKeys(entry);
+    const key = normalizeLikeKeyValue(entry);
+    return key ? [key, key.toUpperCase(), key.toLowerCase()] : [];
+  }));
+  let index;
+  if (likelist === userStore.likelist) {
+    if (indexedLikelist !== likelist) {
+      favoriteLikeKeyIndex = buildIndex();
+      indexedLikelist = likelist;
     }
-    const normalized = normalizeLikeKeyValue(entry);
-    if (!normalized) return false;
-    return (
-      targetKeys.has(normalized) ||
-      targetKeys.has(normalized.toUpperCase()) ||
-      targetKeys.has(normalized.toLowerCase())
-    );
-  });
+    index = favoriteLikeKeyIndex;
+  } else index = buildIndex();
+  return [...targetKeys].some(key => index.has(key));
 }
 
 export function applyOptimisticLikeState(
@@ -3542,9 +3641,7 @@ export function applyOptimisticLikeState(
       ? songInput?.value || songInput
       : resolveSongForPlaylistTrackOperation(songInput);
 
-  const matchedCachedTracks = favoritePlaylistTracksCache.filter((item) =>
-    isSameFavoriteTrack(item, resolvedSong || songInput),
-  );
+  const matchedCachedTracks = findCachedFavoriteTracks(resolvedSong || songInput);
 
   const targetKeys = new Set([
     ...extractSongLikeKeys(songInput),
@@ -3559,11 +3656,11 @@ export function applyOptimisticLikeState(
 
   if (like) {
     if (resolvedSong && typeof resolvedSong === "object") {
-      const existsInCache = favoritePlaylistTracksCache.some((item) =>
-        isSameFavoriteTrack(item, resolvedSong),
-      );
+      const existsInCache = matchedCachedTracks.length > 0;
       if (!existsInCache) {
-        favoritePlaylistTracksCache.unshift({ ...resolvedSong });
+        const cached = { ...resolvedSong };
+        favoritePlaylistTracksCache.unshift(cached);
+        addFavoriteTrackIndex(cached);
       }
     }
     const existingSet = new Set(
@@ -3579,9 +3676,7 @@ export function applyOptimisticLikeState(
   }
 
   if (matchedCachedTracks.length > 0) {
-    favoritePlaylistTracksCache = favoritePlaylistTracksCache.filter(
-      (item) => !isSameFavoriteTrack(item, resolvedSong || songInput),
-    );
+    removeCachedFavoriteTracks(matchedCachedTracks);
   }
 
   return nextLikelist.filter((item) => {
@@ -3941,18 +4036,13 @@ export async function updateFavoritePlaylistTrack(songInput, like) {
         file_id: null,
         favoriteLikeKeys: [...extractSongLikeKeys(selectedSong), ...extractSongLikeKeys(addedTrack)],
       };
-      favoritePlaylistTracksCache = [
-        trackToCache,
-        ...favoritePlaylistTracksCache.filter(
-          (item) => !isSameFavoriteTrack(item, selectedSong),
-        ),
-      ];
+      removeCachedFavoriteTracks(findCachedFavoriteTracks(selectedSong));
+      favoritePlaylistTracksCache.unshift(trackToCache);
+      addFavoriteTrackIndex(trackToCache);
       userStore.updateLikelist(applyOptimisticLikeState(trackToCache, true));
       updateFavoritePlaylistIfViewing(trackToCache, true);
       schedulePlaylistCacheInvalidation();
-      void syncFavoritePlaylistLikelist(favoritePlaylist.id, {
-        forceRefresh: true,
-      });
+      scheduleFavoritePlaylistRefresh(favoritePlaylist.id);
     }
     return {
       success,
@@ -3965,9 +4055,7 @@ export async function updateFavoritePlaylistTrack(songInput, like) {
   }
 
   const targetSong = selectedSong || songInput;
-  let matchedTracks = favoritePlaylistTracksCache.filter((item) =>
-    isSameFavoriteTrack(item, targetSong),
-  );
+  let matchedTracks = findCachedFavoriteTracks(targetSong);
   let fileids = matchedTracks
     .map((item) => item?.fileid ?? item?.file_id)
     .filter(Boolean);
@@ -3976,9 +4064,7 @@ export async function updateFavoritePlaylistTrack(songInput, like) {
     await syncFavoritePlaylistLikelist(favoritePlaylist.id, {
       forceRefresh: true,
     });
-    matchedTracks = favoritePlaylistTracksCache.filter((item) =>
-      isSameFavoriteTrack(item, targetSong),
-    );
+    matchedTracks = findCachedFavoriteTracks(targetSong);
     fileids = matchedTracks
       .map((item) => item?.fileid ?? item?.file_id)
       .filter(Boolean);
@@ -4007,12 +4093,9 @@ export async function updateFavoritePlaylistTrack(songInput, like) {
     const deleteReference = matchedTracks[0] || trackWithFileId;
     // Remove all source aliases before evicting the cache entry used to discover them.
     userStore.updateLikelist(applyOptimisticLikeState(deleteReference, false));
-    favoritePlaylistTracksCache = favoritePlaylistTracksCache.filter(
-      (item) => !isSameFavoriteTrack(item, targetSong),
-    );
     updateFavoritePlaylistIfViewing(deleteReference, false);
     schedulePlaylistCacheInvalidation();
-    void syncFavoritePlaylistLikelist(favoritePlaylist.id, { forceRefresh: true });
+    scheduleFavoritePlaylistRefresh(favoritePlaylist.id);
   }
   return {
     success,
@@ -4080,12 +4163,7 @@ export async function likeSong(like) {
 
     if (trackResult?.success) {
       if (!isActiveLikeActionToken(actionToken)) return;
-      const nextLikelist = applyOptimisticLikeState(
-        targetTrack,
-        like,
-        userStore.likelist,
-      );
-      userStore.updateLikelist(nextLikelist);
+      // The shared write action already publishes canonical aliases and state.
       noticeOpen(
         like
           ? `已添加到${trackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}`
@@ -4108,11 +4186,15 @@ export async function likeSong(like) {
 function updateFavoritePlaylistIfViewing(targetSong, like) {
   if (!userStore.favoritePlaylistId) return;
   const currentSong = resolveSongForPlaylistTrackOperation(targetSong);
+  const previousSongs = libraryStore.librarySongs;
   libraryStore.applyPlaylistTrackChange?.({
     playlist: { id: userStore.favoritePlaylistId },
     op: like ? "add" : "del",
     song: currentSong || (typeof targetSong === "object" ? targetSong : { id: targetSong }),
   });
+  if (Array.isArray(libraryStore.librarySongs) && libraryStore.librarySongs !== previousSongs) {
+    locallyUpdatedFavoriteSongs.add(libraryStore.librarySongs);
+  }
 }
 
 watch(
@@ -4130,6 +4212,9 @@ watch(
   ([currentPlaylistId, hydrationStatus]) => {
     const favId = userStore.favoritePlaylistId;
     if (!favId || !currentPlaylistId) return;
+    // These rows were just published from the already updated favorite cache.
+    // Do not rebuild all aliases/indexes again for our own local mutation.
+    if (Array.isArray(libraryStore.librarySongs) && locallyUpdatedFavoriteSongs.has(libraryStore.librarySongs)) return;
     if (
       String(currentPlaylistId) === String(favId) &&
       hydrationStatus === "completed" &&

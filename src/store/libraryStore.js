@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { computed } from 'vue';
 import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, normalizePlaylistSong, getRankInfo, getRankSongs } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistTopSong, getArtistAlbum } from '../api/artist'
@@ -10,6 +11,13 @@ const PLAYLIST_PAGE_SIZE = 999
 const PLAYLIST_HYDRATION_CONCURRENCY = 4
 const ARTIST_SONG_PAGE_SIZE = 60
 const ARTIST_ALBUM_PAGE_SIZE = 30
+// Per-store weak caches avoid rebuilding text for every song on initial load or
+// every single-track mutation. Replaced/removed song objects can be collected.
+const songSearchCaches = new WeakMap()
+const getSongSearchCache = store => {
+    if (!songSearchCaches.has(store)) songSearchCaches.set(store, new WeakMap())
+    return songSearchCaches.get(store)
+}
 
 const createPlaylistHydrationState = ({ id = null, total = 0, loaded = 0, status = 'idle' } = {}) => ({
     id,
@@ -189,6 +197,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.resetSearchIndex()
         },
         resetSearchIndex(section = null) {
+            if (!section || section == 'songs') songSearchCaches.delete(this)
             if (!section) {
                 this.searchIndexById = createSearchIndexState()
                 return
@@ -199,14 +208,9 @@ export const useLibraryStore = defineStore('libraryStore', {
             }
         },
         indexLibrarySongs(songs, { append = false } = {}) {
-            const nextSongsIndex = append ? { ...(this.searchIndexById?.songs || {}) } : {}
-            const targetSongs = Array.isArray(songs) ? songs : []
-            targetSongs.forEach((song, index) => {
-                nextSongsIndex[getSearchEntryKey(song, `song-${index}`)] = buildCloudSongSearchText(song)
-            })
-            this.searchIndexById = {
-                ...this.searchIndexById,
-                songs: nextSongsIndex,
+            if (!append) {
+                songSearchCaches.delete(this)
+                this.searchIndexById = { ...this.searchIndexById, songs: {} }
             }
         },
         indexLibraryAlbums(albums) {
@@ -270,10 +274,11 @@ export const useLibraryStore = defineStore('libraryStore', {
                 // Publish a new array so filtered/virtualized views invalidate immediately.
                 const currentSongs = Array.isArray(this.librarySongs) ? [...this.librarySongs] : []
                 const songKey = getSongIdentity(song)
+                const matchFields = ['id', 'mixsongid', 'album_audio_id', 'hash', 'FileHash']
+                    .filter(key => song?.[key]).map(key => [key, String(song[key]).toLowerCase()])
                 const matchesSong = item => {
                     if (songKey && getSongIdentity(item) == songKey) return true
-                    return ['id', 'mixsongid', 'album_audio_id', 'hash', 'FileHash'].some(key =>
-                        song?.[key] && String(item?.[key] || '').toLowerCase() == String(song[key]).toLowerCase())
+                    return matchFields.some(([key, value]) => String(item?.[key] || '').toLowerCase() == value)
                 }
 
                 if (delta > 0 && song && typeof song == 'object') {
@@ -287,7 +292,6 @@ export const useLibraryStore = defineStore('libraryStore', {
                         // Re-adding can replace the server's playlist-scoped fileid without changing the count.
                         currentSongs.splice(existingIndex, 1, { ...currentSongs[existingIndex], ...song })
                         this.librarySongs = currentSongs
-                        this.indexLibrarySongs(currentSongs)
                     }
                 }
 
@@ -304,7 +308,6 @@ export const useLibraryStore = defineStore('libraryStore', {
                 }
 
                 if (changedCurrentSongs) {
-                    this.indexLibrarySongs(currentSongs)
                     this.bumpPlaylistTrackCount(this.libraryInfo, delta)
                     const hydrationTotal = Number(this.playlistHydration?.total)
                     this.playlistHydration = createPlaylistHydrationState({
@@ -322,7 +325,10 @@ export const useLibraryStore = defineStore('libraryStore', {
             return changedCurrentSongs
         },
         getSongSearchText(song, fallbackKey = '0') {
-            return this.searchIndexById?.songs?.[getSearchEntryKey(song, fallbackKey)] || buildCloudSongSearchText(song)
+            if (!song || typeof song != 'object') return buildCloudSongSearchText(song)
+            const cache = getSongSearchCache(this)
+            if (!cache.has(song)) cache.set(song, computed(() => buildCloudSongSearchText(song)))
+            return cache.get(song).value
         },
         getAlbumSearchText(album, fallbackKey = '0') {
             return this.searchIndexById?.albums?.[getSearchEntryKey(album, fallbackKey)] || buildAlbumSearchText(album)
@@ -528,6 +534,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                     gid: resolvedListId ? null : resolvedCollectionId || null,
                     limit: PLAYLIST_PAGE_SIZE,
                     offset: 0,
+                    totalHint: playlist?.trackCount ?? playlist?.count ?? playlist?.list_count,
                 }
                 const playlistTrackResult = await getPlaylistAll(trackParams)
                 if (this.playlistHydrationToken != token) return

@@ -115,6 +115,7 @@ const clearSelection = () => {
 watch(() => props.multiSelect, enabled => { if (!enabled) { finishDrag(); clearSelection() } })
 watch(() => props.queueMeta?.id, () => { finishDrag(); clearSelection() })
 watch(scrollerItems, items => {
+    if (selectedRowKeys.value.size === 0) return;
     const keys = new Set(items.map(item => item.rowKey))
     selectedRowKeys.value = new Set([...selectedRowKeys.value].filter(key => keys.has(key)))
 })

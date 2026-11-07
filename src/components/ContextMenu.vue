@@ -1,8 +1,9 @@
 <script setup>
   import { ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
-  import { createPlaylist, updatePlaylist, deletePlaylist, normalizePlaylistSong } from '../api/playlist'
-  import { addToNext, addToNextLocal, applyOptimisticLikeState, extractSongLikeKeys, isPlaylistTrackOperationSuccess, localMusicHandle, syncFavoritePlaylistLikelist } from '../utils/player'
+  import { createPlaylist, getPlaylistAll, updatePlaylist, deletePlaylist, normalizePlaylistSong } from '../api/playlist'
+  import { createPlaylistAddition, playlistAdditionNotice } from '../utils/playlistAddition.mjs'
+  import { addToNext, addToNextLocal, applyOptimisticLikeState, extractSongLikeKeys, isPlaylistTrackOperationSuccess, localMusicHandle, scheduleFavoritePlaylistRefresh } from '../utils/player'
   import { dialogOpen, noticeOpen } from '../utils/dialog';
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';
@@ -26,6 +27,7 @@
   const createActive = ref(false)
   const justNewPlaylist = ref(false)
   const newPlaylistTitle = ref(null)
+  const playlistAddBusy = ref(false)
 
   const isPlaylistUpdateSuccess = isPlaylistTrackOperationSuccess
 
@@ -53,7 +55,7 @@
     if (playlistTarget && typeof playlistTarget == 'object') {
       return {
         ...playlistTarget,
-        id: playlistTarget.id,
+        id: playlistTarget.list_create_listid || playlistTarget.listid || playlistTarget.id,
         name: getPlaylistDisplayName(playlistTarget),
       }
     }
@@ -64,6 +66,21 @@
       name: matchedPlaylist ? getPlaylistDisplayName(matchedPlaylist) : '歌单',
     }
   }
+
+  const playlistAddition = createPlaylistAddition({
+    getPlaylistAll, updatePlaylist, extractKeys: extractSongLikeKeys,
+    isSuccess: isPlaylistUpdateSuccess,
+    getAccountId: () => userStore.user?.userId,
+    getLoadedSongs: playlist => {
+      const ids = [playlist.id, playlist.listid, playlist.list_create_listid, playlist.global_collection_id].filter(Boolean).map(String)
+      const info = libraryStore.libraryInfo
+      const matches = [info?.id, info?.listid, info?.list_create_listid, info?.global_collection_id].filter(Boolean).some(id => ids.includes(String(id)))
+      return matches && libraryStore.playlistHydration?.status === 'completed' && Array.isArray(libraryStore.librarySongs)
+        ? libraryStore.librarySongs : null
+    },
+  })
+  watch(() => userStore.user?.userId, () => playlistAddition.invalidate({ cancel: true }), { flush: 'sync' })
+  watch(() => [userStore.likelist, libraryStore.librarySongs], () => playlistAddition.invalidate(), { flush: 'sync' })
 
   const toLibrarySong = song => {
     if (song?.type == 'local' || song?.dirPath || song?.common?.fileUrl) {
@@ -192,6 +209,7 @@
       const isSuccess = isPlaylistUpdateSuccess(result)
       
       if(isSuccess) {
+        playlistAddition.invalidate()
         // 检查是否从"我喜欢的音乐"歌单删除，如果是则同步更新喜欢列表
         await updateLikelistIfFromFavorite(tracks)
         tracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist: otherStore.selectedPlaylist, op: 'del', song }))
@@ -226,6 +244,7 @@
           nextLikelist = applyOptimisticLikeState(track, false, nextLikelist)
         })
         userStore.updateLikelist(nextLikelist)
+        scheduleFavoritePlaylistRefresh()
       }
     } catch (error) {
       console.error('检查并更新喜欢列表失败:', error)
@@ -340,7 +359,7 @@
 
       newPlaylistTitle.value = null
       isPrivacy.value = false
-      addToMyPlaylist({ id: result?.listid || result?.data?.listid || result?.id, name: playlistName })
+      await addToMyPlaylist({ id: result?.listid || result?.data?.listid || result?.id, name: playlistName })
     } catch (error) {
       console.error('创建歌单失败:', error)
       noticeOpen('创建歌单错误', 2)
@@ -356,45 +375,54 @@
     createActive.value = false
   }
   const addToMyPlaylist = async playlistTarget => {
-      const playlist = normalizePlaylistTarget(playlistTarget)
-      const tracks = selectedTracks().map(song => song?.value && typeof song.value == 'object' ? song.value : song)
-      let params = {
-        op: 'add',
-        pid: playlist.id,
-        tracks
-      }
-      try {
-        const result = await updatePlaylist(params)
-        if(isPlaylistUpdateSuccess(result)) {
-          const addedInfo = result?.data?.info
-          const addedTracks = tracks.map((song, index) => {
-            const added = Array.isArray(addedInfo) ? addedInfo[index] : tracks.length === 1 ? addedInfo : null
-            return added ? {
-              ...song,
-              ...normalizePlaylistSong(added),
-              name: song.name || added.name,
-              favoriteLikeKeys: [...extractSongLikeKeys(song), ...extractSongLikeKeys(added)],
-            } : song
-          })
-          if (isFavoritePlaylistTarget(playlist)) {
-            let nextLikelist = Array.isArray(userStore.likelist) ? userStore.likelist : []
-            tracks.forEach((song, index) => {
-              nextLikelist = applyOptimisticLikeState(song, true, nextLikelist)
-              nextLikelist = applyOptimisticLikeState(addedTracks[index], true, nextLikelist)
-            })
-            userStore.updateLikelist(nextLikelist)
-            void syncFavoritePlaylistLikelist(playlist.id, { forceRefresh: true })
-          }
-          addedTracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist, op: 'add', song: toLibrarySong(song) }))
+    if (playlistAddBusy.value) return
+    const playlist = normalizePlaylistTarget(playlistTarget)
+    const tracks = selectedTracks().map(song => song?.value && typeof song.value == 'object' ? song.value : song)
+    playlistAddBusy.value = true
+    try {
+      const outcome = await playlistAddition.add(playlist, tracks)
+      if (outcome.busy) return
+      const { result, added: newTracks, records = [] } = outcome
+      if (!outcome.failed) {
+        if (!newTracks.length) {
           updatePlaylistCache()
-          noticeOpen(`已添加到${playlist.name}`, 2)
-        }else {
-          noticeOpen(result?.error == 'missing playlist track payload' ? '当前歌曲信息不完整，暂时无法添加到歌单' : '添加至歌单错误', 2)
+          noticeOpen(playlistAdditionNotice(outcome, playlist.name), 2)
+          return
         }
-      } catch (error) {
-        console.error('添加至歌单失败:', error)
-        noticeOpen('添加至歌单错误', 2)
+        const addedTracks = newTracks.map((song, index) => {
+          const added = records[index]
+          return added ? {
+            ...song,
+            ...normalizePlaylistSong(added),
+            name: song.name || added.name,
+            fileid: added.fileid ?? added.file_id ?? null,
+            file_id: null,
+            favoriteLikeKeys: [...extractSongLikeKeys(song), ...extractSongLikeKeys(added)],
+          } : { ...song, fileid: null, file_id: null }
+        })
+        if (isFavoritePlaylistTarget(playlist)) {
+          let nextLikelist = Array.isArray(userStore.likelist) ? userStore.likelist : []
+          addedTracks.forEach(song => {
+            nextLikelist = applyOptimisticLikeState(song, true, nextLikelist)
+          })
+          userStore.updateLikelist(nextLikelist)
+          scheduleFavoritePlaylistRefresh(playlist.id)
+        }
+        addedTracks.forEach(song => libraryStore.applyPlaylistTrackChange({ playlist, op: 'add', song: toLibrarySong(song) }))
+        // Store updates invalidate snapshots; restore this acknowledged write
+        // afterward so an immediate repeat cannot hit a lagging upstream read.
+        outcome.commit()
+        updatePlaylistCache()
+        noticeOpen(playlistAdditionNotice(outcome, playlist.name), 2)
+      } else {
+        noticeOpen(result?.error == 'missing playlist track payload' ? '当前歌曲信息不完整，暂时无法添加到歌单' : '添加至歌单错误', 2)
       }
+    } catch (error) {
+      console.error('添加至歌单失败:', error)
+      noticeOpen(error?.message || '添加至歌单错误', 2)
+    } finally {
+      playlistAddBusy.value = false
+    }
   }
 </script>
 
@@ -413,7 +441,7 @@
     <Transition name="add-fade">
       <div class="add-to-playlist" v-if="otherStore.addPlaylistShow" @click="otherStore.addPlaylistShow = false; otherStore.justNewPlaylist = false; createActive = false; newPlaylistTitle = '';">
         <div class="playlist-container" :class="{'playlist-container-newPlaylist': justNewPlaylist}" @click.stop>
-          <span class="add-title">{{justNewPlaylist ? '添加歌单' : '添加到我的歌单'}}</span>
+          <span class="add-title" aria-live="polite">{{playlistAddBusy ? '正在检查并添加…' : justNewPlaylist ? '添加歌单' : '添加到我的歌单'}}</span>
           <div class="my-playlist">
             <div class="create-playlist" v-show="!justNewPlaylist" :style="{background: createActive ? 'rgba(53, 53, 53, 0.7)' : 'none'}" @click="createActive = !createActive">
               <div class="list-img">
@@ -432,7 +460,7 @@
               <div class="create-confirm" @click="createAndAdd()">完成</div>
               <div class="create-cancel" @click="createCancel()">取消</div>
             </div>
-            <div class="list" @click="addToMyPlaylist(item)" v-show="!justNewPlaylist" v-for="(item, index) in libraryStore.playlistUserCreated">
+            <div class="list" :aria-disabled="playlistAddBusy" :aria-busy="playlistAddBusy" @click="addToMyPlaylist(item)" v-show="!justNewPlaylist" v-for="(item, index) in libraryStore.playlistUserCreated">
               <div class="list-img">
                 <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl)" alt="">
               </div>
