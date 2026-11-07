@@ -182,7 +182,7 @@ const createSplashWindow = async (mainWindowOptions) => {
           const terY = Number.isFinite(Number(p.tertiaryY)) ? Number(p.tertiaryY) : 54;
           const gradAngle = Number.isFinite(Number(p.gradientAngle)) ? Number(p.gradientAngle) : 160;
 
-          splashBgColor = isDark ? hslToHex(hue, Math.round(sat * 0.25), 12) : hslToHex(hue, Math.round(sat * 0.35), 94);
+          splashBgColor = isDark ? hslToHex(hue, Math.round(sat * 0.38), 11) : hslToHex(hue, Math.round(sat * 0.55), 91);
           splashQueryParams = {
             dynamic: "1",
             dark: isDark ? "1" : "0",

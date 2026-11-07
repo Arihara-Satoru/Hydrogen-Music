@@ -92,13 +92,13 @@ html.dark {
    3. Dynamic Theme (Light): 100% Exact Match with theme.css
 ======================================================== */
 html.dynamic-theme {
-  --splash-bg: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 94%);
+  --splash-bg: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 91%);
   --splash-bg-gradient:
-    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 65% / 0.32), transparent 68%),
-    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 68% / calc(0.24 * var(--ambient-secondary-strength))), transparent 70%),
-    radial-gradient(72% 78% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 70% / calc(0.16 * var(--ambient-tertiary-strength))), transparent 72%),
-    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.3) 97%), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 90%));
-  --splash-surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 93% / 0.88);
+    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 58% / 0.52), transparent 68%),
+    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 62% / calc(0.40 * var(--ambient-secondary-strength))), transparent 70%),
+    radial-gradient(72% 78% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 64% / calc(0.26 * var(--ambient-tertiary-strength))), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.48) 95%), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 86%));
+  --splash-surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 90% / 0.9);
   --splash-surface-border: hsl(var(--ambient-hue) var(--ambient-saturation) 30% / 0.16);
   --splash-text-primary: #111214;
   --splash-text-secondary: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.3) 28%);
@@ -106,22 +106,22 @@ html.dynamic-theme {
   --splash-accent-primary: #111214;
   --splash-dock-shadow: 0 12px 28px hsl(var(--ambient-hue) var(--ambient-saturation) 36% / 0.16);
   --splash-dock-gradient:
-    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 65% / 0.24), transparent 72%),
-    radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 68% / calc(0.14 * var(--ambient-tertiary-strength))), transparent 72%),
-    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.3) 96% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.35) 89% / 0.9));
+    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 60% / 0.42), transparent 72%),
+    radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 62% / calc(0.24 * var(--ambient-tertiary-strength))), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.48) 94% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 85% / 0.9));
 }
 
 /* ========================================================
    4. Dynamic Theme (Dark): 100% Exact Match with theme.css
 ======================================================== */
 html.dark.dynamic-theme {
-  --splash-bg: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.25) 12%);
+  --splash-bg: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 11%);
   --splash-bg-gradient:
-    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 44% / 0.32), transparent 68%),
-    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 40% / calc(0.22 * var(--ambient-secondary-strength))), transparent 70%),
-    radial-gradient(72% 78% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 42% / calc(0.14 * var(--ambient-tertiary-strength))), transparent 72%),
-    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.25) 16%), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.2) 10%));
-  --splash-surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.25) 16% / 0.9);
+    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 46% / 0.48), transparent 68%),
+    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 42% / calc(0.32 * var(--ambient-secondary-strength))), transparent 70%),
+    radial-gradient(72% 78% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 44% / calc(0.20 * var(--ambient-tertiary-strength))), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 17%), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.30) 8%));
+  --splash-surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 15% / 0.9);
   --splash-surface-border: hsl(var(--ambient-hue) var(--ambient-saturation) 70% / 0.18);
   --splash-text-primary: #f1f3f5;
   --splash-text-secondary: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.2) 75%);
@@ -129,9 +129,9 @@ html.dark.dynamic-theme {
   --splash-accent-primary: #ffffff;
   --splash-dock-shadow: 0 16px 40px hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.4) 6% / 0.65);
   --splash-dock-gradient:
-    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 44% / 0.24), transparent 72%),
-    radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 40% / calc(0.12 * var(--ambient-tertiary-strength))), transparent 72%),
-    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.25) 20% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.2) 13% / 0.92));
+    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 46% / 0.38), transparent 72%),
+    radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 42% / calc(0.20 * var(--ambient-tertiary-strength))), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 19% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.30) 11% / 0.92));
 }
 
 * {

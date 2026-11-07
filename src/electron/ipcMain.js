@@ -189,7 +189,7 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   return normalized;
 }
 
-const THEME_SATURATION_SCALE = 62;
+const THEME_SATURATION_SCALE = 72;
 
 function getPerceptualHueDamping(hue) {
   const distFromRed = Math.min(Math.abs(hue - 0), Math.abs(hue - 360));
@@ -215,12 +215,13 @@ function getThemePaletteFromRgb(red, green, blue, coverageFactor = 1) {
   else hue = (r - g) / chroma + 4;
 
   const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
-  if (saturation < 0.12) return { hue: 210, saturation: 0 };
+  if (saturation < 0.06) return { hue: 210, saturation: 0 };
   const normalizedHue = Math.round((hue * 60 + 360) % 360);
   const damping = getPerceptualHueDamping(normalizedHue);
+  const boostedSat = Math.pow(saturation, 0.6) * THEME_SATURATION_SCALE * coverageFactor * damping;
   return {
     hue: normalizedHue,
-    saturation: Math.round(Math.min(Math.max(saturation * THEME_SATURATION_SCALE * coverageFactor * damping, 0), 85)),
+    saturation: Math.round(Math.min(Math.max(boostedSat, 24), 82)),
   };
 }
 
@@ -241,8 +242,8 @@ function getCoverThemePalette(data, width, height) {
     if (chroma === 0) continue;
     const lightness = (max + min) / 2;
     const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
-    // ponytail: absolute chroma filters near-black/white channel noise; use OKLCH if perceptual matching is needed.
-    if (saturation < 0.12 || chroma < 0.08) continue;
+    // Reject near-black/white compression noise while keeping subtle atmospheric color grades
+    if (saturation < 0.06 || chroma < 0.035) continue;
     let hue;
     if (max === r) hue = ((g - b) / chroma) % 6;
     else if (max === g) hue = (b - r) / chroma + 2;
@@ -268,14 +269,16 @@ function getCoverThemePalette(data, width, height) {
   }
 
   const coverageRatio = pixelCount > 0 ? chromaticCoverage / pixelCount : 0;
-  if (!colorBuckets.size || coverageRatio < 0.25) {
+  if (!colorBuckets.size || coverageRatio < 0.06) {
     return {
       hue: 210,
       saturation: 0,
       secondaryHue: 210,
       secondarySaturation: 0,
+      secondaryStrength: 0,
       tertiaryHue: 210,
       tertiarySaturation: 0,
+      tertiaryStrength: 0,
       primaryX: 12,
       primaryY: 8,
       secondaryX: 92,
@@ -286,7 +289,7 @@ function getCoverThemePalette(data, width, height) {
     };
   }
 
-  const coverageFactor = Math.min(Math.max((coverageRatio - 0.25) / 0.25, 0.15), 1.0);
+  const coverageFactor = Math.min(Math.max(0.4 + (coverageRatio - 0.06) * 1.5, 0.4), 1.0);
 
   const colors = Array.from(colorBuckets.values())
     .map((bucket) => ({
@@ -301,14 +304,16 @@ function getCoverThemePalette(data, width, height) {
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  if (!colors.length || colors[0].saturation < 8) {
+  if (!colors.length) {
     return {
       hue: 210,
       saturation: 0,
       secondaryHue: 210,
       secondarySaturation: 0,
+      secondaryStrength: 0,
       tertiaryHue: 210,
       tertiarySaturation: 0,
+      tertiaryStrength: 0,
       primaryX: 12,
       primaryY: 8,
       secondaryX: 92,

@@ -1,5 +1,5 @@
 const THEME_CLASS = "dynamic-theme";
-const THEME_SATURATION_SCALE = 62;
+const THEME_SATURATION_SCALE = 72;
 const THEME_VARIABLES = [
   "--ambient-hue",
   "--ambient-saturation",
@@ -61,11 +61,12 @@ export function rgbToHsl(red, green, blue) {
 
 function createThemeColor(red, green, blue, coverageFactor = 1) {
   const { hue, saturation } = rgbToHsl(red, green, blue);
-  if (saturation < 0.12) return { hue: 210, saturation: 0 };
+  if (saturation < 0.06) return { hue: 210, saturation: 0 };
   const damping = getPerceptualHueDamping(hue);
+  const boostedSat = Math.pow(saturation, 0.6) * THEME_SATURATION_SCALE * coverageFactor * damping;
   return {
     hue: Math.round(hue),
-    saturation: Math.round(clamp(saturation * THEME_SATURATION_SCALE * coverageFactor * damping, 0, 85)),
+    saturation: Math.round(clamp(boostedSat, 24, 82)),
   };
 }
 
@@ -168,8 +169,8 @@ export function getDynamicPalette(imageData) {
       data[index + 1],
       data[index + 2],
     );
-    // ponytail: absolute chroma filters near-black/white channel noise; use OKLCH if perceptual matching is needed.
-    if (saturation < 0.12 || chroma < 0.08) continue;
+    // Reject near-black/white compression noise while keeping subtle atmospheric color grades
+    if (saturation < 0.06 || chroma < 0.035) continue;
 
     const exposure = Math.min(lightness, 1 - lightness) * 2;
     const weight = 0.2 + saturation * 0.45 + exposure * 0.35;
@@ -190,9 +191,9 @@ export function getDynamicPalette(imageData) {
   }
 
   const coverageRatio = pixelCount > 0 ? chromaticCoverage / pixelCount : 0;
-  if (!colorBuckets.size || coverageRatio < 0.25) return getNeutralPalette();
+  if (!colorBuckets.size || coverageRatio < 0.06) return getNeutralPalette();
 
-  const coverageFactor = clamp((coverageRatio - 0.25) / 0.25, 0.15, 1.0);
+  const coverageFactor = clamp(0.4 + (coverageRatio - 0.06) * 1.5, 0.4, 1.0);
 
   const colors = Array.from(colorBuckets.values())
     .map((bucket) => ({
@@ -207,7 +208,7 @@ export function getDynamicPalette(imageData) {
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  if (!colors.length || colors[0].saturation < 8) return getNeutralPalette();
+  if (!colors.length) return getNeutralPalette();
 
   const primary = colors[0];
   const secondary = colors
