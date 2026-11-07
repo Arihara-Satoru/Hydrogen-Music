@@ -116,7 +116,35 @@ watch(accountKey, account => {
                 <p v-if="error" class="error" role="alert">{{ error }} <button v-if="!ready" @click="loadPreference">重试</button></p>
                 <form v-if="ready" @submit.prevent="savePreference">
                     <fieldset :disabled="saving">
-                        <label class="mode">推荐模式 <select @change="mode = $event.target.value"><option value="0" :selected="mode === '0'">默认</option><option value="1" :selected="mode === '1'">熟悉</option><option value="2" :selected="mode === '2'">尝鲜</option></select></label>
+                        <div class="mode-row">
+                            <span class="mode-label">推荐模式</span>
+                            <div class="segmented-control" role="radiogroup" aria-label="推荐模式">
+                                <button
+                                    type="button"
+                                    role="radio"
+                                    class="segment-btn"
+                                    :class="{ active: mode === '0' }"
+                                    :aria-checked="mode === '0'"
+                                    @click="mode = '0'"
+                                >默认</button>
+                                <button
+                                    type="button"
+                                    role="radio"
+                                    class="segment-btn"
+                                    :class="{ active: mode === '1' }"
+                                    :aria-checked="mode === '1'"
+                                    @click="mode = '1'"
+                                >熟悉</button>
+                                <button
+                                    type="button"
+                                    role="radio"
+                                    class="segment-btn"
+                                    :class="{ active: mode === '2' }"
+                                    :aria-checked="mode === '2'"
+                                    @click="mode = '2'"
+                                >尝鲜</button>
+                            </div>
+                        </div>
                         <div class="weights">
                             <label v-for="[id, name] in recommendationTags" :key="id" :for="`weight-${id}`">
                                 <span>{{ name }}</span>
@@ -137,11 +165,31 @@ watch(accountKey, account => {
             <div class="panel-body">
                 <p class="panel-note">屏蔽后将不再出现在猜你喜欢、每日推荐等场景。</p>
                 <div class="actions">
-                    <label>内容类型 <select v-model="label"><option value="song">歌曲</option><option value="singer">歌手</option></select></label>
-                    <button :disabled="blacklistLoading" @click="loadBlacklist()">刷新</button>
-                    <button v-if="track?.hash && track?.type !== 'local' && track?.source !== 'siren'" :disabled="editing" @click="blockCurrentSong">屏蔽当前歌曲</button>
-                    <button v-for="artist in artists" :key="artist.id" :disabled="editing" @click="edit({ label: 'singer', singerid: artist.id, name: artist.name })">屏蔽 {{ artist.name }}</button>
-            </div>
+                    <div class="type-filter">
+                        <span class="action-label">内容类型</span>
+                        <div class="segmented-control" role="radiogroup" aria-label="内容类型">
+                            <button
+                                type="button"
+                                role="radio"
+                                class="segment-btn"
+                                :class="{ active: label === 'song' }"
+                                :aria-checked="label === 'song'"
+                                @click="label = 'song'"
+                            >歌曲</button>
+                            <button
+                                type="button"
+                                role="radio"
+                                class="segment-btn"
+                                :class="{ active: label === 'singer' }"
+                                :aria-checked="label === 'singer'"
+                                @click="label = 'singer'"
+                            >歌手</button>
+                        </div>
+                    </div>
+                    <button class="action-btn" type="button" :disabled="blacklistLoading" @click="loadBlacklist()">刷新</button>
+                    <button class="action-btn" type="button" v-if="track?.hash && track?.type !== 'local' && track?.source !== 'siren'" :disabled="editing" @click="blockCurrentSong">屏蔽当前歌曲</button>
+                    <button class="action-btn" type="button" v-for="artist in artists" :key="artist.id" :disabled="editing" @click="edit({ label: 'singer', singerid: artist.id, name: artist.name })">屏蔽 {{ artist.name }}</button>
+                </div>
             <p v-if="blacklistError" class="error" role="alert">{{ blacklistError }}</p>
             <p v-if="blacklistLoading" role="status">正在读取黑名单…</p>
             <p v-else-if="!blacklistError && !items.length" class="empty-list">暂无屏蔽内容</p>
@@ -158,7 +206,7 @@ watch(accountKey, account => {
 </template>
 
 <style scoped>
-.listening-settings { color: var(--text); margin: 28px 0; text-align: left; }
+.listening-settings { color: var(--text); margin: 28px 0 12px; text-align: left; }
 .settings-panel { margin-bottom: 12px; border: 1px solid var(--border); background: var(--layer); }
 summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 24px; cursor: pointer; list-style: none; }
 summary::-webkit-details-marker { display: none; }
@@ -170,10 +218,55 @@ summary:hover { background: rgba(128, 128, 128, .06); }
 .settings-panel[open] .panel-toggle { transform: rotate(225deg); }
 .settings-panel[open] summary { border-bottom: 1px solid var(--border); }
 .panel-body { padding: 20px 24px; }
+.panel-note { font-size: 12px; line-height: 1.7; margin: 0 0 14px; color: var(--muted-text); }
 p { font-size: 12px; line-height: 1.7; margin: 0 0 16px; color: var(--muted-text); }
 .weight-guide { display: flex; flex-wrap: wrap; gap: 24px; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-.mode { display: flex; align-items: center; gap: 20px; margin: 0 0 20px; font-size: 14px; }
+.mode-row { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; }
+.mode-label, .action-label { font: 13px SourceHanSansCN-Bold; color: var(--text); flex-shrink: 0; }
+.type-filter { display: flex; align-items: center; gap: 10px; margin-right: 6px; }
+.segmented-control {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--layer) 60%, transparent);
+    overflow: hidden;
+}
+.segment-btn {
+    border: none;
+    border-right: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted-text);
+    padding: 0 16px;
+    height: 32px;
+    min-height: 32px;
+    font: 12px SourceHanSansCN-Bold;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    box-sizing: border-box;
+}
+.segment-btn:last-child {
+    border-right: none;
+}
+.segmented-control .segment-btn:hover:not(.active) {
+    background: rgba(128, 128, 128, 0.12);
+    color: var(--text);
+}
+.segmented-control .segment-btn.active,
+.segmented-control .segment-btn.active:hover,
+.segmented-control .segment-btn.active:focus {
+    background: var(--text);
+    color: var(--bg);
+    cursor: default;
+}
+.segment-btn:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: -2px;
+}
 .weights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
 .weights label { display: flex; align-items: center; gap: 14px; min-height: 44px; border-top: 1px solid var(--border); font-size: 13px; }
 .weights span { width: 60px; flex-shrink: 0; }
@@ -181,16 +274,39 @@ input[type="range"] { appearance: none; flex: 1; min-width: 0; height: 3px; marg
 input[type="range"]::-webkit-slider-thumb { appearance: none; width: 10px; height: 10px; border: 0; border-radius: 0; background: var(--text); }
 input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 0; background: var(--text); }
 output { width: 26px; text-align: right; font: 12px Bender-Bold, monospace; color: var(--muted-text); }
-button, select { min-height: 34px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 0; color: var(--text); background: transparent; font: 12px SourceHanSansCN-Bold; cursor: pointer; }
-select { background: var(--layer); }
+button { min-height: 32px; padding: 6px 14px; border: 1px solid var(--border); border-radius: 0; color: var(--text); background: transparent; font: 12px SourceHanSansCN-Bold; cursor: pointer; transition: 0.15s; box-sizing: border-box; }
 button:hover:not(:disabled) { border-color: var(--text); background: rgba(128, 128, 128, .08); }
 button:disabled, fieldset:disabled { opacity: .45; cursor: default; }
-summary:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+summary:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .panel-footer { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
 .save-button { background: var(--text); color: var(--bg); border-color: var(--text); }
-.save-button:hover:not(:disabled) { background: var(--text); opacity: .8; }
+.save-button:hover:not(:disabled) { background: var(--text); color: var(--bg); opacity: .8; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
-.actions label { display: flex; align-items: center; gap: 10px; margin-right: 8px; font-size: 13px; }
+.action-btn {
+    min-height: 32px;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    color: var(--text);
+    background: transparent;
+    font: 12px SourceHanSansCN-Bold;
+    cursor: pointer;
+    transition: 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+.action-btn:hover:not(:disabled) {
+    border-color: var(--text);
+    background: rgba(128, 128, 128, .08);
+    color: var(--text);
+}
+.action-btn:disabled {
+    opacity: .45;
+    cursor: default;
+}
 ul { list-style: none; padding: 0; margin: 0; }
 li { display: flex; gap: 16px; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding: 10px 0; font-size: 13px; }
 li span { overflow-wrap: anywhere; }

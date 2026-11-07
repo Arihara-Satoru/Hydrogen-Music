@@ -1192,7 +1192,7 @@ const clearFmRecent = () => {
         aria-labelledby="device-management-title"
       >
         <div class="device-management-header">
-          <div>
+          <div class="device-management-heading">
             <h2 id="device-management-title">设备管理</h2>
             <p>查看当前账号的登录设备，并让不再使用的设备退出登录。</p>
           </div>
@@ -2283,39 +2283,53 @@ const clearFmRecent = () => {
       }
     }
     .settings-device-management {
-      margin-top: 28px;
-      padding: 22px 24px;
+      margin-bottom: 28px;
+      padding: 18px 24px 22px;
       width: 100%;
       background: var(--layer);
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
+      text-align: left;
       .device-management-header {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
         gap: 20px;
-        h2 {
-          margin: 0;
-          font: 20px SourceHanSansCN-Bold;
-          color: var(--text);
-        }
-        p {
-          margin: 6px 0 0;
-          font: 13px SourceHanSansCN-Bold;
-          line-height: 1.55;
-          color: var(--muted-text);
+        flex-wrap: wrap;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+        .device-management-heading {
+          display: flex;
+          align-items: baseline;
+          flex-wrap: wrap;
+          gap: 8px 20px;
+          text-align: left;
+          h2 {
+            margin: 0;
+            font: 18px SourceHanSansCN-Bold;
+            color: var(--text);
+          }
+          p {
+            margin: 0;
+            font: 12px SourceHanSansCN-Bold;
+            line-height: 1.55;
+            color: var(--muted-text);
+          }
         }
       }
       button {
-        min-height: 44px;
+        min-height: 32px;
+        height: 32px;
         border: 1px solid var(--border);
+        border-radius: 0;
         background: transparent;
         color: var(--text);
-        font: 13px SourceHanSansCN-Bold;
+        font: 12px SourceHanSansCN-Bold;
         cursor: pointer;
-        transition: 0.2s;
+        transition: 0.15s;
+        box-sizing: border-box;
         &:hover:not(:disabled) {
-          background: var(--layer);
+          background: rgba(128, 128, 128, 0.08);
           border-color: var(--text);
         }
         &:focus-visible {
@@ -2328,8 +2342,8 @@ const clearFmRecent = () => {
         }
       }
       .device-refresh {
-        min-width: 76px;
-        padding: 0 16px;
+        min-width: 68px;
+        padding: 0 14px;
         flex: 0 0 auto;
       }
       .device-status {
