@@ -3,6 +3,9 @@ export const RECOGNITION_RATE = 8000
 export const RECOGNITION_HISTORY_KEY = 'hydrogen-audio-recognition-history'
 
 export function normalizeRecognitionResults(response) {
+    if (response?.error_code !== undefined && Number(response.error_code) !== 0) {
+        throw new Error(response.error_msg || response.msg || response.message || '识曲服务暂不可用，请稍后重试')
+    }
     if (response?.status !== undefined && Number(response.status) !== 1) {
         throw new Error(response.msg || response.message || response.error || '识曲服务暂不可用，请稍后重试')
     }

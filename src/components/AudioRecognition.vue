@@ -11,6 +11,8 @@ import { resolveImageUrl } from '../utils/imageUtils'
 import { extractDynamicPalette } from '../utils/dynamicTheme'
 import { decodeRecording, normalizeRecognitionResults, readRecognitionHistory, recordAudioSample,
     recognitionErrorMessage, RECOGNITION_HISTORY_KEY, RECOGNITION_SECONDS, saveRecognitionHistory } from '../utils/audioRecognition.mjs'
+import { createRecognitionCapture, RecognitionCaptureUnavailable } from '../utils/audioRecognitionCapture.mjs'
+import { createProgressiveRecognition } from '../utils/progressiveRecognition.mjs'
 
 const emit = defineEmits(['close'])
 const router = useRouter()
@@ -31,6 +33,10 @@ const results = ref([])
 const history = ref(readRecognitionHistory())
 const showHistory = ref(false)
 const favoriteBusy = ref(false)
+const capturing = ref(false)
+const matching = ref(false)
+const requestCount = ref(0)
+const fullClipMode = ref(false)
 
 const dynamicHue = ref(null)
 const dynamicSat = ref(null)
@@ -78,10 +84,16 @@ watch(
 )
 
 const busy = computed(() => ['permission', 'recording', 'processing', 'matching'].includes(phase.value))
-const heading = computed(() => ({ idle: '让声音告诉你歌名', permission: '等待录音授权', recording: '正在聆听', processing: '正在处理音频', matching: '正在寻找匹配', success: '找到这些歌曲', empty: '暂未找到匹配', error: '这次没能完成识别' }[phase.value]))
+const heading = computed(() => {
+    if (phase.value === 'recording' && matching.value) return '正在识别，继续聆听中'
+    if (phase.value === 'recording' && requestCount.value) return '暂未找到，再听一会儿'
+    return { idle: '让声音告诉你歌名', permission: '等待录音授权', recording: '正在聆听', processing: '正在处理音频', matching: '聆听已结束，正在等待结果', success: '找到这些歌曲', empty: '暂未找到匹配', error: '这次没能完成识别' }[phase.value]
+})
 const helper = computed(() => {
     if (errorText.value) return errorText.value
-    if (phase.value === 'recording') return '请保持音乐播放，采集完成后自动识别。'
+    if (phase.value === 'recording') return fullClipMode.value
+        ? '当前环境使用完整片段识别，最多聆听约 10 秒。'
+        : '找到候选歌曲后自动停止，最多聆听约 10 秒。'
     if (phase.value === 'permission') return '请完成系统弹出的授权；取消可随时停止本次操作。'
     if (phase.value === 'empty') return '试试更清晰的片段，或避开人声解说后重新识别。'
     if (phase.value === 'success') return '选择歌曲播放或收藏，播放权限以当前账号为准。'
@@ -113,7 +125,7 @@ function tickVisualizer(now) {
     const bars = waveRef.value?.children
     if (!bars || bars.length < BAR_COUNT) return
 
-    const isRecording = phase.value === 'recording'
+    const isRecording = capturing.value
 
     for (let i = 0; i < BAR_COUNT; i++) {
         let target = 0.04
@@ -157,6 +169,8 @@ function cancel() {
     void globalThis.windowApi?.cancelAudioRecognition?.(requestId).catch(() => {})
     requestId = null
     elapsed.value = 0
+    capturing.value = false
+    matching.value = false
     targetLevels.fill(0.04)
     if (busy.value) phase.value = 'idle'
 }
@@ -180,13 +194,16 @@ async function start() {
     controller = abort
     const current = () => alive && token === attempt && !abort.signal.aborted
     let stream = null
+    let capture = null
     errorText.value = ''
     results.value = []
     showHistory.value = false
     elapsed.value = 0
+    requestCount.value = 0
+    fullClipMode.value = false
     phase.value = 'permission'
     try {
-        if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') throw new DOMException('不支持录音', 'NotSupportedError')
+        if (!navigator.mediaDevices) throw new DOMException('不支持录音', 'NotSupportedError')
         await globalThis.windowApi?.prepareAudioRecognition?.(source.value, captureId)
         if (!current()) return
         if (source.value === 'system') {
@@ -209,20 +226,51 @@ async function start() {
         // 授权与采集获取后立即撤销临时权限。不上传或编码任何视频轨道；
         // 保留系统采集的伴随视频轨道至录音结束，避免部分平台停止音频。
         void globalThis.windowApi?.cancelAudioRecognition?.(captureId).catch(() => {})
+        const progress = value => { if (current()) elapsed.value = value }
+        const level = value => { if (current()) updateVisualizerTarget(value) }
+        // 先准备处理器，成功后才开始采样；只有能力初始化失败允许整段降级。
+        let session
+        try {
+            capture = await createRecognitionCapture(stream, {
+                signal: abort.signal, onLevel: level,
+                onSamples: samples => session?.push(samples),
+                onEnd: () => session?.end(), onError: error => session?.fail(error),
+            })
+        } catch (error) {
+            if (!(error instanceof RecognitionCaptureUnavailable)) throw error
+            if (typeof MediaRecorder === 'undefined') throw new DOMException('不支持录音', 'NotSupportedError')
+            fullClipMode.value = true
+        }
+        if (!current()) return
         phase.value = 'recording'
-        const blob = await recordAudioSample(stream, {
-            signal: abort.signal,
-            onProgress: value => { if (current()) elapsed.value = value },
-            onLevel: value => { if (current()) updateVisualizerTarget(value) },
-        })
+        capturing.value = true
+        let songs
+        if (capture) {
+            session = createProgressiveRecognition({
+                match: matchAudio, signal: abort.signal, onProgress: progress,
+                stopCapture: () => { capture.stop(); if (current()) capturing.value = false },
+                onState: state => {
+                    if (!current()) return
+                    capturing.value = state.capturing
+                    matching.value = state.matching
+                    requestCount.value = state.requests
+                    phase.value = state.capturing ? 'recording' : 'matching'
+                },
+            })
+            try { capture.start() } catch (error) { session.fail(error) }
+            songs = await session.result
+        } else {
+            const blob = await recordAudioSample(stream, { signal: abort.signal, onProgress: progress, onLevel: level })
+            if (!current()) return
+            capturing.value = false
+            phase.value = 'processing'
+            const pcm = await decodeRecording(blob)
+            if (!current()) return
+            phase.value = 'matching'
+            songs = normalizeRecognitionResults(await matchAudio(pcm, abort.signal))
+        }
         if (!current()) return
-        phase.value = 'processing'
-        const pcm = await decodeRecording(blob)
-        if (!current()) return
-        phase.value = 'matching'
-        const response = await matchAudio(pcm, abort.signal)
-        if (!current()) return
-        results.value = normalizeRecognitionResults(response)
+        results.value = songs
         phase.value = results.value.length ? 'success' : 'empty'
         if (results.value.length) history.value = saveRecognitionHistory(history.value, results.value[0], source.value)
     } catch (error) {
@@ -230,8 +278,11 @@ async function start() {
         errorText.value = recognitionErrorMessage(error, source.value)
         phase.value = 'error'
     } finally {
+        capture?.stop()
         stream?.getTracks().forEach(track => track.stop())
         if (token === attempt) {
+            capturing.value = false
+            matching.value = false
             controller = null
             requestId = null
             void globalThis.windowApi?.cancelAudioRecognition?.(captureId).catch(() => {})
@@ -359,7 +410,7 @@ onBeforeUnmount(() => {
                     </select>
                 </label>
 
-                <div class="recognition-stage" :class="{ 'is-listening': phase === 'recording', 'has-results': results.length }">
+                <div class="recognition-stage" :class="{ 'is-listening': capturing, 'has-results': results.length }">
                     <div v-if="!results.length" ref="waveRef" class="recognition-wave" aria-hidden="true">
                         <i v-for="index in 40" :key="index"></i>
                     </div>
@@ -367,12 +418,12 @@ onBeforeUnmount(() => {
                         <h3>{{ heading }}</h3>
                         <p>{{ helper }}</p>
                     </div>
-                    <div v-if="phase === 'recording'" class="recognition-time" role="progressbar" aria-label="录音进度" :aria-valuenow="Math.floor(elapsed)" :aria-valuemin="0" :aria-valuemax="RECOGNITION_SECONDS">
+                    <div v-if="capturing" class="recognition-time" role="progressbar" aria-label="已采集时长" :aria-valuenow="Math.floor(elapsed)" :aria-valuemin="0" :aria-valuemax="RECOGNITION_SECONDS">
                         <span>{{ elapsed.toFixed(1) }} / {{ RECOGNITION_SECONDS }} s</span>
                         <div><i ref="timeFillRef"></i></div>
                     </div>
                     <button v-if="busy" type="button" class="recognition-primary recognition-busy-btn" @click="cancel">
-                        取消{{ phase === 'recording' ? '录音' : '识别' }}
+                        取消识别
                     </button>
                     <button v-else type="button" class="recognition-primary" @click="start">
                         {{ phase === 'idle' ? '开始识别' : '重新识别' }} <span aria-hidden="true">↗</span>
@@ -381,6 +432,12 @@ onBeforeUnmount(() => {
                         改用麦克风 / 虚拟声卡输入
                     </button>
                 </div>
+
+                <details class="recognition-privacy">
+                    <summary>采集与隐私说明</summary>
+                    <p>点击开始后最多采集约 10 秒音频，期间可能分次上传至酷狗；找到候选后自动停止。原始录音不写入本地文件，不保存或上传画面。取消即停止后续采集与请求，已发送的音频无法撤回。</p>
+                    <p>系统内录受操作系统与设备限制；无法获取声音时可主动切换麦克风或虚拟声卡输入。</p>
+                </details>
 
                 <div v-if="results.length" class="recognition-results" aria-label="识别结果">
                     <article v-for="song in results" :key="song.hash || song.id || song.name" class="recognition-song">
@@ -446,7 +503,9 @@ onBeforeUnmount(() => {
     width: 416px;
     max-width: calc(100vw - 32px);
     max-height: calc(100dvh - 72px);
-    overflow: hidden; /* 彻底移除原生侧边滚动条 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
     box-sizing: border-box;
     padding: 20px 22px;
     background: var(--panel);
@@ -461,6 +520,9 @@ onBeforeUnmount(() => {
 .recognition-panel * {
     box-sizing: border-box;
 }
+.recognition-privacy { margin-top: 10px; font-size: 11px; color: var(--muted-text); }
+.recognition-privacy summary { font-size: 12px; }
+.recognition-privacy p { margin: 8px 0; line-height: 1.8; }
 
 .panel-corner {
     width: 8px;
@@ -473,26 +535,26 @@ onBeforeUnmount(() => {
     transition: border-color 0.4s ease;
 }
 .corner-tl {
-    top: -1px;
-    left: -1px;
+    top: 0;
+    left: 0;
     border-top: 2px solid;
     border-left: 2px solid;
 }
 .corner-tr {
-    top: -1px;
-    right: -1px;
+    top: 0;
+    right: 0;
     border-top: 2px solid;
     border-right: 2px solid;
 }
 .corner-bl {
-    bottom: -1px;
-    left: -1px;
+    bottom: 0;
+    left: 0;
     border-bottom: 2px solid;
     border-left: 2px solid;
 }
 .corner-br {
-    bottom: -1px;
-    right: -1px;
+    bottom: 0;
+    right: 0;
     border-bottom: 2px solid;
     border-right: 2px solid;
 }
@@ -889,7 +951,7 @@ onBeforeUnmount(() => {
 }
 
 /* Dark mode overrides */
-:global(.dark) .recognition-panel {
+:global(.dark .recognition-panel) {
     background: var(--panel);
     border-color: var(--border);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
