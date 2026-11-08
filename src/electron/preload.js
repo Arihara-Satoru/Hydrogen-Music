@@ -304,6 +304,8 @@ contextBridge.exposeInMainWorld("windowApi", {
   getOtherAudioMonitorState,
   onOtherAudioStateChanged,
   getSystemFonts: () => ipcRenderer.invoke("system-fonts:list"),
+  prepareAudioRecognition: (source, requestId) => ipcRenderer.invoke('audio-recognition:prepare', source, requestId),
+  cancelAudioRecognition: (requestId) => ipcRenderer.invoke('audio-recognition:cancel', requestId),
   openDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
   openFile: () => ipcRenderer.invoke("dialog:openFile"),
   clearLocalMusicData,

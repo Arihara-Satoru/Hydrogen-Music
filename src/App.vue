@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue';
 import Home from './views/Home.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
@@ -28,6 +28,8 @@ const GlobalDialog = defineAsyncComponent(() => import('./components/GlobalDialo
 const GlobalNotice = defineAsyncComponent(() => import('./components/GlobalNotice.vue'));
 const Update = defineAsyncComponent(() => import('./components/Update.vue'));
 const OnboardingTour = defineAsyncComponent(() => import('./components/OnboardingTour.vue'));
+const AudioRecognition = defineAsyncComponent(() => import('./components/AudioRecognition.vue'));
+const recognitionOpen = ref(false);
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
@@ -134,6 +136,27 @@ const handleTitleBarDoubleClick = () => {
         <AudioVisualizer class="widget-visualizer"></AudioVisualizer>
         <div class="widget-search" data-tour="search">
             <SearchInput></SearchInput>
+            <button
+                v-show="playerStore.playerShow"
+                class="recognition-launcher"
+                type="button"
+                title="听歌识曲"
+                aria-label="听歌识曲"
+                aria-haspopup="dialog"
+                :aria-expanded="recognitionOpen"
+                @click="recognitionOpen = !recognitionOpen"
+            >
+                <div class="search-border search-border1"></div>
+                <div class="search-border search-border2"></div>
+                <div class="search-border search-border3"></div>
+                <div class="search-border search-border4"></div>
+                <div class="search-border-2 search-border5"></div>
+                <div class="search-border-2 search-border6"></div>
+                <div class="search-border-2 search-border7"></div>
+                <div class="search-border-2 search-border8"></div>
+                <span class="recognition-launcher-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <span class="recognition-launcher-text">识曲</span>
+            </button>
         </div>
     </div>
     <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
@@ -168,7 +191,8 @@ const handleTitleBarDoubleClick = () => {
             <Update></Update>
         </div>
     </Transition>
-    <OnboardingTour :scope="onboardingScope"></OnboardingTour>
+    <OnboardingTour v-if="!recognitionOpen" :scope="onboardingScope"></OnboardingTour>
+    <AudioRecognition v-if="recognitionOpen" @close="recognitionOpen = false"></AudioRecognition>
 </template>
 
 <style lang="scss">
@@ -226,11 +250,130 @@ const handleTitleBarDoubleClick = () => {
         }
     }
     .widget-search {
+        display: flex;
+        align-items: center;
+        gap: 16px;
         margin-left: 30px;
         transform: translate3d(calc(-1 * var(--visualizer-shift)), 0, 0);
         transition: transform 0.72s cubic-bezier(0.16, 1, 0.3, 1);
         pointer-events: auto;
         -webkit-app-region: no-drag;
+    }
+    .recognition-launcher {
+        height: 20px;
+        position: relative;
+        bottom: -3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 0 10px;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        font: 12px SourceHanSansCN-Bold, sans-serif;
+        line-height: 20px;
+        white-space: nowrap;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+        box-sizing: border-box;
+        transition: opacity 0.2s cubic-bezier(0.24, 0.97, 0.59, 1), color 0.2s cubic-bezier(0.24, 0.97, 0.59, 1);
+
+        &:focus-visible { outline: 2px solid currentColor !important; outline-offset: 4px; }
+        &:hover { opacity: .75; }
+        &[aria-expanded="true"] { opacity: 1; }
+
+        .recognition-launcher-text {
+            font: 12px SourceHanSansCN-Bold, sans-serif;
+            line-height: 20px;
+            color: currentColor;
+            letter-spacing: 0.5px;
+        }
+
+        .recognition-launcher-wave {
+            display: flex;
+            align-items: center;
+            height: 12px;
+            gap: 2px;
+            margin-right: 1px;
+            i {
+                display: block;
+                width: 2px;
+                height: 4px;
+                background: currentColor;
+                transition: height 0.18s ease;
+            }
+            i:nth-child(1) { height: 4px; }
+            i:nth-child(2) { height: 10px; }
+            i:nth-child(3) { height: 12px; }
+            i:nth-child(4) { height: 6px; }
+        }
+
+        &:hover .recognition-launcher-wave {
+            i:nth-child(1) { height: 8px; }
+            i:nth-child(2) { height: 12px; }
+            i:nth-child(3) { height: 6px; }
+            i:nth-child(4) { height: 10px; }
+        }
+
+        .search-border {
+            width: 7px;
+            height: 7px;
+            position: absolute;
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+        .search-border-2 {
+            width: 1.5px;
+            height: 1.5px;
+            position: absolute;
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+        .search-border1 {
+            left: -1px;
+            top: -1px;
+            border-left: 2px solid currentColor;
+            border-top: 2px solid currentColor;
+        }
+        .search-border2 {
+            right: -1px;
+            top: -1px;
+            border-right: 2px solid currentColor;
+            border-top: 2px solid currentColor;
+        }
+        .search-border3 {
+            left: -1px;
+            bottom: -1px;
+            border-left: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+        }
+        .search-border4 {
+            right: -1px;
+            bottom: -1px;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+        }
+        .search-border5 {
+            left: 7px;
+            top: -1px;
+            background-color: currentColor;
+        }
+        .search-border6 {
+            right: 7px;
+            top: -1px;
+            background-color: currentColor;
+        }
+        .search-border7 {
+            left: 7px;
+            bottom: -1px;
+            background-color: currentColor;
+        }
+        .search-border8 {
+            right: 7px;
+            bottom: -1px;
+            background-color: currentColor;
+        }
     }
     .widget-visualizer {
         flex-shrink: 0;
@@ -239,6 +382,24 @@ const handleTitleBarDoubleClick = () => {
         .widget-search {
             transform: translate3d(0, 0, 0);
         }
+    }
+}
+html.dynamic-theme .globalWidget .recognition-launcher {
+    &:hover, &[aria-expanded="true"] {
+        color: hsl(var(--ambient-hue) var(--ambient-saturation) 40%);
+    }
+}
+html.dark.dynamic-theme .globalWidget .recognition-launcher {
+    &:hover, &[aria-expanded="true"] {
+        color: hsl(var(--ambient-hue) var(--ambient-saturation) 65%);
+    }
+}
+@media (max-width: 1300px) {
+    .globalWidget .widget-search {
+        gap: 10px;
+        .search-container { width: 100px; }
+        .search-container-foucs { width: 130px; }
+        .recognition-launcher .recognition-launcher-text { display: none; }
     }
 }
 .dragBar {

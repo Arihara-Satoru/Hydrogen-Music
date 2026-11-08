@@ -537,6 +537,7 @@ const createWindow = (winstate = createMainWindowState()) => {
     },
   });
   myWindow = win;
+  require('./src/electron/audioRecognition').installAudioRecognition(win);
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (shouldOpenExternally(url, win.webContents.getURL())) {

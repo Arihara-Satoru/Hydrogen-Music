@@ -155,6 +155,7 @@ request.interceptors.response.use(function (response) {
     }
 
     const suppressGlobalNotice = url.startsWith('/listen/together/') || url === '/comment/music/send'
+      || url === '/audio/match'
       || url === '/search'
       || url === '/comment/floor/send'
       || url === '/get/verify/info'

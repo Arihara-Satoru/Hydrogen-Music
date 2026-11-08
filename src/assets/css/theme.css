@@ -138,19 +138,38 @@ html.dynamic-theme .musicWidget {
 
 html.dynamic-theme .music-widget,
 html.dynamic-theme .playlist-widget,
-html.dynamic-theme .title-container .title-player {
-  background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 90% / 0.9) !important;
+html.dynamic-theme .title-container .title-player,
+html.dynamic-theme .recognition-panel {
+  background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 90% / 0.96) !important;
   background-image:
     radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 60% / 0.42), transparent 72%),
     radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 62% / calc(0.24 * var(--ambient-tertiary-strength))), transparent 72%),
-    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.48) 94% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 85% / 0.9)) !important;
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.48) 94% / 0.96), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 85% / 0.96)) !important;
   background-blend-mode: normal !important;
 }
 
 html.dynamic-theme .music-widget,
-html.dynamic-theme .title-container .title-player {
-  box-shadow: 0 8px 20px hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 38% / 0.12) !important;
+html.dynamic-theme .title-container .title-player,
+html.dynamic-theme .recognition-panel {
+  box-shadow: 0 8px 24px hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 38% / 0.14) !important;
   transition: none !important;
+}
+
+html.dynamic-theme .recognition-panel {
+  border-color: hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.22) !important;
+}
+
+html.dynamic-theme .recognition-stage.is-listening .recognition-wave i,
+html.dynamic-theme .recognition-time i {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 44%) !important;
+}
+
+html.dynamic-theme .recognition-panel .panel-corner {
+  border-color: hsl(var(--ambient-hue) var(--ambient-saturation) 42%) !important;
+}
+
+html.dynamic-theme .recognition-eyebrow {
+  color: hsl(var(--ambient-hue) var(--ambient-saturation) 42%) !important;
 }
 
 html.dynamic-theme .music-widget .music-progress {
@@ -197,12 +216,32 @@ html.dark.dynamic-theme .music-player {
 
 html.dark.dynamic-theme .music-widget,
 html.dark.dynamic-theme .playlist-widget,
-html.dark.dynamic-theme .title-container .title-player {
-  background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 15% / 0.9) !important;
+html.dark.dynamic-theme .title-container .title-player,
+html.dark.dynamic-theme .recognition-panel {
+  background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 15% / 0.96) !important;
   background-image:
     radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 46% / 0.38), transparent 72%),
     radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 42% / calc(0.20 * var(--ambient-tertiary-strength))), transparent 72%),
-    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 19% / 0.92), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.30) 11% / 0.92)) !important;
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 19% / 0.96), hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.30) 11% / 0.96)) !important;
+  background-blend-mode: normal !important;
+}
+
+html.dark.dynamic-theme .recognition-panel {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55) !important;
+  border-color: hsl(var(--ambient-hue) var(--ambient-saturation) 60% / 0.25) !important;
+}
+
+html.dark.dynamic-theme .recognition-stage.is-listening .recognition-wave i,
+html.dark.dynamic-theme .recognition-time i {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 58%) !important;
+}
+
+html.dark.dynamic-theme .recognition-panel .panel-corner {
+  border-color: hsl(var(--ambient-hue) var(--ambient-saturation) 58%) !important;
+}
+
+html.dark.dynamic-theme .recognition-eyebrow {
+  color: hsl(var(--ambient-hue) var(--ambient-saturation) 65%) !important;
 }
 
 /* Keep it simple: default everything to readable text on dark */

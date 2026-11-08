@@ -297,7 +297,7 @@ function loadImage(source) {
   });
 }
 
-async function extractDynamicPalette(source) {
+export async function extractDynamicPalette(source) {
   const getCoverPalette = window.windowApi?.getCoverPalette;
   if (typeof getCoverPalette === "function") {
     const palette = await getCoverPalette(source);

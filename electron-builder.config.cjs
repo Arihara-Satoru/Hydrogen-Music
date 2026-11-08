@@ -142,6 +142,11 @@ module.exports = {
     artifactName: 'Hydrogen.Music.Setup.${version}.${ext}',
   },
   mac: {
+    extendInfo: {
+      NSMicrophoneUsageDescription: '听歌识曲需要采集约 10 秒麦克风音频并上传至酷狗识别，仅在您点击开始识别后采集。',
+      NSAudioCaptureUsageDescription: '听歌识曲需要采集约 10 秒电脑声音并上传至酷狗识别，不保存原始录音。',
+      NSScreenCaptureUsageDescription: '电脑声音识曲使用系统屏幕音频采集能力，不保存或上传画面。',
+    },
     category: 'public.app-category.music',
     icon: './src/assets/icon/icon.icns',
     target: ['dmg'],
