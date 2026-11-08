@@ -112,8 +112,6 @@ function extractPlayableUrl(value) {
 }
 
 function extractStreamMeta(body = {}, fallback = {}) {
-    const loudnessSource = ['volume', 'volume_gain', 'volume_peak'].some(key => body?.[key] !== undefined)
-        ? body : fallback
     const br = Number(body?.br || body?.bitrate || body?.bitRate || fallback?.br || fallback?.bitrate || fallback?.bitRate)
     // ponytail: 旧接口未注明码率单位，沿用 <1000 按 kbps 的兼容规则；后端提供单位后改为显式转换。
     return {
@@ -123,9 +121,6 @@ function extractStreamMeta(body = {}, fallback = {}) {
         codec: body?.codec || fallback?.codec,
         lossless: body?.lossless ?? fallback?.lossless,
         size: body?.size || body?.fileSize || body?.filesize || fallback?.size || fallback?.fileSize || fallback?.filesize,
-        loudness: loudnessSource?.volume !== undefined && loudnessSource?.volume_gain !== undefined && loudnessSource?.volume_peak !== undefined
-            ? { volume: loudnessSource.volume, gain: loudnessSource.volume_gain, peak: loudnessSource.volume_peak }
-            : null,
     }
 }
 

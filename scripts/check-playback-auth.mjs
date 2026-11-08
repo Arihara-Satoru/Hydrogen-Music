@@ -91,7 +91,7 @@ assert.equal(result.type, 'flac')
 assert.equal(result.sr, 96000)
 assert.equal(result.bitsPerSample, 24)
 assert.equal(result.br, 2304000)
-assert.deepEqual(plain(result.loudness), { volume: -18, gain: 0, peak: 0.8 })
+assert.equal(result.loudness, undefined, 'upstream loudness must not be passed to playback')
 const firstAuthTimestamp = requests.find(item => item.url === '/user/verify').params.timestamp
 
 // Search/list variants use the same album context; nested payloads and backup URLs retain source metadata.
@@ -107,7 +107,7 @@ assert.equal(requests.at(-1).params.hash, hashes.flac)
 assert.equal(result.url, 'https://audio.test/backup.flac')
 assert.equal(result.level, 'flac')
 assert.equal(result.br, 900000)
-assert.equal(result.loudness.volume, -18)
+assert.equal(result.loudness, undefined)
 assert.ok(requests.find(item => item.url === '/user/verify').params.timestamp > firstAuthTimestamp)
 assert.ok(!requests.some(item => item.url === '/register/dev'))
 

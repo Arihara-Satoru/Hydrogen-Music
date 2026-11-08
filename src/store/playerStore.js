@@ -72,9 +72,8 @@ export const usePlayerStore = defineStore('playerStore', {
             progress: 0,//进度条
             volume: 0.3,//音量
             playbackRate: 1,//播放倍速（0.5x - 2.0x）
-            loudnessNormalization: false, // 上游响度数据可用时均衡音量
+            loudnessNormalization: false, // 本地实时均衡：自动补偿音量、收敛强弱差异并保护峰值
             loudnessNormalizationActive: false, // 当前音频已成功应用响度增益
-            dynamicCompression: 0, // 实时动态压缩：0 关闭，4 轻度，1 适中（推荐），2 较强
             // volumeBeforeMuted: 0,//静音前音量
             playMode: 0,//0为顺序播放，1为列表循环，2为单曲循环，3为随机播放
             listInfo: null,

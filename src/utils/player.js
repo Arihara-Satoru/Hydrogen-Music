@@ -20,7 +20,8 @@ import { syncLyricIndexForSeek } from "../composables/usePlayerRuntime";
 import { schedulePlaylistCacheInvalidation } from "./cacheInvalidation";
 import { isLogin } from "./authority";
 import { createDecodedAudioPlayer } from "./webAudioGapless";
-import { calculateLoudnessGain, prepareHowlAudioProcessing } from "./loudnessNormalization.mjs";
+import { prepareHowlAudioProcessing, prepareProtectedPlayback } from "./loudnessNormalization.mjs";
+import { PROTECTED_LOUDNESS_GAIN } from "./adaptiveLoudness.mjs";
 import { pickMusicVideoPoolEntry } from "./musicVideoPool.mjs";
 import { createOtherAudioPauseController } from "./otherAudioPause.mjs";
 import { interceptTogetherControl, isTogetherPlayback } from './togetherBridge';
@@ -72,7 +73,6 @@ const {
   currentChorus,
   loudnessNormalization,
   loudnessNormalizationActive,
-  dynamicCompression,
 } = storeToRefs(playerStore);
 
 let isProgress = false;
@@ -198,15 +198,11 @@ if (playbackRate) {
     }
   });
 }
-watch([loudnessNormalization, dynamicCompression], () => {
+watch(loudnessNormalization, () => {
   const playback = currentMusic.value;
   if (!playback) return;
-  const gain = loudnessNormalization.value
-    ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1;
-  if ((gain !== 1 || dynamicCompression.value) && !playback.setAudioProcessing && !playback.__hmAudioProcessingUnavailable) {
-    play(playback._src, playing.value, Number(playback.seek()) || 0, null, {
-      trackInfo: { loudness: playback.__hmLoudnessMetadata },
-    });
+  if (loudnessNormalization.value && !playback.setLoudnessNormalization && !playback.__hmAudioProcessingUnavailable) {
+    play(playback._src, playing.value, Number(playback.seek()) || 0);
     return;
   }
   void applyPlaybackAudioProcessing(playback);
@@ -214,23 +210,27 @@ watch([loudnessNormalization, dynamicCompression], () => {
 
 async function applyPlaybackAudioProcessing(playback, autoplay = playback.playing?.() === true) {
   if (currentMusic.value === playback) loudnessNormalizationActive.value = false;
-  if (playback.__hmAudioProcessingUnavailable) return;
+  if (playback.__hmAudioProcessingUnavailable) {
+    playback.setLoudnessProtection?.(loudnessNormalization.value ? PROTECTED_LOUDNESS_GAIN : 1);
+    playback.__hmLoudnessMode = loudnessNormalization.value ? "protected" : "off";
+    return;
+  }
+  const request = (playback.__hmProcessingRequest || 0) + 1;
+  playback.__hmProcessingRequest = request;
   const pauseToken = playbackPauseToken;
-  const gain = loudnessNormalization.value
-    ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1;
+  const enabled = loudnessNormalization.value;
   try {
-    await playback.setAudioProcessing?.(gain, dynamicCompression.value);
-    if (currentMusic.value === playback && gain === (loudnessNormalization.value
-      ? calculateLoudnessGain(playback.__hmLoudnessMetadata) : 1)) {
-      loudnessNormalizationActive.value = gain !== 1 && typeof playback.setAudioProcessing === "function"
+    await playback.setLoudnessNormalization?.(enabled);
+    if (currentMusic.value === playback && playback.__hmProcessingRequest === request) {
+      loudnessNormalizationActive.value = enabled && playback.__hmLoudnessMode === "realtime"
         && playback.state?.() !== "unloaded";
     }
   } catch (error) {
-    console.warn("音频处理不可用，使用原音量播放", error);
+    if (playback.__hmProcessingRequest !== request) return;
+    console.warn("音频处理不可用，回退至普通播放及保守音量保护", error);
     playback.__hmAudioProcessingUnavailable = true;
     if (currentMusic.value === playback) {
       play(playback._src, autoplay && pauseToken === playbackPauseToken, Number(playback.seek()) || 0, null, {
-        trackInfo: { loudness: playback.__hmLoudnessMetadata },
         audioProcessingUnavailable: true,
       });
     }
@@ -1953,9 +1953,6 @@ export function play(
   if (preloadedPlayer) {
     const playback = markRaw(preloadedPlayer);
     currentMusic.value = playback;
-    playback.__hmLoudnessMetadata = playOptions.trackInfo?.loudness || null;
-    void applyPlaybackAudioProcessing(playback, shouldAutoplay);
-    if (currentMusic.value !== playback) return;
     playback.loop?.(!isTogetherPlayback() && playMode.value == 2);
     playback.rate?.(getEffectivePlaybackRate());
     playback.volume?.(keepPreviousPlayback ? 0 : volume.value);
@@ -1963,12 +1960,13 @@ export function play(
     playback.on?.("pause", () => handlePlaybackPause(playback));
     playback.on?.("end", () => handlePlaybackEnd(playback));
     applyLoadedState(playback);
-    if (shouldAutoplay) {
+    // Match the streaming path: pause during asynchronous worklet setup must cancel autoplay.
+    if (shouldAutoplay) syncPlaybackStarted();
+    void applyPlaybackAudioProcessing(playback, shouldAutoplay).then(() => {
+      if (currentMusic.value !== playback || !shouldAutoplay || pauseToken !== playbackPauseToken) return;
       playback.play?.();
-      // 预载播放器调用 play() 后同步标记播放状态，防止事件时序问题导致 playing 为 false。
-      // 即使 play() 是异步的（AudioContext suspended），标记后 handlePlaybackStart 会再次设为 true，无副作用。
       syncPlaybackStarted();
-    }
+    });
     return;
   }
 
@@ -2004,7 +2002,9 @@ export function play(
     onloaderror: function (_id, err) {
       if (currentMusic.value !== playback) return;
       if (playback.__hmAudioProcessingPrepared && !playback.__hmAudioProcessingUnavailable) {
-        noticeOpen("当前音频不支持音效处理，已恢复普通播放", 2);
+        noticeOpen(loudnessNormalization.value
+          ? "当前音频无法分析响度，已启用保守音量保护"
+          : "当前音频不支持音效处理，已恢复普通播放", 2);
         play(url, shouldAutoplay && pauseToken === playbackPauseToken, normalizedSeek, null, {
           ...playOptions,
           audioProcessingUnavailable: true,
@@ -2016,10 +2016,11 @@ export function play(
     },
   }));
   currentMusic.value = playback;
-  playback.__hmLoudnessMetadata = playOptions.trackInfo?.loudness || null;
   playback.__hmAudioProcessingUnavailable = playOptions.audioProcessingUnavailable === true;
-  if (!playback.__hmAudioProcessingUnavailable && (dynamicCompression.value
-    || (loudnessNormalization.value && calculateLoudnessGain(playback.__hmLoudnessMetadata) !== 1))) {
+  if (playback.__hmAudioProcessingUnavailable) {
+    prepareProtectedPlayback(playback);
+    playback.setLoudnessProtection(loudnessNormalization.value ? PROTECTED_LOUDNESS_GAIN : 1);
+  } else if (loudnessNormalization.value) {
     prepareHowlAudioProcessing(playback);
   }
   playback.once("load", async () => {

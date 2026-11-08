@@ -183,13 +183,6 @@ const searchAssistLimit = ref(8);
 const autoPlayOnStartup = ref(false);
 const pauseOnOtherAudio = ref(false);
 const loudnessNormalization = ref(false);
-const dynamicCompression = ref(0);
-const dynamicCompressionOptions = [
-  { label: "关闭", value: 0 },
-  { label: "轻度", value: 4 },
-  { label: "适中（推荐）", value: 1 },
-  { label: "较强", value: 2 },
-];
 const isWindows = window.process?.platform === "win32";
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
@@ -482,7 +475,6 @@ onActivated(() => {
     pauseOnOtherAudio.value =
       settings?.music?.pauseOnOtherAudio === true;
     loudnessNormalization.value = settings?.music?.loudnessNormalization === true;
-    dynamicCompression.value = settings?.music?.dynamicCompression ?? 0;
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
     playerStore.audioVisualizer = settings?.music?.audioVisualizer === true;
@@ -587,7 +579,6 @@ const setAppSettings = () => {
       autoPlayOnStartup: autoPlayOnStartup.value,
       pauseOnOtherAudio: pauseOnOtherAudio.value,
       loudnessNormalization: loudnessNormalization.value,
-      dynamicCompression: dynamicCompression.value,
     },
     local: {
       videoFolder: videoFolder.value,
@@ -611,7 +602,6 @@ const setAppSettings = () => {
   };
   playerStore.quality = musicLevel.value;
   playerStore.loudnessNormalization = loudnessNormalization.value;
-  playerStore.dynamicCompression = dynamicCompression.value;
   windowApi.setSettings(JSON.stringify(settings));
 };
 
@@ -1260,7 +1250,7 @@ const clearFmRecent = () => {
               </div>
             </div>
             <div class="option">
-              <div class="option-name" id="loudness-normalization-label">响度均衡（上游数据可用时生效）</div>
+              <div class="option-name" id="loudness-normalization-label" title="本地实时分析音频，自动补偿音量、减小强弱差异并保护峰值。不使用上游响度数据，不额外下载或扫描整首歌曲；无法分析时使用保守音量保护。">响度均衡</div>
               <div class="option-operation">
                 <div
                   class="toggle"
@@ -1279,16 +1269,6 @@ const clearFmRecent = () => {
                     <div class="toggle-on" v-show="loudnessNormalization"></div>
                   </Transition>
                 </div>
-              </div>
-            </div>
-            <div class="option">
-              <div class="option-name" id="dynamic-compression-label">压缩强度（减小强弱段落差异）</div>
-              <div class="option-operation">
-                <Selector
-                  v-model="dynamicCompression"
-                  :options="dynamicCompressionOptions"
-                  aria-labelledby="dynamic-compression-label"
-                ></Selector>
               </div>
             </div>
             <div class="option">

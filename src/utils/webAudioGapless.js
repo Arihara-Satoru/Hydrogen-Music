@@ -1,3 +1,5 @@
+import { createAdaptiveLoudness, PROTECTED_LOUDNESS_GAIN } from './adaptiveLoudness.mjs'
+
 const DEFAULT_AUDIO_FETCH_TIMEOUT_MS = 45000
 
 let sharedAudioContext = null
@@ -12,32 +14,6 @@ export function getAudioContext() {
     if (!AudioContextCtor) throw new Error('Web Audio API 不可用')
     sharedAudioContext = new AudioContextCtor()
     return sharedAudioContext
-}
-
-const compressionPresets = {
-    4: { threshold: -14, knee: 4, ratio: 1.5, makeup: 0.8 },
-    1: { threshold: -18, knee: 6, ratio: 2, makeup: 0.6 },
-    2: { threshold: -22, knee: 8, ratio: 3, makeup: 0.43 },
-}
-
-export function configureDynamicCompression(context, level, compression = null) {
-    const preset = compressionPresets[level]
-    if (!preset) throw new RangeError('无效的压缩强度')
-    if (!compression) {
-        const compressor = context.createDynamicsCompressor()
-        const makeupGain = context.createGain()
-        compressor.connect(makeupGain)
-        compression = { compressor, makeupGain }
-    }
-    const { compressor, makeupGain } = compression
-    compressor.threshold.value = preset.threshold
-    compressor.knee.value = preset.knee
-    compressor.ratio.value = preset.ratio
-    compressor.attack.value = 0.01
-    compressor.release.value = 0.25
-    // ponytail: compensate Chromium's automatic makeup gain per preset; recalibrate when presets or the audio engine change.
-    makeupGain.gain.value = preset.makeup
-    return compression
 }
 
 async function fetchAudioArrayBuffer(url) {
@@ -67,8 +43,9 @@ class WebAudioBufferPlayer {
         this._loudnessGain = this._context.createGain()
         this._loudnessGain.connect(this._gain)
         this._gain.connect(this._context.destination)
-        this._compression = null
-        this._compressionLevel = 0
+        this._adaptive = null
+        this._processingRevision = 0
+        this._playRevision = 0
         this._source = null
         this._sourceToken = 0
         this._state = 'loaded'
@@ -100,20 +77,30 @@ class WebAudioBufferPlayer {
         return safeValue
     }
 
-    setAudioProcessing(value, compressionLevel = 0) {
+    async setLoudnessNormalization(enabled) {
         if (this._state === 'unloaded') return
-        this._loudnessGain.gain.setValueAtTime(value, this._context.currentTime)
-        if (this._compressionLevel === compressionLevel) return
-        if (compressionLevel) this._compression = configureDynamicCompression(this._context, compressionLevel, this._compression)
-        this._loudnessGain.disconnect()
-        this._compression?.makeupGain.disconnect()
-        if (compressionLevel) {
-            this._loudnessGain.connect(this._compression.compressor)
-            this._compression.makeupGain.connect(this._gain)
-        } else {
-            this._loudnessGain.connect(this._gain)
+        const request = ++this._processingRevision
+        if (enabled && !this._adaptive) {
+            this._loudnessGain.gain.setValueAtTime(PROTECTED_LOUDNESS_GAIN, this._context.currentTime)
+            const adaptive = await createAdaptiveLoudness(this._context, this._src)
+            if (this._state === 'unloaded' || request !== this._processingRevision) {
+                adaptive.dispose()
+                return
+            }
+            this._adaptive = adaptive
+            adaptive.setRunning(this._playing)
         }
-        this._compressionLevel = compressionLevel
+        if (!enabled && this._adaptive) {
+            this._adaptive.dispose()
+            this._adaptive = null
+        }
+        this._loudnessGain.gain.setValueAtTime(1, this._context.currentTime)
+        this._loudnessGain.disconnect()
+        this._adaptive?.node.disconnect()
+        const output = this._adaptive?.node || this._loudnessGain
+        if (this._adaptive) this._loudnessGain.connect(this._adaptive.node)
+        output.connect(this._gain)
+        this.__hmLoudnessMode = this._adaptive ? (this._adaptive.realtime ? 'realtime' : 'protected') : 'off'
     }
 
     loop(value) {
@@ -144,6 +131,7 @@ class WebAudioBufferPlayer {
         }
 
         const nextOffset = this._clampOffset(value)
+        this._adaptive?.reset()
         this._offset = nextOffset
         if (this._playing) {
             this._stopSource()
@@ -154,22 +142,27 @@ class WebAudioBufferPlayer {
 
     async play() {
         if (this._state === 'unloaded') return
+        const request = ++this._playRevision
         if (this._context.state === 'suspended') await this._context.resume()
-        if (this._playing) return
+        if (this._playing || this._state === 'unloaded' || request !== this._playRevision) return
         this._startSource(this._offset)
         this._emit('play')
     }
 
     pause() {
+        this._playRevision++
         if (!this._playing) return
         this._offset = this._getCurrentOffset()
         this._stopSource()
         this._playing = false
+        this._adaptive?.setRunning(false)
         this._emit('pause')
     }
 
     unload() {
         this._state = 'unloaded'
+        this._playRevision++
+        this._adaptive?.dispose()
         this._stopSource()
         if (this._fadeTimer) {
             clearTimeout(this._fadeTimer)
@@ -177,8 +170,6 @@ class WebAudioBufferPlayer {
         }
         try { this._gain.disconnect() } catch (_) {}
         try { this._loudnessGain.disconnect() } catch (_) {}
-        this._compression?.compressor.disconnect()
-        this._compression?.makeupGain.disconnect()
         this._events.clear()
         this._buffer = null
     }
@@ -258,6 +249,7 @@ class WebAudioBufferPlayer {
             if (token !== this._sourceToken || this._state === 'unloaded') return
             this._source = null
             this._playing = false
+            this._adaptive?.setRunning(false)
             this._offset = 0
             this._emit('end')
         }
@@ -273,6 +265,7 @@ class WebAudioBufferPlayer {
         this._offset = this._clampOffset(offset)
         this._startedAt = this._context.currentTime
         this._playing = true
+        this._adaptive?.setRunning(true)
         source.start(0, this._offset)
     }
 

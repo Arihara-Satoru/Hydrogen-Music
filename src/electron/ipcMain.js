@@ -131,11 +131,10 @@ function normalizeMusicSettings(music = {}) {
   normalized.audioVisualizer = normalized.audioVisualizer === true;
   normalized.autoPlayOnStartup = normalized.autoPlayOnStartup === true;
   normalized.pauseOnOtherAudio = normalized.pauseOnOtherAudio === true;
-  normalized.loudnessNormalization = normalized.loudnessNormalization === true;
-  // 保留原档位值；新增轻度为 4，旧较强（3）合并到当前较强（2）。
-  normalized.dynamicCompression = normalized.dynamicCompression === true
-    ? 1 : normalized.dynamicCompression === 3
-      ? 2 : [1, 2, 4].includes(normalized.dynamicCompression) ? normalized.dynamicCompression : 0;
+  // 旧响度均衡和动态压缩合并为本地实时均衡，任一开启时保留用户的音量保护意图。
+  normalized.loudnessNormalization = normalized.loudnessNormalization === true
+    || [true, 1, 2, 3, 4].includes(normalized.dynamicCompression);
+  delete normalized.dynamicCompression;
   // 兼容历史版本：读取后清理旧迁移标记字段。
   delete normalized.levelMigratedToLosslessV1;
   delete normalized.gaplessPlayback;
@@ -688,7 +687,6 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           autoPlayOnStartup: false,
           pauseOnOtherAudio: false,
           loudnessNormalization: false,
-          dynamicCompression: 0,
           coverSize: 400,
         },
         local: {
