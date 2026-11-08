@@ -156,6 +156,8 @@ html.dynamic-theme .recognition-panel {
 }
 
 html.dynamic-theme .recognition-panel {
+  /* 识曲浮层必须遮住底下的封面，渐变保留但基础表面不透明。 */
+  background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 90%) !important;
   border-color: hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.22) !important;
 }
 
@@ -227,6 +229,7 @@ html.dark.dynamic-theme .recognition-panel {
 }
 
 html.dark.dynamic-theme .recognition-panel {
+  background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.38) 15%) !important;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55) !important;
   border-color: hsl(var(--ambient-hue) var(--ambient-saturation) 60% / 0.25) !important;
 }

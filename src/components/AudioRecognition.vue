@@ -23,9 +23,6 @@ const togetherStore = useListenTogetherStore()
 const panel = ref(null)
 const waveRef = ref(null)
 const timeFillRef = ref(null)
-const source = ref(globalThis.process?.platform === 'win32' ? 'system' : 'microphone')
-const device = ref('')
-const devices = ref([])
 const phase = ref('idle')
 const elapsed = ref(0)
 const errorText = ref('')
@@ -87,7 +84,7 @@ const busy = computed(() => ['permission', 'recording', 'processing', 'matching'
 const heading = computed(() => {
     if (phase.value === 'recording' && matching.value) return '正在识别，继续聆听中'
     if (phase.value === 'recording' && requestCount.value) return '暂未找到，再听一会儿'
-    return { idle: '让声音告诉你歌名', permission: '等待录音授权', recording: '正在聆听', processing: '正在处理音频', matching: '聆听已结束，正在等待结果', success: '找到这些歌曲', empty: '暂未找到匹配', error: '这次没能完成识别' }[phase.value]
+    return { idle: '', permission: '等待录音授权', recording: '正在聆听', processing: '正在处理音频', matching: '聆听已结束，正在等待结果', success: '找到这些歌曲', empty: '暂未找到匹配', error: '这次没能完成识别' }[phase.value]
 })
 const helper = computed(() => {
     if (errorText.value) return errorText.value
@@ -98,7 +95,7 @@ const helper = computed(() => {
     if (phase.value === 'empty') return '试试更清晰的片段，或避开人声解说后重新识别。'
     if (phase.value === 'success') return '选择歌曲播放或收藏，播放权限以当前账号为准。'
     if (busy.value) return '采集已结束，录音设备已释放。'
-    return source.value === 'system' ? '识别浏览器、视频或其他应用正在播放的音乐。' : '识别身边播放的音乐，也可选择虚拟声卡输入。'
+    return '识别浏览器、视频或其他应用正在播放的音乐。'
 })
 
 const BAR_COUNT = 40
@@ -158,10 +155,6 @@ let alive = true
 let previousFocus = null
 let appWasInert = false
 
-async function refreshDevices() {
-    try { devices.value = (await navigator.mediaDevices.enumerateDevices()).filter(item => item.kind === 'audioinput') } catch { devices.value = [] }
-}
-
 function cancel() {
     attempt++
     controller?.abort()
@@ -176,14 +169,6 @@ function cancel() {
 }
 
 function close() { cancel(); emit('close') }
-
-function chooseSource(value) {
-    if (busy.value) return
-    source.value = value
-    phase.value = 'idle'
-    errorText.value = ''
-    results.value = []
-}
 
 async function start() {
     if (busy.value) return
@@ -204,24 +189,15 @@ async function start() {
     phase.value = 'permission'
     try {
         if (!navigator.mediaDevices) throw new DOMException('不支持录音', 'NotSupportedError')
-        await globalThis.windowApi?.prepareAudioRecognition?.(source.value, captureId)
+        await globalThis.windowApi?.prepareAudioRecognition?.('system', captureId)
         if (!current()) return
-        if (source.value === 'system') {
-            stream = await navigator.mediaDevices.getDisplayMedia({
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-                video: { width: 320, height: 180, frameRate: 1 },
-            })
-            if (!current()) return
-            if (!stream.getAudioTracks().some(track => track.readyState === 'live')) {
-                throw new Error('系统没有提供可用的音频轨道。请检查系统音频录制权限，或切换麦克风选择监听输入 / 虚拟声卡。')
-            }
-        } else {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: {
-                ...(device.value ? { deviceId: { exact: device.value } } : {}),
-                echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-            }, video: false })
-            if (!current()) return
-            void refreshDevices()
+        stream = await navigator.mediaDevices.getDisplayMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+            video: { width: 320, height: 180, frameRate: 1 },
+        })
+        if (!current()) return
+        if (!stream.getAudioTracks().some(track => track.readyState === 'live')) {
+            throw new Error('系统没有提供可用的音频轨道，请检查系统音频录制权限与系统内录支持情况。')
         }
         // 授权与采集获取后立即撤销临时权限。不上传或编码任何视频轨道；
         // 保留系统采集的伴随视频轨道至录音结束，避免部分平台停止音频。
@@ -272,10 +248,10 @@ async function start() {
         if (!current()) return
         results.value = songs
         phase.value = results.value.length ? 'success' : 'empty'
-        if (results.value.length) history.value = saveRecognitionHistory(history.value, results.value[0], source.value)
+        if (results.value.length) history.value = saveRecognitionHistory(history.value, results.value[0], 'system')
     } catch (error) {
         if (!current()) return
-        errorText.value = recognitionErrorMessage(error, source.value)
+        errorText.value = recognitionErrorMessage(error, 'system')
         phase.value = 'error'
     } finally {
         capture?.stop()
@@ -328,7 +304,7 @@ function handleKey(event) {
     event.stopPropagation()
     if (event.key === 'Escape') { event.preventDefault(); close(); return }
     if (event.key !== 'Tab') return
-    const focusable = Array.from(panel.value?.querySelectorAll('button:not(:disabled), select:not(:disabled), summary, [tabindex="0"]') || []).filter(element => element.getClientRects().length)
+    const focusable = Array.from(panel.value?.querySelectorAll('button:not(:disabled), summary, [tabindex="0"]') || []).filter(element => element.getClientRects().length)
     const first = focusable[0], last = focusable.at(-1)
     if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.value)) { event.preventDefault(); last?.focus() }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
@@ -347,9 +323,7 @@ onMounted(async () => {
     if (document.getElementById('app')) document.getElementById('app').inert = true
     await nextTick()
     panel.value?.focus()
-    void refreshDevices()
     void refreshDynamicTheme()
-    navigator.mediaDevices?.addEventListener('devicechange', refreshDevices)
     window.addEventListener('pagehide', cancel)
     window.addEventListener('keydown', handleKey, true)
     window.addEventListener('pointerdown', handleWindowPointerDown, true)
@@ -360,7 +334,6 @@ onBeforeUnmount(() => {
     alive = false
     if (animId) cancelAnimationFrame(animId)
     cancel()
-    navigator.mediaDevices?.removeEventListener('devicechange', refreshDevices)
     window.removeEventListener('pagehide', cancel)
     window.removeEventListener('keydown', handleKey, true)
     window.removeEventListener('pointerdown', handleWindowPointerDown, true)
@@ -396,26 +369,14 @@ onBeforeUnmount(() => {
                     <button class="recognition-close" type="button" aria-label="关闭听歌识曲" @click="close">×</button>
                 </header>
 
-                <div class="recognition-sources" role="group" aria-label="音频来源">
-                    <button type="button" :aria-pressed="source === 'system'" :disabled="busy" @click="chooseSource('system')">电脑声音</button>
-                    <button type="button" :aria-pressed="source === 'microphone'" :disabled="busy" @click="chooseSource('microphone')">麦克风 / 音频输入</button>
-                </div>
-
-                <label v-if="source === 'microphone'" class="recognition-device">输入设备
-                    <select v-model="device" :disabled="busy">
-                        <option value="">系统默认输入</option>
-                        <option v-for="(item, index) in devices" :key="item.deviceId || index" :value="item.deviceId">
-                            {{ item.label || `音频输入 ${index + 1}（授权后显示名称）` }}
-                        </option>
-                    </select>
-                </label>
+                <p class="recognition-source">音频来源：电脑声音</p>
 
                 <div class="recognition-stage" :class="{ 'is-listening': capturing, 'has-results': results.length }">
                     <div v-if="!results.length" ref="waveRef" class="recognition-wave" aria-hidden="true">
                         <i v-for="index in 40" :key="index"></i>
                     </div>
                     <div class="recognition-status" role="status" aria-live="polite">
-                        <h3>{{ heading }}</h3>
+                        <h3 v-if="heading">{{ heading }}</h3>
                         <p>{{ helper }}</p>
                     </div>
                     <div v-if="capturing" class="recognition-time" role="progressbar" aria-label="已采集时长" :aria-valuenow="Math.floor(elapsed)" :aria-valuemin="0" :aria-valuemax="RECOGNITION_SECONDS">
@@ -428,15 +389,12 @@ onBeforeUnmount(() => {
                     <button v-else type="button" class="recognition-primary" @click="start">
                         {{ phase === 'idle' ? '开始识别' : '重新识别' }} <span aria-hidden="true">↗</span>
                     </button>
-                    <button v-if="phase === 'error' && source === 'system'" type="button" class="recognition-fallback" @click="chooseSource('microphone')">
-                        改用麦克风 / 虚拟声卡输入
-                    </button>
                 </div>
 
                 <details class="recognition-privacy">
                     <summary>采集与隐私说明</summary>
                     <p>点击开始后最多采集约 10 秒音频，期间可能分次上传至酷狗；找到候选后自动停止。原始录音不写入本地文件，不保存或上传画面。取消即停止后续采集与请求，已发送的音频无法撤回。</p>
-                    <p>系统内录受操作系统与设备限制；无法获取声音时可主动切换麦克风或虚拟声卡输入。</p>
+                    <p>仅采集电脑声音，不使用麦克风。系统内录受操作系统与设备限制，无法获取声音时请检查系统音频录制权限与内录支持情况。</p>
                 </details>
 
                 <div v-if="results.length" class="recognition-results" aria-label="识别结果">
@@ -508,7 +466,7 @@ onBeforeUnmount(() => {
     scrollbar-width: thin;
     box-sizing: border-box;
     padding: 20px 22px;
-    background: var(--panel);
+    background: var(--bg);
     border: 1px solid var(--border);
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
     border-radius: 0;
@@ -560,7 +518,6 @@ onBeforeUnmount(() => {
 }
 
 .recognition-panel button,
-.recognition-panel select,
 .recognition-panel summary {
     font: inherit;
     color: var(--text) !important;
@@ -577,15 +534,13 @@ onBeforeUnmount(() => {
 }
 
 .recognition-panel button:focus-visible,
-.recognition-panel select:focus-visible,
 .recognition-panel summary:focus-visible {
     outline: 2px solid currentColor !important;
     outline-offset: 3px;
     opacity: 1;
 }
 
-.recognition-panel button:disabled,
-.recognition-panel select:disabled {
+.recognition-panel button:disabled {
     cursor: not-allowed;
     opacity: .45;
 }
@@ -629,54 +584,10 @@ onBeforeUnmount(() => {
     transform: scale(1.1);
 }
 
-.recognition-sources {
-    display: grid;
-    grid-template-columns: 1fr 1.4fr;
-    gap: 2px;
-    margin-top: 14px;
-    padding: 3px;
-    border: 1px solid var(--border);
-    border-radius: 0;
-    background: transparent;
-}
-
-.recognition-sources button {
-    min-height: 36px;
-    font-size: 13px;
-    font-family: SourceHanSansCN-Bold, sans-serif;
-    border-radius: 0;
-    color: var(--text) !important;
-    transition: opacity 120ms ease;
-}
-
-.recognition-sources button:hover {
-    opacity: 0.8;
-}
-
-.recognition-sources button[aria-pressed="true"] {
-    background: var(--text) !important;
-    color: var(--bg) !important;
-    opacity: 1;
-}
-
-.recognition-device {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
+.recognition-source {
+    margin: 14px 0 0;
     font-size: 12px;
     color: var(--muted-text);
-}
-
-.recognition-device select {
-    width: 100%;
-    min-height: 30px;
-    padding: 3px 8px;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg);
-    color: var(--text);
 }
 
 .recognition-stage {
@@ -778,14 +689,6 @@ onBeforeUnmount(() => {
 .recognition-stage.has-results .recognition-status p {
     max-width: none;
     margin-left: 0;
-}
-
-.recognition-panel .recognition-fallback {
-    display: block;
-    margin: 10px auto 0;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    font-size: 12px;
 }
 
 .recognition-time {
@@ -952,7 +855,7 @@ onBeforeUnmount(() => {
 
 /* Dark mode overrides */
 :global(.dark .recognition-panel) {
-    background: var(--panel);
+    background: var(--bg);
     border-color: var(--border);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 }

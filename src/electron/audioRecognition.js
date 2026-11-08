@@ -1,4 +1,4 @@
-const { desktopCapturer, ipcMain, systemPreferences } = require('electron');
+const { desktopCapturer, ipcMain } = require('electron');
 
 // 采集权限只授予用户主动开启的主窗口、主 frame 和当前应用 URL。
 function isRecognitionFrame(win, frame) {
@@ -17,14 +17,10 @@ function installAudioRecognition(win) {
   const ses = win.webContents.session;
   const prepare = async (event, source, requestId) => {
     if (event.sender !== win.webContents || !isRecognitionFrame(win, event.senderFrame)) throw new Error('不允许的音频采集请求');
-    if (!['microphone', 'system'].includes(source)) throw new Error('未知音频来源');
+    if (source !== 'system') throw new Error('当前仅支持电脑声音识曲');
     if (typeof requestId !== 'string' || !/^[\w-]{1,64}$/.test(requestId)) throw new Error('无效的采集请求');
     const currentLease = { source, requestId, until: Date.now() + 60000, used: false };
     lease = currentLease;
-    if (source === 'microphone' && process.platform === 'darwin') {
-      const granted = await systemPreferences.askForMediaAccess('microphone');
-      if (!granted) { if (lease === currentLease) lease = null; throw new Error('请在 macOS 系统设置 → 隐私与安全性 → 麦克风中允许 Hydrogen Music'); }
-    }
     return { platform: process.platform };
   };
   const cancel = (event, requestId) => {
@@ -37,7 +33,7 @@ function installAudioRecognition(win) {
     if (!['media', 'display-capture'].includes(permission)) return true;
     if (contents !== win.webContents || !allowed(win.webContents.mainFrame) || details.isMainFrame === false) return false;
     if (permission === 'display-capture') return lease.source === 'system';
-    return permission === 'media' && lease.source === 'microphone' && (!details.mediaType || details.mediaType === 'audio');
+    return false;
   });
   ses.setPermissionRequestHandler((contents, permission, callback, details) => {
     if (!['media', 'display-capture'].includes(permission)) { callback(true); return; }
@@ -46,8 +42,7 @@ function installAudioRecognition(win) {
       // Electron 42 的 getDisplayMedia 先通过 media 请求检查，mediaTypes 为 []，
       // 随后才进入受 frame / 单次授权限制的 DisplayMediaRequestHandler。
       // 非空的 video/audio 仍不能在 system 授权中当作摄像头/麦克风请求放行。
-      || (permission === 'media' && lease.source === 'system' && Array.isArray(details.mediaTypes) && details.mediaTypes.length === 0)
-      || (permission === 'media' && lease.source === 'microphone' && details.mediaTypes?.length && details.mediaTypes.every(type => type === 'audio')))));
+      || (permission === 'media' && lease.source === 'system' && Array.isArray(details.mediaTypes) && details.mediaTypes.length === 0))));
   });
   ses.setDisplayMediaRequestHandler(async (request, callback) => {
     if (!allowed(request.frame) || lease.source !== 'system' || lease.used || !request.audioRequested) { callback(null); return; }

@@ -132,12 +132,12 @@ export function recordAudioSample(stream, { signal, onProgress = () => {}, onLev
 
 export function recognitionErrorMessage(error, source) {
     if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') return source === 'system'
-        ? '未能取得电脑声音采集权限，可能是系统限制、授权取消或采集适配失败。可重试或切换音频输入；macOS 请检查屏幕 / 系统音频录制权限。'
+        ? '未能取得电脑声音采集权限，可能是系统限制、授权取消或采集适配失败。请重试；macOS 请检查屏幕 / 系统音频录制权限。'
         : '未能取得麦克风权限。请在系统隐私设置中允许应用使用麦克风，或检查是否取消了授权。'
-    if (error?.name === 'NotFoundError') return '未找到可用音频设备，请连接设备或选择其他输入。'
+    if (error?.name === 'NotFoundError') return '未找到可用音频设备，请检查系统音频设备与内录支持情况。'
     if (error?.name === 'NotReadableError') return '无法访问音频设备，可能被占用或未获得系统权限。'
     if (error?.name === 'NotSupportedError' || error?.name === 'TypeError') return source === 'system'
-        ? '当前系统无法直接采集电脑声音。可切换麦克风，并选择监听输入或虚拟声卡。'
+        ? '当前系统无法直接采集电脑声音，请检查系统版本与内录支持情况。'
         : '当前环境不支持录音，请使用桌面客户端或检查输入设备。'
     return error?.message || '识别失败，请稍后重试'
 }

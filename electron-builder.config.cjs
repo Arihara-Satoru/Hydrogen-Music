@@ -143,7 +143,6 @@ module.exports = {
   },
   mac: {
     extendInfo: {
-      NSMicrophoneUsageDescription: '听歌识曲仅在您点击开始后采集最多约 10 秒麦克风音频，期间可能分次上传至酷狗，找到候选后停止。',
       NSAudioCaptureUsageDescription: '听歌识曲采集最多约 10 秒电脑声音，期间可能分次上传至酷狗，找到候选后停止，不保存原始录音。',
       NSScreenCaptureUsageDescription: '电脑声音识曲使用系统屏幕音频采集能力，不保存或上传画面。',
     },
