@@ -28,6 +28,7 @@
     "check:listening-features": "node --experimental-vm-modules scripts/check-listening-features.mjs",
     "check:listen-together": "node --experimental-vm-modules scripts/check-listen-together.mjs",
     "check:playback-keyboard": "node scripts/check-playback-keyboard.mjs",
+    "check:media-session": "node --experimental-vm-modules scripts/check-media-session.mjs",
     "check:download-metadata": "node scripts/check-download-metadata.cjs",
     "check:download-quality": "node --experimental-vm-modules scripts/check-download-quality.mjs",
     "check:remote-audio-metadata": "node scripts/check-remote-audio-metadata.cjs",

@@ -43,16 +43,17 @@ if (import.meta.env.DEV) {
   } catch (_) {}
 })()
 
-// 延迟到空闲时再注册 MediaSession，避免阻塞首屏
+// 各平台都需要 MediaSession 接收耳机/系统媒体指令；任务栏按钮不能替代它。
+// 延迟到空闲时注册，避免阻塞首屏。
 const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500))
-if (window.process?.platform !== 'win32') {
-  idle(async () => {
-    try {
-      const { initMediaSession } = await import('./utils/mediaSession')
-      initMediaSession()
-    } catch (_) {}
-  })
-}
+idle(async () => {
+  try {
+    const { initMediaSession } = await import('./utils/mediaSession')
+    initMediaSession()
+  } catch (error) {
+    console.warn('系统媒体控制初始化失败', error)
+  }
+})
 
 // Prevent default browser file open on drag/drop globally
 window.addEventListener('dragover', (e) => {

@@ -69,7 +69,8 @@ export function initMediaSession() {
         duration = Number(override && typeof override.duration === 'number' ? override.duration : 0)
         position = 0
       }
-      playerApi.sendPlayerCurrentTrackTime(position)
+      // Linux IPC 是可选桥接，不应阻断 Chromium/Windows 的媒体进度同步。
+      try { window.playerApi?.sendPlayerCurrentTrackTime?.(position) } catch (_) {}
       lastDur = duration
       lastPos = position
       lastTs = Date.now()
@@ -120,7 +121,7 @@ export function initMediaSession() {
 
       navigator.mediaSession.metadata = new window.MediaMetadata({ title, artist, album, artwork: metadata.artwork })
       // 发送给 mpris（Linux）桥接
-      try { playerApi && playerApi.sendMetaData && windowApi.sendMetaData(metadata) } catch (_) {}
+      try { window.playerApi?.sendMetaData?.(metadata) } catch (_) {}
     } catch (_) {}
     updatePlaybackState()
     // 换曲瞬间：强制把位置归零，避免系统控件保留上一首进度
@@ -129,32 +130,40 @@ export function initMediaSession() {
     burstUntil = Date.now() + BURST_WINDOW_MS
   }
 
-  // Initial registration of action handlers (SMTC hooks)
-  try {
-    navigator.mediaSession.setActionHandler('play', () => { startMusic({ userInitiated: true }); updatePlaybackState(); updatePositionThrottled({ force: true }) })
-    navigator.mediaSession.setActionHandler('pause', () => { pauseMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) })
-    navigator.mediaSession.setActionHandler('previoustrack', () => playLast({ userInitiated: true }))
-    navigator.mediaSession.setActionHandler('nexttrack', () => playNext({ userInitiated: true }))
-    navigator.mediaSession.setActionHandler('stop', () => { pauseMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) })
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
+  // 使用明确的 play/pause 而不是切换，避免重复的佩戴指令反转播放状态。
+  const actionHandlers = {
+    play: () => { startMusic({ userInitiated: true }); updatePlaybackState(); updatePositionThrottled({ force: true }) },
+    pause: () => { pauseMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) },
+    previoustrack: () => playLast({ userInitiated: true }),
+    nexttrack: () => playNext({ userInitiated: true }),
+    stop: () => { pauseMusic(); updatePlaybackState(); updatePositionThrottled({ force: true }) },
+    seekto: (details) => {
       if (details && typeof details.seekTime === 'number') {
         changeProgress(Math.max(0, Math.min(details.seekTime, Number(time.value) || 0)))
         updatePositionThrottled({ force: true })
       }
-    })
-    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+    },
+    seekforward: (details) => {
       const offset = (details && details.seekOffset) || 5
       const pos = (Number(progress.value) || 0) + offset
       changeProgress(Math.max(0, Math.min(pos, Number(time.value) || 0)))
       updatePositionThrottled({ force: true })
-    })
-    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+    },
+    seekbackward: (details) => {
       const offset = (details && details.seekOffset) || 5
       const pos = (Number(progress.value) || 0) - offset
       changeProgress(Math.max(0, Math.min(pos, Number(time.value) || 0)))
       updatePositionThrottled({ force: true })
-    })
-  } catch (_) {}
+    },
+  }
+  // 单个动作不受平台支持时，仍继续注册其他动作。
+  for (const [action, handler] of Object.entries(actionHandlers)) {
+    try {
+      navigator.mediaSession.setActionHandler(action, handler)
+    } catch (error) {
+      console.warn(`系统媒体动作注册失败: ${action}`, error)
+    }
+  }
 
   // Static strategy
   // 1) 仅在曲目切换时设置元数据并进度归零
