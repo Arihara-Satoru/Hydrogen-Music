@@ -39,6 +39,7 @@
     "check:fm-cache-cleanup": "node scripts/check-fm-cache-cleanup.mjs",
     "check:fm-theme": "node scripts/check-fm-theme.cjs",
     "check:fm-cover-animation": "node scripts/check-fm-cover-animation.cjs",
+    "check:player-cover-animation": "node scripts/check-player-cover-animation.cjs",
     "check:home-skeleton": "node scripts/check-home-skeleton.cjs",
     "check:login-devices": "node --experimental-vm-modules scripts/check-login-devices.mjs",
     "check:account-social": "node --experimental-vm-modules scripts/check-account-social.mjs",

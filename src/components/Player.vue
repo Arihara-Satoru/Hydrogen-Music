@@ -5,6 +5,7 @@ import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
+import SkeletonBox from './base/SkeletonBox.vue';
 import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus, likeSong, isSongLiked, syncFavoritePlaylistLikelist } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
@@ -455,6 +456,38 @@ const currentCoverUrl = computed(() => {
     return cover ? resolveImageUrl(cover) : '';
 });
 
+const coverImage = ref(null);
+const coverImageLoaded = ref(false);
+const coverImageFailed = ref(false);
+const coverImageUnavailable = ref(false);
+const coverImageKey = computed(() => `${songId.value ?? currentSong.value?.id ?? currentIndex.value}:${currentCoverUrl.value}`);
+const coverImageSrc = computed(() => coverImageFailed.value ? getDefaultCoverUrl() : currentCoverUrl.value || getDefaultCoverUrl());
+const showCoverSkeleton = computed(() => playerChangeSong.value || (!coverImageLoaded.value && !coverImageUnavailable.value));
+
+watch(coverImageKey, () => {
+    coverImageLoaded.value = false;
+    coverImageFailed.value = false;
+    coverImageUnavailable.value = false;
+}, { flush: 'sync' });
+
+const onCoverImageLoad = event => {
+    // 快速切歌时，已被替换的图片不能结束当前封面的加载状态。
+    if (event.currentTarget !== coverImage.value || !event.currentTarget.naturalWidth) return;
+    coverImageLoaded.value = true;
+    coverImageUnavailable.value = false;
+};
+
+const onCoverImageError = event => {
+    if (event.currentTarget !== coverImage.value) return;
+    coverImageLoaded.value = false;
+    if (coverImageFailed.value || !currentCoverUrl.value) {
+        // 默认封面也失败时停止加载动效，保留静态占位，避免无限重试。
+        coverImageUnavailable.value = true;
+        return;
+    }
+    coverImageFailed.value = true;
+};
+
 const safePlaybackRate = computed({
     get: () => (isTogetherMode.value ? 1 : normalizeSliderRate(playbackRate.value)),
     set: value => {
@@ -557,25 +590,26 @@ const addToPlaylist = () => {
         <div class="player">
             <div class="player-body">
             <div class="player-cover">
-                <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
-                    <!-- Force re-create <img> when song changes so old cover doesn't persist -->
-                    <img
-                        v-if="currentCoverUrl"
-                        :key="'cover-' + (songId || currentSong?.id || currentIndex)"
-                        :src="currentCoverUrl"
-                        alt=""
-                    />
-                    <img
-                        v-else
-                        :key="'default-cover-' + (songId || currentSong?.id || currentIndex)"
-                        :src="getDefaultCoverUrl()"
-                        alt=""
-                    />
+                <div class="cover-stage">
+                    <div class="cover" :class="{ 'back-Video': videoIsPlaying }" @click="backToVideo()">
+                        <div class="cover-artwork" :aria-busy="showCoverSkeleton">
+                            <SkeletonBox v-if="showCoverSkeleton" class="cover-skeleton" width="100%" height="100%" border-radius="0" />
+                            <img
+                                ref="coverImage"
+                                :key="`${coverImageKey}:${coverImageFailed}`"
+                                :src="coverImageSrc"
+                                :class="{ 'cover-image-ready': coverImageLoaded, 'cover-change': playerChangeSong }"
+                                alt=""
+                                @load="onCoverImageLoad"
+                                @error="onCoverImageError"
+                            />
+                        </div>
+                    </div>
+                    <div class="c-border c-border1"></div>
+                    <div class="c-border c-border2"></div>
+                    <div class="c-border c-border3"></div>
+                    <div class="c-border c-border4"></div>
                 </div>
-                <div class="c-border c-border1"></div>
-                <div class="c-border c-border2"></div>
-                <div class="c-border c-border3"></div>
-                <div class="c-border c-border4"></div>
             </div>
             <div class="player-info">
                 <div class="info-music">
@@ -1401,37 +1435,55 @@ const addToPlaylist = () => {
             justify-content: space-between;
         }
         .player-cover {
+            --cover-cue-delay: var(--player-entry-total, 900ms);
+            --cover-release-delay: calc(var(--cover-cue-delay) + #{entry.$prepare-duration});
+            --cover-settle-duration: 300ms;
             width: 100%;
+            flex-shrink: 0;
             transition: 0.2s cubic-bezier(0.33, 0.88, 0.47, 0.94);
             position: relative;
             z-index: 99;
+            .cover-stage {
+                position: relative;
+                // 缩放层独立于切歌和视频悬停反馈，不改变封面占位或下方信息布局。
+                transform: scale(1.04);
+                animation: cover-settle var(--cover-settle-duration) var(--cover-release-delay) cubic-bezier(0.4, 0, 0.12, 1) forwards;
+            }
             .cover {
                 padding: 1.5vh;
                 width: 100%;
                 opacity: 1;
                 transform: scale(1);
                 transition: 0.1s cubic-bezier(0.3, 0.79, 0.55, 0.99);
-                img {
+                .cover-artwork {
+                    // 图片尚未返回、缺少封面或加载失败时，始终保留完整封面槽位。
                     width: 100%;
-                    max-height: 38vh;
+                    aspect-ratio: 1;
+                    position: relative;
+                    overflow: hidden;
+                    background: var(--cover-artwork-base, rgba(0, 0, 0, 0.07));
+                }
+                .cover-skeleton,
+                img {
+                    position: absolute;
+                    inset: 0;
+                    width: 100%;
+                    height: 100%;
+                }
+                img {
                     object-fit: cover;
-                    vertical-align: bottom;
                     box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.05);
-                    // transform: scale(1.03);
-                    // animation: cover-in 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
-                    @keyframes cover-in {
-                        0% {
-                            transform: scale(1.03);
-                        }
-                        100% {
-                            transform: scale(1);
-                        }
+                    opacity: 0;
+                    transform: scale(1);
+                    transition: opacity 0.15s ease, transform 0.1s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+                    &.cover-image-ready {
+                        opacity: 1;
+                    }
+                    &.cover-change {
+                        opacity: 0;
+                        transform: scale(0.95);
                     }
                 }
-            }
-            .cover-change {
-                opacity: 0;
-                transform: scale(0.95);
             }
             .back-Video {
                 &:hover {
@@ -1445,85 +1497,51 @@ const addToPlaylist = () => {
                 height: 4vh;
                 position: absolute;
                 transform-origin: center;
+                // 初始偏移与 .cover 的内边距一致，四角紧贴放大的封面。
+                // translate 与呼吸动画的 transform 分离，避免外扩时互相覆盖。
+                translate: var(--cover-corner-x) var(--cover-corner-y);
+                animation: dialog-entry-cue entry.$prepare-duration var(--cover-cue-delay) steps(1, end) forwards,
+                    cover-corners-expand var(--cover-settle-duration) var(--cover-release-delay) cubic-bezier(0.4, 0, 0.12, 1) forwards,
+                    cover-corner-breathe 3.6s calc(var(--cover-release-delay) + var(--cover-settle-duration)) ease-in-out infinite;
             }
             .c-border1 {
-                top: 1vh;
-                left: 1vh;
+                --cover-corner-x: 1.5vh;
+                --cover-corner-y: 1.5vh;
+                top: 0;
+                left: 0;
                 border: {
                     top: $boderpx solid black;
                     left: $boderpx solid black;
-                }
-                animation: border1 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
-                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
-                @keyframes border1 {
-                    0% {
-                        top: 1vh;
-                        left: 1vh;
-                    }
-                    100% {
-                        top: 0;
-                        left: 0;
-                    }
                 }
             }
             .c-border2 {
-                top: 1vh;
-                right: 1vh;
+                --cover-corner-x: -1.5vh;
+                --cover-corner-y: 1.5vh;
+                top: 0;
+                right: 0;
                 border: {
                     top: $boderpx solid black;
                     right: $boderpx solid black;
                 }
-                animation: border2 0.2s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
-                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
-                @keyframes border2 {
-                    0% {
-                        top: 1vh;
-                        right: 1vh;
-                    }
-                    100% {
-                        top: 0;
-                        right: 0;
-                    }
-                }
             }
             .c-border3 {
-                bottom: 1vh;
-                right: 1vh;
+                --cover-corner-x: -1.5vh;
+                --cover-corner-y: -1.5vh;
+                bottom: 0;
+                right: 0;
                 border: {
                     bottom: $boderpx solid black;
                     right: $boderpx solid black;
                 }
-                animation: border3 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
-                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
-                @keyframes border3 {
-                    0% {
-                        bottom: 1vh;
-                        right: 1vh;
-                    }
-                    100% {
-                        bottom: 0;
-                        right: 0;
-                    }
-                }
             }
             .c-border4 {
-                bottom: 1vh;
-                left: 1vh;
+                --cover-corner-x: 1.5vh;
+                --cover-corner-y: -1.5vh;
+                bottom: 0;
+                left: 0;
                 border: {
                     bottom: $boderpx solid black;
                     left: $boderpx solid black;
-                }
-                animation: border4 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards,
-                    cover-corner-breathe 3.6s 0.95s ease-in-out infinite;
-                @keyframes border4 {
-                    0% {
-                        bottom: 1vh;
-                        left: 1vh;
-                    }
-                    100% {
-                        bottom: 0;
-                        left: 0;
-                    }
                 }
             }
         }
@@ -2408,12 +2426,33 @@ const addToPlaylist = () => {
     50% { opacity: 0.35; transform: scale(0.97); }
 }
 
+@keyframes cover-settle {
+    from { transform: scale(1.04); }
+    to { transform: scale(1); }
+}
+
+@keyframes cover-corners-expand {
+    from { translate: var(--cover-corner-x) var(--cover-corner-y); }
+    to { translate: 0 0; }
+}
+
+:global(html.dark .player-container .player-cover .cover-artwork) {
+    --cover-artwork-base: rgba(255, 255, 255, 0.08);
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .player-container .player .player-cover .cover img {
+        transition: none;
+        transform: none;
+    }
+    .player-container .player .player-cover .cover-stage {
+        animation: none;
+        transform: none;
+    }
     .player .player-cover .c-border {
-        // 完成原有归位，停止循环呼吸。
-        animation-duration: 0.01ms, 0.01ms !important;
-        animation-delay: 0ms, 0ms !important;
-        animation-iteration-count: 1, 1 !important;
+        // 直接显示最终构图，跳过闪烁、缩放、外扩和循环呼吸。
+        animation: none !important;
+        translate: none;
         opacity: 1;
     }
     .song-info-corner, .song-info-close,

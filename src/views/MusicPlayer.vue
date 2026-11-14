@@ -270,6 +270,10 @@ watch([currentTrack, isDj], ([song, djMode]) => {
     }
 }
 .music-player {
+    // 封面入场与左侧外壳共用时序，避免角标在面板展开结束前外扩。
+    --player-entry-delay: 200ms;
+    --player-entry-duration: 700ms;
+    --player-entry-total: calc(var(--player-entry-delay) + var(--player-entry-duration));
     padding: 95px 45px 60px 45px;
     width: 100%;
     height: 100%;
@@ -315,7 +319,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         height: 0;
         background-color: rgba(255, 255, 255, 0.35);
         opacity: 0;
-        animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+        animation: player-in var(--player-entry-duration) var(--player-entry-delay) cubic-bezier(0.4, 0, 0.12, 1) forwards;
         position: relative;
         z-index: 1;
         // 工具栏和播放列表浮层位于播放器右侧，不能裁切外溢内容。
