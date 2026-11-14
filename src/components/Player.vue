@@ -457,9 +457,13 @@ const currentCoverUrl = computed(() => {
 });
 
 const coverImage = ref(null);
+const coverStage = ref(null);
 const coverImageLoaded = ref(false);
 const coverImageFailed = ref(false);
 const coverImageUnavailable = ref(false);
+const coverMotionState = ref('entry');
+const coverMotionRun = ref(0);
+const coverReleased = ref(false);
 const coverImageKey = computed(() => `${songId.value ?? currentSong.value?.id ?? currentIndex.value}:${currentCoverUrl.value}`);
 const coverImageSrc = computed(() => coverImageFailed.value ? getDefaultCoverUrl() : currentCoverUrl.value || getDefaultCoverUrl());
 const showCoverSkeleton = computed(() => playerChangeSong.value || (!coverImageLoaded.value && !coverImageUnavailable.value));
@@ -468,7 +472,41 @@ watch(coverImageKey, () => {
     coverImageLoaded.value = false;
     coverImageFailed.value = false;
     coverImageUnavailable.value = false;
+    coverReleased.value = false;
+    coverMotionState.value = 'waiting';
 }, { flush: 'sync' });
+
+watch(playerChangeSong, changing => {
+    // 同一首歌重新播放也要重播；不依赖封面 URL 必须发生变化。
+    if (changing) {
+        coverReleased.value = false;
+        coverMotionState.value = 'waiting';
+    }
+}, { flush: 'sync' });
+
+watch([coverImageLoaded, coverImageUnavailable, playerChangeSong, coverMotionState], ([loaded, unavailable, changing]) => {
+    if (coverMotionState.value !== 'waiting' || changing || (!loaded && !unavailable)) return;
+    // 预加载可能在同一轮更新内把 changing 从 true 改回 false；等待态也参与监听，不能漏掉完成通知。
+    coverMotionState.value = 'replay';
+    coverReleased.value = false;
+    coverMotionRun.value++;
+}, { flush: 'post' });
+
+watch(widgetState, inWidget => {
+    // 重新进入播放页时，仍等待左侧面板展开完成，不沿用切歌的零延迟。
+    if (!inWidget) {
+        coverMotionState.value = 'entry';
+        coverReleased.value = false;
+        coverMotionRun.value++;
+    }
+}, { flush: 'sync' });
+
+const onCoverCueEnd = event => {
+    // 只有当前四角外层的双闪真正播放结束，才释放缩放/外扩；旧节点和子动画不能提前触发。
+    if (event.target !== event.currentTarget || event.currentTarget !== coverStage.value?.querySelector('.cover-corners')) return;
+    if (!event.animationName.startsWith('dialog-entry-cue') || coverMotionState.value === 'waiting') return;
+    coverReleased.value = true;
+};
 
 const onCoverImageLoad = event => {
     // 快速切歌时，已被替换的图片不能结束当前封面的加载状态。
@@ -589,8 +627,8 @@ const addToPlaylist = () => {
     <div class="player-container">
         <div class="player">
             <div class="player-body">
-            <div class="player-cover">
-                <div class="cover-stage">
+            <div class="player-cover" :class="{ 'cover-replay-waiting': coverMotionState === 'waiting', 'cover-replay': coverMotionState === 'replay', 'cover-released': coverReleased }">
+                <div ref="coverStage" class="cover-stage">
                     <div class="cover" :class="{ 'back-Video': videoIsPlaying }" @click="backToVideo()">
                         <div class="cover-artwork" :aria-busy="showCoverSkeleton">
                             <SkeletonBox v-if="showCoverSkeleton" class="cover-skeleton" width="100%" height="100%" border-radius="0" />
@@ -605,10 +643,12 @@ const addToPlaylist = () => {
                             />
                         </div>
                     </div>
-                    <div class="c-border c-border1"></div>
-                    <div class="c-border c-border2"></div>
-                    <div class="c-border c-border3"></div>
-                    <div class="c-border c-border4"></div>
+                    <div :key="coverMotionRun" class="cover-corners" aria-hidden="true" @animationend="onCoverCueEnd">
+                        <div class="c-border c-border1"></div>
+                        <div class="c-border c-border2"></div>
+                        <div class="c-border c-border3"></div>
+                        <div class="c-border c-border4"></div>
+                    </div>
                 </div>
             </div>
             <div class="player-info">
@@ -1436,18 +1476,35 @@ const addToPlaylist = () => {
         }
         .player-cover {
             --cover-cue-delay: var(--player-entry-total, 900ms);
-            --cover-release-delay: calc(var(--cover-cue-delay) + #{entry.$prepare-duration});
             --cover-settle-duration: 300ms;
             width: 100%;
             flex-shrink: 0;
             transition: 0.2s cubic-bezier(0.33, 0.88, 0.47, 0.94);
             position: relative;
             z-index: 99;
+            &.cover-replay {
+                // 切歌只重播封面局部动画，无需再等待面板展开。
+                --cover-cue-delay: 0ms;
+            }
+            &.cover-replay-waiting {
+                .cover-corners {
+                    // 加载期间保持放大贴边，取消上一首尚未结束的闪烁/呼吸。
+                    animation: none;
+                }
+            }
             .cover-stage {
                 position: relative;
                 // 缩放层独立于切歌和视频悬停反馈，不改变封面占位或下方信息布局。
                 transform: scale(1.04);
-                animation: cover-settle var(--cover-settle-duration) var(--cover-release-delay) cubic-bezier(0.4, 0, 0.12, 1) forwards;
+            }
+            &.cover-released {
+                .cover-stage {
+                    animation: cover-settle var(--cover-settle-duration) cubic-bezier(0.4, 0, 0.12, 1) forwards;
+                }
+                .c-border {
+                    animation: cover-corners-expand var(--cover-settle-duration) cubic-bezier(0.4, 0, 0.12, 1) forwards,
+                        cover-corner-breathe 3.6s var(--cover-settle-duration) ease-in-out infinite;
+                }
             }
             .cover {
                 padding: 1.5vh;
@@ -1492,6 +1549,13 @@ const addToPlaylist = () => {
                 }
             }
             $boderpx: 2 + Px;
+            .cover-corners {
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                // 双闪独占外层透明度，子角标的呼吸与位移动画无法覆盖它。
+                animation: dialog-entry-cue entry.$prepare-duration var(--cover-cue-delay) steps(1, end) forwards;
+            }
             .c-border {
                 width: 4vh;
                 height: 4vh;
@@ -1500,9 +1564,6 @@ const addToPlaylist = () => {
                 // 初始偏移与 .cover 的内边距一致，四角紧贴放大的封面。
                 // translate 与呼吸动画的 transform 分离，避免外扩时互相覆盖。
                 translate: var(--cover-corner-x) var(--cover-corner-y);
-                animation: dialog-entry-cue entry.$prepare-duration var(--cover-cue-delay) steps(1, end) forwards,
-                    cover-corners-expand var(--cover-settle-duration) var(--cover-release-delay) cubic-bezier(0.4, 0, 0.12, 1) forwards,
-                    cover-corner-breathe 3.6s calc(var(--cover-release-delay) + var(--cover-settle-duration)) ease-in-out infinite;
             }
             .c-border1 {
                 --cover-corner-x: 1.5vh;
@@ -2449,7 +2510,8 @@ const addToPlaylist = () => {
         animation: none;
         transform: none;
     }
-    .player .player-cover .c-border {
+    .player-container .player .player-cover .cover-corners,
+    .player-container .player .player-cover .c-border {
         // 直接显示最终构图，跳过闪烁、缩放、外扩和循环呼吸。
         animation: none !important;
         translate: none;

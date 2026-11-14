@@ -19,6 +19,7 @@ const previewDir = process.argv[2];
 const loadComponent = file => parse(fs.readFileSync(path.join(root, file), 'utf8'), { filename: path.join(root, file) }).descriptor;
 const player = loadComponent('src/components/Player.vue');
 const music = loadComponent('src/views/MusicPlayer.vue');
+const appShell = loadComponent('src/App.vue');
 const skeleton = loadComponent('src/components/base/SkeletonBox.vue');
 const coverLoading = player.scriptSetup.content.slice(
   player.scriptSetup.content.indexOf('const coverImage = ref(null);'),
@@ -29,7 +30,7 @@ const skeletonScript = compileScript(skeleton, { id: 'cover-skeleton-check', inl
   .replace(/import\s+\{([^}]+)\}\s+from\s+['"]vue['"];?/g, (_match, bindings) => `const {${bindings.replace(/\bas\b/g, ':')}} = Vue;`)
   .replace('export default', 'return');
 const coverTemplate = player.template.content.slice(
-  player.template.content.indexOf('<div class="player-cover">'),
+  player.template.content.indexOf('<div class="player-cover"'),
   player.template.content.indexOf('<div class="player-info">'),
 );
 assert.ok(coverTemplate.includes('cover-stage'), 'Use the real cover markup');
@@ -38,6 +39,7 @@ const css = ['reset', 'style', 'theme'].map(name => fs.readFileSync(path.join(ro
 for (const [descriptor, filename, id] of [
   [player, 'src/components/Player.vue', 'data-v-cover-check'],
   [music, 'src/views/MusicPlayer.vue', 'data-v-music-check'],
+  [appShell, 'src/App.vue', 'data-v-app-check'],
   [skeleton, 'src/components/base/SkeletonBox.vue', 'data-v-cover-skeleton-check'],
 ]) {
   for (const style of descriptor.styles) {
@@ -71,7 +73,7 @@ app.whenReady().then(async () => {
     response.end(status === 200 ? `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#203c43"/></svg>` : 'not found');
     pendingImages.delete(url);
   };
-  const win = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { offscreen: true } });
+  const win = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { offscreen: true, backgroundThrottling: false } });
   try {
     await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<style>${css.join('\n')}</style><div id="preview"></div>`));
     await win.webContents.executeJavaScript(vue + '; void 0');
@@ -79,21 +81,21 @@ app.whenReady().then(async () => {
       const { ref, nextTick, computed, watch, toRefs } = Vue;
       const coverUrl = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#203c43"/><circle cx="300" cy="300" r="210" fill="#e8d880"/><circle cx="300" cy="300" r="140" fill="#203c43"/><text x="300" y="315" text-anchor="middle" fill="white" font-size="38">HYDROGEN</text></svg>');
       const state = Vue.reactive({ currentCoverUrl: coverUrl, currentSong: {id: 1}, songId: 1, currentIndex: 0,
-        playerChangeSong: false, videoIsPlaying: false, backToVideo() {}, getDefaultCoverUrl: () => coverUrl });
+        playerChangeSong: false, videoIsPlaying: false, widgetState: false, backToVideo() {}, getDefaultCoverUrl: () => coverUrl });
       const SkeletonBox = new Function('Vue', ${JSON.stringify(skeletonScript)})(Vue);
       SkeletonBox.__scopeId = 'data-v-cover-skeleton-check';
       let coverState;
       const Cover = { __scopeId: 'data-v-cover-check', components: { SkeletonBox }, setup: () => {
-        const { songId, currentSong, currentIndex, currentCoverUrl, playerChangeSong } = toRefs(state);
+        const { songId, currentSong, currentIndex, currentCoverUrl, playerChangeSong, widgetState } = toRefs(state);
         const getDefaultCoverUrl = () => state.getDefaultCoverUrl();
         ${coverLoading}
-        coverState = { ...toRefs(state), coverImage, coverImageKey, coverImageSrc, coverImageFailed, coverImageLoaded,
-          coverImageUnavailable, showCoverSkeleton, onCoverImageLoad, onCoverImageError };
+        coverState = { ...toRefs(state), coverImage, coverStage, coverImageKey, coverImageSrc, coverImageFailed, coverImageLoaded,
+          coverImageUnavailable, coverMotionState, coverMotionRun, coverReleased, onCoverCueEnd, showCoverSkeleton, onCoverImageLoad, onCoverImageError };
         return coverState;
       }, render: new Function('Vue', ${JSON.stringify(render)})(Vue) };
       const mountKey = ref(0), visible = ref(true);
       Vue.createApp({ components: { Cover }, setup: () => ({ mountKey, visible }), template:
-        '<div class="music-player" data-v-music-check v-show="visible"><div :key="mountKey" class="player-container" data-v-music-check data-v-cover-check><div class="player" data-v-cover-check><div class="player-body" data-v-cover-check><Cover /><div class="player-info" data-v-cover-check>Find the Pieces</div><div class="player-control" data-v-cover-check>00:00 — 04:06</div></div></div></div></div>'
+        '<Transition name="player"><div class="musicPlayer" v-show="visible"><div class="music-player" data-v-music-check><div :key="mountKey" class="player-container" data-v-music-check data-v-cover-check><div class="player" data-v-cover-check><div class="player-body" data-v-cover-check><Cover /><div class="player-info" data-v-cover-check>Find the Pieces</div><div class="player-control" data-v-cover-check>00:00 — 04:06</div></div></div></div></div></div></Transition>'
       }).mount('#preview');
       const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = el => {
@@ -103,29 +105,76 @@ app.whenReady().then(async () => {
       const snapshot = () => {
         const q = selector => document.querySelector(selector);
         return { panel: rect(q('.player-container')), body: rect(q('.player-body')), cover: rect(q('.cover img')),
-          artwork: rect(q('.cover-artwork')), info: rect(q('.player-info')), controls: rect(q('.player-control')),
+          artwork: rect(q('.cover-artwork')), slot: rect(q('.player-cover')), info: rect(q('.player-info')), controls: rect(q('.player-control')),
           busy: q('.cover-artwork').getAttribute('aria-busy'), skeleton: !!q('.cover-skeleton'),
-          stage: rect(q('.cover-stage')), corners: [...document.querySelectorAll('.c-border')].map(el => ({ ...rect(el), opacity: Number(getComputedStyle(el).opacity) })) };
+          stage: rect(q('.cover-stage')), corners: [...document.querySelectorAll('.c-border')].map(el => ({ ...rect(el), opacity:
+            Number(getComputedStyle(el).opacity) * Number(getComputedStyle(q('.cover-corners')).opacity) })) };
       };
+      const getCue = () => document.querySelector('.cover-corners').getAnimations()[0];
       const seek = async time => {
-        for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = time; }
-        await frame();
-        return snapshot();
+        for (const animation of document.querySelector('.player-container').getAnimations()) { animation.pause(); animation.currentTime = time; }
+        return seekCover(time);
+      };
+      const seekCover = async time => {
+        const cue = getCue();
+        const release = cue ? cue.effect.getTiming().delay + cue.effect.getTiming().duration : Infinity;
+        if(cue) {
+          if(time >= release && !coverState.coverReleased.value) {
+            // Use the real CSS animationend event to release movement, never call the handler directly.
+            cue.finish(); await frame(); await nextTick();
+          } else if(time < release) {
+            coverState.coverReleased.value = false; await nextTick();
+          }
+          cue.pause(); cue.currentTime = Math.min(time,release);
+        }
+        for (const animation of document.querySelector('.cover-stage').getAnimations({subtree:true})) {
+          if(animation === cue) continue;
+          animation.pause(); animation.currentTime = Math.max(0, time-release);
+        }
+        await frame(); return snapshot();
+      };
+      const waitForCover = async () => {
+        const image = document.querySelector('.cover img');
+        await image.decode();
+        if (!coverState.coverImageLoaded.value) await new Promise(resolve => image.addEventListener('load', resolve, {once:true}));
+        await nextTick(); await frame();
+      };
+      const observeBlink = async () => {
+        const corners = [...document.querySelectorAll('.c-border')];
+        const cue = getCue();
+        const timing = cue.effect.getTiming();
+        const states = [], samples = [];
+        let synchronized = true;
+        const deadline = performance.now() + timing.delay + timing.duration + 2000;
+        while (cue.playState !== 'finished') {
+          await new Promise(requestAnimationFrame);
+          if (performance.now() > deadline) throw new Error('Blink playback stalled: ' + JSON.stringify({time:cue.currentTime,
+            playState:cue.playState, connected:cue.effect.target.isConnected, samples}));
+          const time = cue.currentTime - timing.delay;
+          const opacity = corners.map(el => Number(getComputedStyle(el).opacity) * Number(getComputedStyle(document.querySelector('.cover-corners')).opacity));
+          synchronized = synchronized && opacity.every(value => Math.abs(value - opacity[0]) < .01);
+          if (time >= 0 && time <= timing.duration + 30) {
+            const lit = opacity[0] > .5 ? 1 : 0;
+            if (states.at(-1) !== lit) states.push(lit);
+            samples.push({time, opacity: opacity[0]});
+          }
+        }
+        return {states, synchronized, samples};
       };
       const restart = async () => {
         state.playerChangeSong = false; state.videoIsPlaying = false;
         mountKey.value++; await nextTick();
-        await document.querySelector('.cover img').decode();
+        await waitForCover();
         await seek(0);
       };
       void 0;
     `);
 
     const close = (actual, expected, label) => assert.ok(Math.abs(actual - expected) < 1.5, `${label}: ${actual} vs ${expected}`);
-    const assertAttached = (sample, label) => {
+    const assertAttached = (sample, label, target = 'cover') => {
       for (const [index, x, y] of [[0, 'x', 'y'], [1, 'right', 'y'], [2, 'right', 'bottom'], [3, 'x', 'bottom']]) {
-        close(sample.corners[index][x], sample.cover[x], `${label}: corner ${index + 1} horizontal attachment`);
-        close(sample.corners[index][y], sample.cover[y], `${label}: corner ${index + 1} vertical attachment`);
+        close(sample.corners[index][x], sample[target][x], `${label}: corner ${index + 1} horizontal attachment`);
+        close(sample.corners[index][y], sample[target][y], `${label}: corner ${index + 1} vertical attachment`);
       }
     };
 
@@ -166,11 +215,11 @@ app.whenReady().then(async () => {
         state.playerChangeSong = true; state.songId = 2; await nextTick();
         const changing = document.querySelector('.cover img').classList.contains('cover-change');
         state.playerChangeSong = false; await nextTick();
-        visible.value = false; await nextTick(); await frame();
-        visible.value = true; await nextTick(); await frame();
+        visible.value = false; state.widgetState = true; await nextTick(); await frame();
+        visible.value = true; state.widgetState = false; await nextTick(); await frame();
         const reopened = await seek(899);
         return { reused: before === document.querySelector('.cover-stage'),
-          cueDelay: document.querySelector('.c-border').getAnimations().find(a => a.animationName.includes('dialog-entry-cue')).effect.getTiming().delay,
+          cueDelay: getCue().effect.getTiming().delay,
           coverChange: document.querySelector('.cover img').classList.contains('cover-change'), changing, reopened };
       })()`);
       assert.ok(switchState.reused && switchState.changing && !switchState.coverChange, `${label}: preserve song-change and hide/reopen behavior`);
@@ -184,7 +233,7 @@ app.whenReady().then(async () => {
     const linked = await win.webContents.executeJavaScript(`(async () => {
       document.querySelector('.music-player').style.setProperty('--player-entry-duration', '1100ms');
       await restart();
-      return document.querySelector('.c-border').getAnimations().find(a => a.animationName.includes('dialog-entry-cue')).effect.getTiming().delay;
+      return getCue().effect.getTiming().delay;
     })()`);
     assert.ok(Math.abs(linked - 1300) < 0.01, 'Changing shell duration also updates the cover cue');
     await win.webContents.executeJavaScript(`document.querySelector('.music-player').style.removeProperty('--player-entry-duration'); restart()`);
@@ -197,11 +246,11 @@ app.whenReady().then(async () => {
       }
     }
 
-    const assertStableLayout = (before, after, label) => {
-      for (const part of ['stage', 'artwork', 'info', 'controls']) {
+    const assertStableLayout = (before, after, label, settled = true) => {
+      for (const part of settled ? ['slot', 'stage', 'artwork', 'info', 'controls'] : ['slot', 'info', 'controls']) {
         for (const prop of ['x', 'y', 'width', 'height']) close(after[part][prop], before[part][prop], `${label}/${part}/${prop}`);
       }
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; settled && i < 4; i++) {
         for (const prop of ['x', 'y', 'width', 'height']) close(after.corners[i][prop], before.corners[i][prop], `${label}/corner-${i + 1}/${prop}`);
       }
     };
@@ -232,7 +281,13 @@ app.whenReady().then(async () => {
       assert.equal(pending.failed, false, 'Ignore late failures from replaced image nodes');
       assert.equal(pending.skeletonOpacity, '1', 'Song-change fade does not hide the skeleton');
       assert.equal(pending.coverOpacity, '1', 'Keep the cover slot visible during song changes');
-      assertStableLayout(before, pending.sample, `${width}: pending cover`);
+      assertStableLayout(before, pending.sample, `${width}: pending cover`, false);
+      assertAttached(pending.sample, `${width}: pending skeleton`, 'artwork');
+      assert.ok(Math.abs(pending.sample.stage.width / before.stage.width - 1.04) < 0.001, 'Enlarge the cover while waiting');
+      const waiting = await win.webContents.executeJavaScript(`({phase:coverState.coverMotionState.value,
+        animations:document.querySelector('.c-border').getAnimations().length})`);
+      assert.equal(waiting.phase, 'waiting', 'Wait for the current artwork before replaying');
+      assert.equal(waiting.animations, 0, 'Do not flash or expand the loading skeleton prematurely');
       for (const dark of [true, false]) {
         const theme = await win.webContents.executeJavaScript(`(async () => {
           document.documentElement.classList.toggle('dark', ${dark}); await frame();
@@ -250,17 +305,35 @@ app.whenReady().then(async () => {
       }
       releaseImage(url, width === 1400 ? { width: 1200, height: 300 } : { width: 300, height: 1200 });
       const loaded = await win.webContents.executeJavaScript(`(async () => {
-        await document.querySelector('.cover img').decode(); await nextTick(); await frame();
+        await waitForCover();
         const stillChanging = snapshot();
+        const stage = document.querySelector('.cover-stage'), image = document.querySelector('.cover img');
+        const shell = document.querySelector('.player-container').getAnimations()[0];
+        const shellTime = shell.currentTime;
         state.playerChangeSong = false; await nextTick();
-        const settled = await seek(1550);
-        return { stillChanging, settled, ready: document.querySelector('.cover img').classList.contains('cover-image-ready') };
+        const replay = {};
+        for (const time of [0, 155, 205, 255, 305, 350, 500, 650]) replay[time] = await seekCover(time);
+        return { stillChanging, replay, settled: replay[650], ready: document.querySelector('.cover img').classList.contains('cover-image-ready'),
+          reused: stage === document.querySelector('.cover-stage') && image === document.querySelector('.cover img'),
+          shellUnchanged: shell === document.querySelector('.player-container').getAnimations()[0] && shell.currentTime === shellTime,
+          cueDelay: getCue().effect.getTiming().delay };
       })()`);
       assert.equal(loaded.stillChanging.skeleton, true, 'Keep skeleton until the song-change fade is released');
       assert.equal(loaded.settled.skeleton, false, 'Remove skeleton once the new cover is ready');
       assert.equal(loaded.settled.busy, 'false', 'Stop loading state after success');
       assert.ok(loaded.ready, 'Reveal the loaded image');
-      assertStableLayout(before, loaded.stillChanging, `${width}: loaded during transition`);
+      assertStableLayout(before, loaded.stillChanging, `${width}: loaded during transition`, false);
+      assertAttached(loaded.stillChanging, `${width}: hold before song-change release`, 'artwork');
+      assert.ok(loaded.reused, 'Replay without rebuilding the loaded image or cover stage');
+      assert.ok(loaded.shellUnchanged, 'Do not replay the left panel expansion on song changes');
+      assert.equal(loaded.cueDelay, 0, 'Replay starts without the panel-entry delay');
+      assertAttached(loaded.replay[0], `${width}: replay starts attached`, 'artwork');
+      for (const [time, opacity] of [[0, 0], [155, 1], [205, 0], [255, 1], [305, 0], [350, 1]]) {
+        assert.ok(loaded.replay[time].corners.every(corner => Math.abs(corner.opacity - opacity) < 0.01), `${width}/${time}: replay both flashes in sync`);
+        close(loaded.replay[time].artwork.width, loaded.replay[0].artwork.width, 'Keep enlarged cover throughout the flashes');
+      }
+      assert.ok(loaded.replay[500].artwork.width < loaded.replay[350].artwork.width && loaded.replay[500].artwork.width > loaded.settled.artwork.width, 'Shrink the cover after flashing');
+      assert.ok(loaded.replay[500].artwork.x > loaded.replay[500].corners[0].x, 'Expand the corners while shrinking');
       assertStableLayout(before, loaded.settled, `${width}: non-square artwork`);
       close(loaded.settled.artwork.width, loaded.settled.artwork.height, 'Crop wide/tall source images to a stable square');
     }
@@ -279,7 +352,7 @@ app.whenReady().then(async () => {
     assert.equal(await win.webContents.executeJavaScript('coverState.coverImageLoaded.value'), false, 'Old request cannot mark new artwork loaded');
     releaseImage('/new-cover');
     const rapidAfter = await win.webContents.executeJavaScript(`(async () => {
-      await document.querySelector('.cover img').decode(); await nextTick(); return await seek(1550);
+      await waitForCover(); return await seek(1550);
     })()`);
     assert.equal(rapidAfter.skeleton, false, 'Rapid song changes finish on the current artwork');
     assertStableLayout(rapidBefore, rapidAfter, 'Rapid song changes');
@@ -293,7 +366,7 @@ app.whenReady().then(async () => {
     const fallback = await win.webContents.executeJavaScript(`(async () => {
       const image = document.querySelector('.cover img');
       if (!coverState.coverImageFailed.value) await new Promise(resolve => image.addEventListener('error', resolve, {once:true}));
-      await nextTick(); await document.querySelector('.cover img').decode(); await nextTick();
+      await nextTick(); await waitForCover();
       return {sample: await seek(1550), failed: coverState.coverImageFailed.value};
     })()`);
     assert.equal(fallback.failed, true, 'Failed network cover selects the default artwork');
@@ -301,12 +374,93 @@ app.whenReady().then(async () => {
     assertStableLayout(rapidBefore, fallback.sample, 'Failed artwork');
     const missing = await win.webContents.executeJavaScript(`(async () => {
       state.songId++; state.currentCoverUrl = ''; await nextTick();
-      await document.querySelector('.cover img').decode(); await nextTick();
-      state.songId++; await nextTick(); await document.querySelector('.cover img').decode(); await nextTick();
+      await waitForCover();
+      state.songId++; await nextTick(); await waitForCover();
       return await seek(1550);
     })()`);
     assert.equal(missing.skeleton, false, 'Missing artwork and cached default cover settle normally');
     assertStableLayout(rapidBefore, missing, 'Missing artwork');
+
+    // Repeat and interrupt the animation without changing the track id or artwork URL.
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const repeated = await win.webContents.executeJavaScript(`(async () => {
+        const stage = document.querySelector('.cover-stage'), image = document.querySelector('.cover img');
+        const oldCue = getCue();
+        const shell = document.querySelector('.player-container').getAnimations()[0], shellTime = shell.currentTime;
+        state.playerChangeSong = true; await nextTick(); await frame();
+        const waiting = snapshot();
+        state.playerChangeSong = false; await nextTick();
+        const cue = getCue();
+        const start = await seekCover(0), flashing = await seekCover(155), middle = await seekCover(500);
+        return { waiting, start, flashing, middle, newCue: cue !== oldCue,
+          reused: stage === document.querySelector('.cover-stage') && image === document.querySelector('.cover img'),
+          shellUnchanged: shell === document.querySelector('.player-container').getAnimations()[0] && shell.currentTime === shellTime };
+      })()`);
+      assert.ok(repeated.newCue && repeated.reused && repeated.shellUnchanged, `Replay ${cycle + 1}: new cover animation, same image/stage/panel`);
+      assert.ok(repeated.waiting.skeleton, 'Same-song reload also preserves the skeleton');
+      assertAttached(repeated.waiting, 'Reset an interrupted replay to the attached loading frame', 'artwork');
+      assertAttached(repeated.start, 'Restart the same-song replay attached', 'artwork');
+      assert.ok(!repeated.start.skeleton && repeated.flashing.corners.every(corner => corner.opacity === 1), 'Replay starts once per song-change release');
+      assertStableLayout(rapidBefore, repeated.middle, 'Replay never shifts title/controls', false);
+    }
+    const finishedReplay = await win.webContents.executeJavaScript('seekCover(650)');
+    assertStableLayout(rapidBefore, finishedReplay, 'Repeated replay returns to the same final layout');
+    const immediateReplay = await win.webContents.executeJavaScript(`(async () => {
+      state.playerChangeSong = true; await nextTick();
+      // No frame, layout read or new image load in between: cached same-song restart.
+      state.playerChangeSong = false; await nextTick(); await frame();
+      const cue = getCue();
+      return {time:cue.currentTime, playState:cue.playState, blink:await observeBlink()};
+    })()`);
+    assert.ok(immediateReplay.time < 100 && immediateReplay.playState === 'running', 'Immediate cached same-song restart resets and plays the timeline');
+    assert.deepEqual(immediateReplay.blink.states, [0, 1, 0, 1, 0, 1], `Observe both flashes during natural playback: ${JSON.stringify(immediateReplay.blink.samples)}`);
+    assert.ok(immediateReplay.blink.synchronized, 'All four corners flash together during natural playback');
+
+    const synchronousReplay = await win.webContents.executeJavaScript(`(async () => {
+      state.playerChangeSong = true;
+      // A preloaded track can finish loading synchronously, before Vue paints the waiting state.
+      state.playerChangeSong = false;
+      await nextTick(); await frame();
+      return {phase:coverState.coverMotionState.value, animations:document.querySelector('.c-border').getAnimations().length,
+        blink:await observeBlink()};
+    })()`);
+    assert.equal(synchronousReplay.phase, 'replay', 'Synchronous cached switching must not get stuck in the waiting state');
+    assert.deepEqual(synchronousReplay.blink.states, [0,1,0,1,0,1], 'Synchronous cached switching must visibly play both flashes');
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const naturalReplay = await win.webContents.executeJavaScript(`(async () => {
+        state.songId++; await nextTick(); await waitForCover();
+        const cue = getCue();
+        return {time:cue.currentTime, playState:cue.playState, blink:await observeBlink()};
+      })()`);
+      assert.ok(naturalReplay.time < 100 && naturalReplay.playState === 'running', `Song change ${cycle + 1}: naturally restart cached artwork`);
+      assert.deepEqual(naturalReplay.blink.states, [0, 1, 0, 1, 0, 1], `Song change ${cycle + 1}: naturally show both flashes`);
+      assert.ok(naturalReplay.blink.synchronized, 'Song-change corners flash together');
+    }
+
+    // The real App uses a leaving transition: reopening can reuse a finished animation
+    // without ever reaching display:none. Do not seek the timeline before checking restart.
+    await win.webContents.executeJavaScript('seek(3000)');
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const reopened = await win.webContents.executeJavaScript(`(async () => {
+        visible.value = false; state.widgetState = true; await nextTick(); await frame();
+        if (${cycle} === 1) {
+          // Also cover a fully completed close, not only cancellation of the leaving transition.
+          await Promise.all(document.querySelector('.musicPlayer').getAnimations().map(a => a.finished.catch(() => {})));
+          await nextTick();
+        }
+        visible.value = true; state.widgetState = false; await nextTick(); await frame();
+        const cue = getCue();
+        return {time:cue.currentTime, playState:cue.playState, delay:cue.effect.getTiming().delay};
+      })()`);
+      assert.ok(reopened.time < 200, `Reopen ${cycle + 1}: reset the finished blink timeline rather than reuse its old time (${reopened.time}ms)`);
+      assert.equal(reopened.playState, 'running', 'Reopening starts playback, not just a retained final frame');
+      assert.ok(Math.abs(reopened.delay - 900) < 0.01, 'Reopening still waits for the shell timing');
+      const naturalBlink = await win.webContents.executeJavaScript('observeBlink()');
+      assert.deepEqual(naturalBlink.states, [0, 1, 0, 1, 0, 1], `Reopen ${cycle + 1}: naturally play both flashes: ${JSON.stringify(naturalBlink.samples)}`);
+      assert.ok(naturalBlink.synchronized, 'Reopened corners remain synchronized');
+      await win.webContents.executeJavaScript('seek(3000)');
+    }
 
     await win.webContents.executeJavaScript(`(async () => {
       state.getDefaultCoverUrl = () => ${JSON.stringify(imageOrigin + '/broken-default')};
@@ -321,6 +475,18 @@ app.whenReady().then(async () => {
     assert.ok(unavailable.unavailable && !unavailable.sample.skeleton && unavailable.sample.busy === 'false', 'Default-cover failure stops loading without retry loops');
     assertStableLayout(rapidBefore, unavailable.sample, 'Unavailable default artwork');
 
+    if (previewDir) {
+      win.setContentSize(1400, 900);
+      await win.webContents.executeJavaScript(`(async () => {
+        state.getDefaultCoverUrl = () => coverUrl; state.currentCoverUrl = coverUrl; state.songId++;
+        await nextTick(); await waitForCover();
+      })()`);
+      for (const [name, time] of [['replay-attached', 155], ['replay-blink-off', 205], ['replay-expanding', 500], ['replay-settled', 650]]) {
+        await win.webContents.executeJavaScript(`seekCover(${time})`);
+        fs.writeFileSync(path.join(previewDir, `${name}.png`), (await win.webContents.capturePage()).toPNG());
+      }
+    }
+
     win.setContentSize(1400, 900);
     await win.webContents.executeJavaScript('state.getDefaultCoverUrl = () => coverUrl; state.currentCoverUrl = coverUrl; restart()');
     win.webContents.debugger.attach('1.3');
@@ -332,12 +498,22 @@ app.whenReady().then(async () => {
     assert.equal(reduced.active, 0, 'Reduced motion skips blinking, scaling, expansion and breathing');
     assert.ok(reduced.sample.corners.every(corner => corner.opacity === 1), 'Reduced motion keeps corners visible');
     close(reduced.sample.cover.width, reduced.sample.stage.width - 27, 'Reduced motion immediately shows the normal-size cover');
+    close(reduced.sample.corners[0].x, reduced.sample.stage.x, 'Reduced motion immediately shows the final corner positions');
+    close(reduced.sample.corners[2].bottom, reduced.sample.stage.bottom, 'Reduced motion keeps the opposite corners expanded');
     const reducedSkeleton = await win.webContents.executeJavaScript(`(async () => {
       state.playerChangeSong = true; await nextTick();
       return getComputedStyle(document.querySelector('.cover-skeleton'), '::after').animationName;
     })()`);
     assert.equal(reducedSkeleton, 'none', 'Reduced motion also disables skeleton shimmer');
-    console.log('Player cover checks passed: shell-linked intro, synchronized flashes and release, stable loading skeleton/layout, deferred/wide/tall/missing/failed artwork, stale events, rapid song changes, cache, reopen, portrait and reduced motion.');
+    const reducedReplay = await win.webContents.executeJavaScript(`(async () => {
+      state.playerChangeSong = false; await nextTick(); await frame();
+      return {phase:coverState.coverMotionState.value, animations:document.querySelector('.cover-stage').getAnimations({subtree:true}).length,
+        sample:snapshot()};
+    })()`);
+    assert.equal(reducedReplay.phase, 'replay', 'Same-song replay state remains functional under reduced motion');
+    assert.equal(reducedReplay.animations, 0, 'Reduced motion also skips song-change replay');
+    assertStableLayout(reduced.sample, reducedReplay.sample, 'Reduced-motion replay is static');
+    console.log('Player cover checks passed: shell-linked intro; natural double-blink playback across repeated song changes and full/cancelled closing transitions; loading-aware replay; same-song, cached, interrupted and rapid changes; stable skeleton/layout; missing/failed artwork; themes, portrait and reduced motion.');
   } finally {
     win.destroy();
     server.closeAllConnections();
