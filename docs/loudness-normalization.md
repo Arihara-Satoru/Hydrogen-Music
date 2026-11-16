@@ -31,9 +31,9 @@
 
 ### 验证入口
 
-- `pnpm check:loudness-normalization`：设置迁移、忽略上游数据、唯一处理器、播放路径、缓存、静音门限、快速校准收敛时间、稳定后增益漂移、暂停/拖动和异步清理。
+- `pnpm check:loudness-normalization`：设置迁移、忽略上游数据、唯一处理器、播放路径、缓存、静音门限、快速校准收敛时间、稳定后增益漂移、暂停/拖动和异步清理；覆盖初始化期间卸载、迟到的加载/错误事件，防止旧播放器被重新启动或误触发回退。
 - `pnpm check:playback-auth`：授权及音质回退链路，同时验证上游响度不再传到播放层。
-- `pnpm build` 后运行 `pnpm check:loudness-audio`：真实 Electron/Chromium 的本地生产 Worklet、合成音频、实际 Howler 与无缝播放器接入验证；不向扬声器出声。
+- `pnpm build` 后运行 `pnpm check:loudness-audio`：真实 Electron/Chromium 的本地生产 Worklet、合成音频、实际 Howler 与无缝播放器接入验证，以及真实播放器连续 48 次切歌、初始化取消和迟到事件回归；不向扬声器出声。
 
 ## 历史调研：上游响度方案（已停用）
 

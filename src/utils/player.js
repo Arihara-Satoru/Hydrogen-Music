@@ -209,7 +209,8 @@ watch(loudnessNormalization, () => {
 });
 
 async function applyPlaybackAudioProcessing(playback, autoplay = playback.playing?.() === true) {
-  if (currentMusic.value === playback) loudnessNormalizationActive.value = false;
+  if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
+  loudnessNormalizationActive.value = false;
   if (playback.__hmAudioProcessingUnavailable) {
     playback.setLoudnessProtection?.(loudnessNormalization.value ? PROTECTED_LOUDNESS_GAIN : 1);
     playback.__hmLoudnessMode = loudnessNormalization.value ? "protected" : "off";
@@ -226,7 +227,8 @@ async function applyPlaybackAudioProcessing(playback, autoplay = playback.playin
         && playback.state?.() !== "unloaded";
     }
   } catch (error) {
-    if (playback.__hmProcessingRequest !== request) return;
+    if (currentMusic.value !== playback || playback.state?.() === "unloaded"
+      || playback.__hmProcessingRequest !== request) return;
     console.warn("音频处理不可用，回退至普通播放及保守音量保护", error);
     playback.__hmAudioProcessingUnavailable = true;
     if (currentMusic.value === playback) {
@@ -1879,7 +1881,7 @@ export function play(
       : null;
 
   const applyLoadedState = (playback) => {
-    if (currentMusic.value !== playback) return;
+    if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
     syncCurrentPlaybackDuration(playback);
     let targetSeek = null;
     const pendingChorusForCurrentSong =
@@ -1931,20 +1933,20 @@ export function play(
     );
   };
   const handlePlaybackEnd = (playback) => {
-    if (currentMusic.value !== playback) return;
+    if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
     stopProgressSampling();
     clearChorusPlaybackState();
     handleTrackPlaybackEnded();
   };
   const handlePlaybackStart = (playback) => {
-    if (currentMusic.value !== playback) return;
+    if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
     playback.fade(0, volume.value, fadeInMs);
     syncPlaybackStarted();
     // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
     updateWindowTitleDock();
   };
   const handlePlaybackPause = (playback) => {
-    if (currentMusic.value !== playback) return;
+    if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
     stopProgressSampling();
     playing.value = false;
     syncExternalPlaybackState();
@@ -1963,7 +1965,8 @@ export function play(
     // Match the streaming path: pause during asynchronous worklet setup must cancel autoplay.
     if (shouldAutoplay) syncPlaybackStarted();
     void applyPlaybackAudioProcessing(playback, shouldAutoplay).then(() => {
-      if (currentMusic.value !== playback || !shouldAutoplay || pauseToken !== playbackPauseToken) return;
+      if (currentMusic.value !== playback || playback.state?.() === "unloaded"
+        || !shouldAutoplay || pauseToken !== playbackPauseToken) return;
       playback.play?.();
       syncPlaybackStarted();
     });
@@ -1995,12 +1998,12 @@ export function play(
       withCredentials: true,
     },
     onplayerror: function (_id, err) {
-      if (currentMusic.value !== playback) return;
+      if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
       console.warn("检测到播放错误，尝试刷新播放地址", err);
       refreshStreamAndResume("playerror", err);
     },
     onloaderror: function (_id, err) {
-      if (currentMusic.value !== playback) return;
+      if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
       if (playback.__hmAudioProcessingPrepared && !playback.__hmAudioProcessingUnavailable) {
         noticeOpen(loudnessNormalization.value
           ? "当前音频无法分析响度，已启用保守音量保护"
@@ -2024,10 +2027,13 @@ export function play(
     prepareHowlAudioProcessing(playback);
   }
   playback.once("load", async () => {
+    // Howler dispatches events asynchronously: a queued load may outlive unload().
+    if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
     applyPlaybackRate(playback);
     applyLoadedState(playback);
     await applyPlaybackAudioProcessing(playback, shouldAutoplay && pauseToken === playbackPauseToken);
-    if (currentMusic.value === playback && shouldAutoplay && pauseToken === playbackPauseToken) playback.play();
+    if (currentMusic.value === playback && playback.state?.() !== "unloaded"
+      && shouldAutoplay && pauseToken === playbackPauseToken) playback.play();
   });
   playback.on("play", () => handlePlaybackStart(playback));
   playback.on("pause", () => handlePlaybackPause(playback));

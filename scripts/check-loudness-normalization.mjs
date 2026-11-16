@@ -231,6 +231,7 @@ class Howl {
         this.options = options; this._src = options.src; this._state = 'loading'; this._volume = options.volume; this._rate = options.rate ?? 1
         this._sounds = [{ _node: { volume: options.volume, _unlocked: true, load() {} } }]; this.events = new Map(); this.position = 0
         this.on('loaderror', options.onloaderror)
+        this.on('playerror', options.onplayerror)
     }
     on(event, fn) { const handlers = this.events.get(event) || []; handlers.push(fn); this.events.set(event, handlers); return this }
     once(event, fn) { const once = (...args) => { this.events.set(event, this.events.get(event).filter(item => item !== once)); fn(...args) }; return this.on(event, once) }
@@ -399,6 +400,58 @@ assert.equal(playerState.loudnessNormalizationActive, true)
 resume = null
 playerState.currentMusic.unload()
 
+// addSong unloads a still-loading Howl before the next URL arrives. currentMusic
+// can still reference that unloaded Howl while its asynchronous setup settles.
+player.namespace.play('https://audio.test/switch-during-processing.mp3', true)
+const switchingPlayback = playerState.currentMusic
+audioContext.state = 'suspended'
+resume = new Promise(resolve => { audioContext.releaseResume = resolve })
+switchingPlayback.emit('load')
+switchingPlayback.unload()
+audioContext.releaseResume(); await settle()
+resume = null
+assert.equal(switchingPlayback.playing(), false, 'unloading during normalization must not restart the previous track')
+
+// A load handler already queued by Howler must not touch a released sound.
+player.namespace.play('https://audio.test/queued-load.mp3', true)
+const queuedPlayback = playerState.currentMusic
+const queuedLoad = queuedPlayback.events.get('load')[0]
+queuedPlayback.unload()
+queuedLoad(); await settle()
+assert.equal(queuedPlayback.__hmProcessingRequest, undefined)
+assert.equal(queuedPlayback.playing(), false)
+
+// Failures from canceled work are not CORS errors for the next track and must
+// not restart playback in fallback mode or warn after the old Howl was removed.
+player.namespace.play('https://audio.test/canceled-resume.mp3', true)
+const canceledPlayback = playerState.currentMusic
+audioContext.state = 'suspended'
+let rejectResume
+resume = new Promise((_resolve, reject) => { rejectResume = reject })
+canceledPlayback.emit('load')
+canceledPlayback.unload()
+warnings.length = 0
+context.console.warn = (...args) => warnings.push(args)
+rejectResume(new Error('resume failed after track was unloaded')); await settle()
+context.console.warn = console.warn
+resume = null
+assert.equal(canceledPlayback.__hmAudioProcessingUnavailable, false)
+assert.equal(canceledPlayback.playing(), false)
+assert.equal(warnings.length, 0, 'ignore stale processing failures rather than reporting playback errors')
+
+for (const event of ['loaderror', 'playerror', 'play', 'pause', 'end']) {
+    player.namespace.play('https://audio.test/stale-' + event + '.mp3', true)
+    const stalePlayback = playerState.currentMusic
+    stalePlayback.unload()
+    warnings.length = 0
+    context.console.warn = (...args) => warnings.push(args)
+    stalePlayback.emit(event, 1, 'canceled track event'); await settle()
+    context.console.warn = console.warn
+    assert.equal(playerState.currentMusic, stalePlayback, `${event} must not recreate an unloaded playback`)
+    assert.equal(playerState.playing, true, `${event} must not change state while the next track is pending`)
+    assert.equal(warnings.length, 0, `ignore queued ${event} after unload`)
+}
+
 const decoded = await gapless.namespace.createDecodedAudioPlayer('https://audio.test/gapless-live.mp3')
 await decoded.setLoudnessNormalization(true)
 const decodedWorklet = worklets.at(-1)
@@ -435,6 +488,16 @@ await settle()
 assert.equal(preloaded.playing(), false)
 assert.equal(playerState.loudnessNormalizationActive, true)
 preloaded.unload()
+
+const canceledPreload = await gapless.namespace.createDecodedAudioPlayer('https://audio.test/canceled-preload.mp3')
+let canceledPreloadPlayCalls = 0
+const decodedPlay = canceledPreload.play.bind(canceledPreload)
+canceledPreload.play = () => { canceledPreloadPlayCalls++; return decodedPlay() }
+player.namespace.play('https://audio.test/canceled-preload.mp3', true, null, canceledPreload)
+canceledPreload.unload()
+await settle()
+assert.equal(canceledPreloadPlayCalls, 0, 'preloaded path must also skip autoplay after unload')
+assert.equal(canceledPreload.playing(), false)
 
 const settingsSource = await readFile('src/views/Settings.vue', 'utf8')
 assert.ok(settingsSource.includes('>响度均衡</div>'))
