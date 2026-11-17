@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const theme = fs.readFileSync(path.join(root, 'src/assets/css/theme.css'), 'utf8');
+const settings = fs.readFileSync(path.join(root, 'src/views/Settings.vue'), 'utf8');
+assert.match(theme, /--panel: rgba\(190, 217, 223, 0\.96\)/, 'Other panels retain blue');
+assert.match(theme, /--settings-profile-panel: rgba\(255, 255, 255, 0\.9\)/, 'Profile retains original light overlay');
+assert.match(theme, /--settings-profile-panel: rgba\(44, 50, 58, 0\.92\)/, 'Profile retains original dark overlay');
+assert.match(settings, /\.settings-user-info\s*\{\s*\/\/[^\n]*\n\s*--panel: var\(--settings-profile-panel\);/, 'Only the profile subtree overrides the panel token');
+console.log('Profile color isolation checks passed.');

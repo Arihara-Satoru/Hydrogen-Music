@@ -2075,6 +2075,8 @@ const clearFmRecent = () => {
       text-align: left;
     }
     .settings-user-info {
+      // Account artwork and detail tiles retain their original neutral overlay.
+      --panel: var(--settings-profile-panel);
       container: account-profile / inline-size;
       padding: 24px;
       width: 100%;
