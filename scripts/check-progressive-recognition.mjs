@@ -31,8 +31,10 @@ const captureVM = vm.createContext({ AudioContext: Context,
     URL, Blob, DOMException, Error, Uint8Array, setInterval, clearInterval, setTimeout, clearTimeout,
     workletSource: '', createRecognitionResampler, RECOGNITION_RATE: 8000, RECOGNITION_SECONDS: 10,
 })
-const captureCode = readFileSync(new URL('../src/utils/audioRecognitionCapture.mjs', import.meta.url), 'utf8')
-    .replace(/^import .*\n/gm, '').replace(/export /g, '')
+const captureSource = readFileSync(new URL('../src/utils/audioRecognitionCapture.mjs', import.meta.url), 'utf8')
+const prepareCaptureCode = source => source.replace(/\r\n/g, '\n').replace(/^import .*\n/gm, '').replace(/export /g, '')
+const captureCode = prepareCaptureCode(captureSource)
+assert.equal(prepareCaptureCode(captureSource.replace(/\r?\n/g, '\r\n')), captureCode, 'LF 与 CRLF 检出必须生成相同的模拟代码')
 vm.runInContext(`${captureCode}\nglobalThis.makeCapture = createRecognitionCapture;`, captureVM)
 {
     const input = stream(), abort = new AbortController()
