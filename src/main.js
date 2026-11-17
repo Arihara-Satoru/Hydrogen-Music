@@ -14,6 +14,8 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { initDynamicTheme } from './utils/dynamicTheme'
+import { installChunkLoadRecovery } from './utils/chunkLoadRecovery'
+installChunkLoadRecovery()
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
