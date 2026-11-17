@@ -218,7 +218,7 @@ const handleTitleBarDoubleClick = () => {
 .mainWindow {
     width: 100%;
     height: 100%;
-    background: var(--bg);
+    background: linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%);
     position: relative;
     overflow: hidden;
 
