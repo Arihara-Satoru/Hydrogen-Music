@@ -30,6 +30,8 @@ export const checks = [
   check('cloud-api', 'logic', '云盘 API 映射模拟', { vmModules: true }),
   check('comment-api', 'logic', '评论 API 与校验流程模拟', { vmModules: true }),
   check('daily-vip-claim', 'logic', 'VIP 领取、重试及状态模拟', { vmModules: true }),
+  check('desktop-lyric-restore', 'logic', '桌面歌词重启恢复及手动开关持久化'),
+  check('desktop-lyric-words', 'logic', '桌面歌词逐字时间及普通歌词回退'),
   check('download-quality', 'logic', '下载音质与状态模拟', { vmModules: true }),
   check('external-links', 'logic', '外部链接安全边界', { extension: 'cjs' }),
   check('favorite-playlist', 'logic', '喜欢歌单及竞态模拟', { vmModules: true }),
@@ -83,6 +85,7 @@ export const checks = [
   }),
 
   check('default-theme', 'electron', '默认主题真实样式', { extension: 'cjs' }),
+  check('desktop-lyric-words-browser', 'electron', '桌面歌词逐字高亮及播放同步', { extension: 'cjs' }),
   check('fm-cover-animation', 'electron', 'FM 封面入场与中断动画', { extension: 'cjs' }),
   check('fm-theme', 'electron', 'FM 双布局及动态主题', { extension: 'cjs' }),
   check('home-skeleton', 'electron', '首页骨架屏真实渲染', { extension: 'cjs' }),

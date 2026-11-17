@@ -133,7 +133,7 @@
                 <div class="stage-guides" aria-hidden="true"></div>
 
                 <div class="lyric-stack">
-                    <Transition name="line-wipe" mode="out-in">
+                    <Transition name="line-wipe" mode="out-in" :duration="hasWordTimings ? 0 : undefined">
                         <article
                             :key="lineKey"
                             class="current-line"
@@ -144,8 +144,23 @@
                                 <span>CURRENT LINE / 当前歌词</span>
                                 <span>{{ lineProgressRounded }}%</span>
                             </div>
-                            <p class="current-line__text" :data-text="currentLyricText">
-                                {{ currentLyricText }}
+                            <p
+                                class="current-line__text"
+                                :class="{ 'current-line__text--timed': currentLyricWords.length }"
+                                :data-text="currentLyricWords.length ? undefined : currentLyricText"
+                                :aria-label="currentLyricWords.length ? currentLyricText : undefined"
+                            >
+                                <template v-if="currentLyricWords.length">
+                                    <span
+                                        v-for="(word, index) in currentLyricWords"
+                                        :key="index"
+                                        class="lyric-word"
+                                        :data-text="word.text"
+                                        :style="{ '--word-progress': `${calculateLyricWordProgress(word, lyricTime)}%` }"
+                                        aria-hidden="true"
+                                    >{{ word.text }}</span>
+                                </template>
+                                <template v-else>{{ currentLyricText }}</template>
                             </p>
                             <div
                                 class="line-meter"
@@ -413,7 +428,11 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { getSongDisplayName } from '../utils/songName';
-import { calculateLyricLineProgress, clampPercentage } from '../utils/desktopLyricTiming.mjs';
+import {
+    calculateLyricLineProgress, calculateLyricWordProgress, clampPercentage,
+    interpolateLyricTime, normalizeLyricWords, resolveDesktopLyricLine,
+} from '../utils/desktopLyricTiming.mjs';
+import { findLyricIndexAtTime } from '../utils/lyricCore';
 import OnboardingTour from './OnboardingTour.vue';
 
 const LYRIC_TYPE_OPTIONS = Object.freeze([
@@ -480,6 +499,7 @@ const lyricsArray = ref([]);
 const currentLyricIndex = ref(-1);
 const trackProgress = ref(0);
 const currentTime = ref(0);
+const lyricTime = ref(0);
 const duration = ref(0);
 const playing = ref(false);
 const locked = ref(savedConfig.locked ?? false);
@@ -547,6 +567,28 @@ let savedWindowBounds = savedConfig.bounds || null;
 let boundsSaveTimer = null;
 let onboardingOriginalBounds = null;
 let onboardingResizeTask = Promise.resolve();
+let lyricClockFrame = null;
+let lyricClockSnapshot = null;
+
+const hasWordTimings = computed(() => lyricsArray.value.some(row => row.words?.length));
+
+const stopLyricClock = () => {
+    if (lyricClockFrame !== null) window.cancelAnimationFrame(lyricClockFrame);
+    lyricClockFrame = null;
+};
+
+const updateLyricClock = () => {
+    lyricClockFrame = null;
+    if (lyricClockSnapshot) {
+        lyricTime.value = interpolateLyricTime(lyricClockSnapshot, performance.now(), playing.value, duration.value);
+    }
+    if (playing.value && hasWordTimings.value) lyricClockFrame = window.requestAnimationFrame(updateLyricClock);
+};
+
+watch([playing, hasWordTimings], () => {
+    stopLyricClock();
+    updateLyricClock();
+});
 
 const persistDesktopLyricConfig = bounds => {
     const normalizedBounds = normalizeSavedBounds(bounds);
@@ -593,6 +635,8 @@ const activeLyricType = computed(
 
 const displayedLyricIndex = computed(() => {
     if (!lyricsArray.value.length) return -1;
+    // Word-timed lines use the local audio clock, without the main view's 200ms preview bias.
+    if (hasWordTimings.value) return findLyricIndexAtTime(lyricsArray.value, lyricTime.value, 0);
     if (currentLyricIndex.value >= 0 && currentLyricIndex.value < lyricsArray.value.length) {
         return currentLyricIndex.value;
     }
@@ -600,16 +644,13 @@ const displayedLyricIndex = computed(() => {
 });
 
 const formatLyricText = row => {
-    if (!row) return '—';
-    const original = String(row.lyric || '').trim();
-    const translation = String(row.tlyric || '').trim();
-    const romanization = String(row.rlyric || '').trim();
-
-    if (selectedLyricType.value === 'original') return original || translation || romanization || '—';
-    if (selectedLyricType.value === 'trans') return translation || original || romanization || '—';
-    if (selectedLyricType.value === 'roma') return romanization || original || translation || '—';
-    return translation || original || romanization || '—';
+    return resolveDesktopLyricLine(row, selectedLyricType.value).text;
 };
+
+const currentLyricWords = computed(() => {
+    if (!currentSong.value) return [];
+    return resolveDesktopLyricLine(lyricsArray.value[displayedLyricIndex.value], selectedLyricType.value).words;
+});
 
 const currentLyricText = computed(() => {
     if (!currentSong.value) return '等待播放';
@@ -653,8 +694,8 @@ const formattedTotalLines = computed(() => String(lyricsArray.value.length).padS
 const lineProgress = computed(() =>
     calculateLyricLineProgress(
         lyricsArray.value,
-        currentLyricIndex.value,
-        currentTime.value,
+        hasWordTimings.value ? displayedLyricIndex.value : currentLyricIndex.value,
+        hasWordTimings.value ? lyricTime.value : currentTime.value,
         duration.value,
     ),
 );
@@ -692,6 +733,7 @@ const rootClasses = computed(() => ({
     'is-resizing': isResizing.value,
     'is-seeking': seekPreviewTime.value !== null,
     'has-cover': Boolean(coverUrl.value),
+    'has-word-timings': hasWordTimings.value,
     'is-empty': !currentSong.value || lyricsArray.value.length === 0,
     'is-compact': compactMode.value,
     'is-transparent': transparentMode.value,
@@ -735,10 +777,13 @@ const handleLyricUpdate = (_event, data) => {
                   tlyric: String(row?.tlyric || ''),
                   rlyric: String(row?.rlyric || ''),
                   time: Number.isFinite(Number(row?.time)) ? Number(row.time) : 0,
+                  words: normalizeLyricWords(row?.words, row?.lyric),
               }))
             : [];
         currentLyricIndex.value = -1;
         currentTime.value = 0;
+        lyricTime.value = 0;
+        lyricClockSnapshot = null;
         duration.value = 0;
         trackProgress.value = 0;
         seekPreviewTime.value = null;
@@ -752,6 +797,13 @@ const handleLyricUpdate = (_event, data) => {
         currentLyricIndex.value = Number.isInteger(nextIndex) ? nextIndex : -1;
         currentTime.value = Math.max(0, Number(data.currentTime) || 0);
         duration.value = Math.max(0, Number(data.duration) || 0);
+        lyricClockSnapshot = {
+            currentTime: currentTime.value,
+            receivedAt: performance.now(),
+            playbackRate: Number(data.playbackRate) || 1,
+            advancing: data.advancing !== false,
+        };
+        lyricTime.value = currentTime.value;
         trackProgress.value =
             duration.value > 0
                 ? clampPercentage((currentTime.value / duration.value) * 100)
@@ -1235,6 +1287,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    stopLyricClock();
     persistCurrentBrowserBounds();
     setMouseEventsIgnored(false);
     finishDrag();
@@ -1861,6 +1914,26 @@ button:focus-visible {
     color: var(--ef-on-dock);
     clip-path: inset(0 calc(100% - var(--line-progress)) 0 0);
     transition: clip-path 280ms linear;
+    pointer-events: none;
+}
+
+.current-line__text--timed::after {
+    content: none;
+}
+
+.lyric-word {
+    position: relative;
+    display: inline-block;
+    white-space: pre;
+}
+
+.lyric-word::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    color: var(--lyric-color, var(--ef-signal));
+    clip-path: inset(0 calc(100% - var(--word-progress)) 0 0);
+    text-shadow: none;
     pointer-events: none;
 }
 
@@ -2686,6 +2759,18 @@ button:focus-visible {
     transform: translateX(12px);
 }
 
+.has-word-timings .line-wipe-enter-active,
+.has-word-timings .line-wipe-leave-active {
+    transition: none;
+}
+
+.has-word-timings .line-wipe-enter-from,
+.has-word-timings .line-wipe-leave-to {
+    opacity: 1;
+    clip-path: none;
+    transform: none;
+}
+
 .next-shift-enter-from,
 .next-shift-leave-to {
     opacity: 0;
@@ -3023,6 +3108,10 @@ button:focus-visible {
         flex: 0 0 auto;
     }
 
+    .control-group:has(.source-options) {
+        min-width: 210px;
+    }
+
     .control-group legend {
         font-size: 10px;
         padding-bottom: 2px;
@@ -3037,11 +3126,12 @@ button:focus-visible {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 3px;
         margin-top: 0;
-        flex: 1;
+        flex: 0 0 auto;
+        align-content: start;
     }
 
     .source-option {
-        min-height: 24px;
+        min-height: 32px;
         padding: 2px 5px;
         gap: 5px;
         grid-template-columns: 18px minmax(0, 1fr) 8px;

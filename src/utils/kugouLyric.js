@@ -175,10 +175,31 @@ function parseKrcRows(krcText) {
             index: rows.length,
             time: Number(match[1]) || 0,
             text: normalizeKrcText(match[3]),
+            words: parseKrcWords(match[3], Number(match[1])),
         });
     }
 
     return rows;
+}
+
+function parseKrcWords(text, lineStartMs) {
+    const tags = Array.from(text.matchAll(/<(-?\d+)\s*,\s*(-?\d+)(?:\s*,\s*-?\d+)*\s*>/g));
+    if (!tags.length || text.slice(0, tags[0].index).trim()) return [];
+
+    const words = tags.map((tag, index) => ({
+        text: text.slice(tag.index + tag[0].length, tags[index + 1]?.index ?? text.length),
+        startTime: (lineStartMs + Number(tag[1])) / 1000,
+        duration: Number(tag[2]) / 1000,
+    }));
+    words[0].text = words[0].text.trimStart();
+    words[words.length - 1].text = words[words.length - 1].text.trimEnd();
+
+    // Malformed timing must never remove or change the readable line.
+    if (words.some((word, index) =>
+        word.startTime < 0 || word.duration < 0 ||
+        (index > 0 && word.startTime < words[index - 1].startTime)
+    )) return [];
+    return words.filter(word => word.text);
 }
 
 export function normalizeKugouKrcLyric(krcText) {
@@ -203,5 +224,8 @@ export function normalizeKugouKrcLyric(krcText) {
         originalLyricText: [...metadataLines, ...originalLines].join('\n'),
         translatedLyricText: translatedLines.join('\n'),
         romanizedLyricText: romanizedLrcLines.join('\n'),
+        wordTimings: rows
+            .filter(row => row.words.length && row.words.map(word => word.text).join('') === row.text)
+            .map(row => ({ time: row.time / 1000, text: row.text, words: row.words })),
     };
 }

@@ -406,6 +406,24 @@ function buildPureTextTimeline(originalLyricText, songDurationSec) {
     return processed;
 }
 
+function attachWordTimings(rows, wordTimings) {
+    if (!Array.isArray(wordTimings) || !wordTimings.length) return rows;
+
+    const byText = new Map();
+    for (const line of wordTimings) {
+        if (!Array.isArray(line?.words) || !line.words.length) continue;
+        const text = String(line.text || '').trim();
+        if (!byText.has(text)) byText.set(text, []);
+        byText.get(text).push(line);
+    }
+
+    return rows.map(row => {
+        // KRC -> LRC truncates timestamps to centiseconds; never match a different repeated line.
+        const line = byText.get(row.lyric)?.find(item => Math.abs(Number(item.time) - row.time) < 0.011);
+        return line ? { ...row, words: line.words.map(word => ({ ...word })) } : row;
+    });
+}
+
 export function buildLyricsTimeline(lyricPayload, { songDurationSec = 0, isLocal = false } = {}) {
     if (!lyricPayload || typeof lyricPayload !== 'object') return [];
 
@@ -422,20 +440,20 @@ export function buildLyricsTimeline(lyricPayload, { songDurationSec = 0, isLocal
     }
 
     if (isLocal) {
-        return buildLocalMultiTrackTimeline(
+        return attachWordTimings(buildLocalMultiTrackTimeline(
             originalLyricText,
             translatedLyricText,
             romanizedLyricText,
             normalizedDuration
-        );
+        ), lyricPayload.wordTimings);
     }
 
-    return buildOnlineTimeline(
+    return attachWordTimings(buildOnlineTimeline(
         originalLyricText,
         translatedLyricText,
         romanizedLyricText,
         normalizedDuration
-    );
+    ), lyricPayload.wordTimings);
 }
 
 export function findLyricIndexAtTime(lyrics, seekSeconds, biasSec = 0.2) {

@@ -112,6 +112,7 @@ export const usePlayerStore = defineStore('playerStore', {
             showSongTranslation: true, // 歌曲名是否显示翻译（原名 (翻译)）
             audioVisualizer: false, // 是否显示顶部音频可视化
             isDesktopLyricOpen: false, // 桌面歌词是否打开
+            desktopLyricEnabled: false, // 记住用户开关选择，重启时恢复；与实际窗口状态分开
             coverBlur: false, // 播放页使用封面模糊背景
             dynamicTheme: false, // 使用当前封面为全局背景取色
             customThemeColor: '', // 自定义全局背景颜色
@@ -124,6 +125,6 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     selectedPersist: {
         storage: persistedPlayerStorage,
-        pick: ['progress','volume','playbackRate','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','musicVideoMode','lyricBlur','showSongTranslation','audioVisualizer','coverBlur','dynamicTheme','customThemeColor','chorusMode']
+        pick: ['progress','volume','playbackRate','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','musicVideoMode','lyricBlur','showSongTranslation','audioVisualizer','desktopLyricEnabled','coverBlur','dynamicTheme','customThemeColor','chorusMode']
     },
 })

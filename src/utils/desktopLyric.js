@@ -3,11 +3,14 @@ import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
 import { getSongDisplayName } from './songName';
+import { normalizeLyricWords } from './desktopLyricTiming.mjs';
 
 let lyricProgressInterval = null;
 let songChangeTimer = null;
 let progressTimer = null;
 let bridgeInitialized = false;
+let windowStateRevision = 0;
+let lyricWindowOperation = null;
 
 let lastSongPayload = null;
 let lastProgressPayload = null;
@@ -24,11 +27,13 @@ let disposeDesktopLyricClosed = null;
 const playerStore = usePlayerStore(pinia);
 const {
     currentIndex,
+    currentMusic,
     currentLyricIndex,
     isDesktopLyricOpen,
     localBase64Img,
     lyricsObjArr,
     playing,
+    playbackRate,
     progress,
     showSongTranslation,
     songId,
@@ -127,6 +132,7 @@ function buildSongChangePayload() {
                   tlyric: String(row?.tlyric || ''),
                   rlyric: String(row?.rlyric || ''),
                   time: Number(row?.time || 0),
+                  words: normalizeLyricWords(row?.words, row?.lyric),
               }))
             : [],
     };
@@ -140,7 +146,14 @@ function buildPlayStatePayload() {
 }
 
 function buildLyricProgressPayload() {
-    const currentTime = Math.max(0, Number(progress.value) || 0);
+    // The store samples progress once a second; word sync needs the live audio clock.
+    let currentTime = Math.max(0, Number(progress.value) || 0);
+    let advancing = !!playing.value;
+    try {
+        const seek = currentMusic.value?.seek?.();
+        if (typeof seek === 'number' && Number.isFinite(seek)) currentTime = Math.max(0, seek);
+        if (typeof currentMusic.value?.playing === 'function') advancing &&= !!currentMusic.value.playing();
+    } catch (_) {}
     const duration = Math.max(0, Number(time.value) || 0);
 
     return {
@@ -149,6 +162,8 @@ function buildLyricProgressPayload() {
         progress: duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0,
         currentTime,
         duration,
+        playbackRate: Number(playbackRate.value) || 1,
+        advancing,
     };
 }
 
@@ -174,6 +189,7 @@ function scheduleSongChangePush(delayMs = 0, options = {}) {
     songChangeTimer = setTimeout(() => {
         songChangeTimer = null;
         sendCurrentLyricData(options);
+        sendLyricProgress({ force: true });
     }, delayMs);
 }
 
@@ -187,41 +203,78 @@ function scheduleProgressPush(delayMs = 0, options = {}) {
     }, delayMs);
 }
 
-export const toggleDesktopLyric = async () => {
-    if (!window.electronAPI) return;
+function rememberDesktopLyricState(enabled) {
+    if (playerStore.desktopLyricEnabled === enabled) return;
+    playerStore.desktopLyricEnabled = enabled;
+    // 不等下一次播放进度保存，手动切换后立即退出也应保留选择。
+    playerStore.$persist?.();
+}
 
+async function runLyricWindowOperation(action) {
+    if (lyricWindowOperation) return;
+    const operation = action();
+    lyricWindowOperation = operation;
     try {
+        await operation;
+    } catch (_) {
+        // 窗口失败只影响本次实际状态，不清除下次启动的恢复偏好。
+    } finally {
+        if (lyricWindowOperation === operation) lyricWindowOperation = null;
+    }
+}
+
+async function openDesktopLyricWindow(revision) {
+    const result = await window.electronAPI.createLyricWindow();
+    if (revision !== windowStateRevision || !result?.success) return;
+
+    rememberDesktopLyricState(true);
+    playerStore.isDesktopLyricOpen = true;
+    // 已加载的窗口立即同步；新窗口还会在挂载后 requestLyricData 获取完整快照。
+    sendCurrentLyricData({ force: true });
+    sendPlayState({ force: true });
+    sendLyricProgress({ force: true });
+}
+
+async function restoreDesktopLyricWindow(revision) {
+    try {
+        const isVisible = await window.electronAPI.isLyricWindowVisible();
+        if (revision !== windowStateRevision || !bridgeInitialized) return;
+
+        playerStore.isDesktopLyricOpen = Boolean(isVisible);
+        if (isVisible) {
+            rememberDesktopLyricState(true);
+        } else if (playerStore.desktopLyricEnabled === true) {
+            await runLyricWindowOperation(() => openDesktopLyricWindow(revision));
+        }
+    } catch (_) {
+        // 原生桥接不可用时保留偏好，不影响播放器启动。
+    }
+}
+
+export const toggleDesktopLyric = async () => {
+    if (!window.electronAPI || lyricWindowOperation) return;
+    const revision = ++windowStateRevision;
+
+    await runLyricWindowOperation(async () => {
         if (isDesktopLyricOpen.value) {
             const result = await window.electronAPI.closeLyricWindow();
-            if (result?.success) {
+            if (revision === windowStateRevision && result?.success) {
+                rememberDesktopLyricState(false);
                 playerStore.isDesktopLyricOpen = false;
             }
             return;
         }
 
-        const result = await window.electronAPI.createLyricWindow();
-        if (result?.success) {
-            playerStore.isDesktopLyricOpen = true;
-            setTimeout(() => {
-                sendCurrentLyricData({ force: true });
-                sendPlayState({ force: true });
-                sendLyricProgress({ force: true });
-            }, 200);
-        }
-    } catch (_) {
-        // ignore window bridge errors
-    }
+        await openDesktopLyricWindow(revision);
+    });
 };
 
 export const initDesktopLyric = () => {
     if (bridgeInitialized) return;
     bridgeInitialized = true;
+    const revision = ++windowStateRevision;
 
     if (window.electronAPI) {
-        window.electronAPI.isLyricWindowVisible().then(isVisible => {
-            playerStore.isDesktopLyricOpen = isVisible;
-        });
-
         disposeCurrentLyricData = window.electronAPI.getCurrentLyricData(() => {
             sendCurrentLyricData({ force: true });
             sendPlayState({ force: true });
@@ -229,6 +282,9 @@ export const initDesktopLyric = () => {
         });
 
         disposeDesktopLyricClosed = window.electronAPI.onDesktopLyricClosed(() => {
+            // 该通知来自歌词窗口里的手动关闭按钮，不是应用退出时的窗口销毁。
+            windowStateRevision += 1;
+            rememberDesktopLyricState(false);
             playerStore.isDesktopLyricOpen = false;
         });
     }
@@ -297,9 +353,14 @@ export const initDesktopLyric = () => {
             scheduleProgressPush(0, { force: true });
         }
     );
+
+    if (window.electronAPI) void restoreDesktopLyricWindow(revision);
 };
 
 export const destroyDesktopLyric = () => {
+    // 失效启动期间仍未返回的 IPC；退出时只清理运行态，不改用户开关偏好。
+    windowStateRevision += 1;
+    lyricWindowOperation = null;
     stopDesktopLyricSync();
     clearSongChangeTimer();
     clearProgressTimer();
