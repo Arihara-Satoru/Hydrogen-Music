@@ -20,6 +20,9 @@ import { useUserStore } from './store/userStore';
 import { useSirenStore } from './store/sirenStore';
 import { applyCustomTheme, applyDynamicTheme, clearDynamicTheme } from './utils/dynamicTheme';
 import { resolveImageUrl } from './utils/imageUtils';
+import { useRoute } from 'vue-router';
+import { resolveAppShellLayout } from './utils/appShellLayout.mjs';
+import './assets/css/appShell.css';
 
 const MusicPlayer = defineAsyncComponent(() => import('./views/MusicPlayer.vue'));
 const VideoPlayer = defineAsyncComponent(() => import('./components/VideoPlayer.vue'));
@@ -35,6 +38,8 @@ const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 const userStore = useUserStore();
 const sirenStore = useSirenStore();
+const route = useRoute();
+const shellLayout = computed(() => resolveAppShellLayout(route.name, playerStore.widgetState));
 const visualizerActive = computed(() => {
     return playerStore.audioVisualizer && playerStore.playerShow && !playerStore.widgetState && !!playerStore.currentMusic;
 });
@@ -133,12 +138,12 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow">
+    <div class="mainWindow" :class="{ 'shell-siren': shellLayout.siren, 'shell-full-window': shellLayout.fullWindow }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
     </div>
-    <div class="globalWidget" :class="{ 'visualizer-active': visualizerActive }">
+    <div class="globalWidget" :class="{ 'visualizer-active': visualizerActive, 'shell-siren': shellLayout.siren }">
         <Title class="widget-title"></Title>
         <AudioVisualizer class="widget-visualizer"></AudioVisualizer>
         <div class="widget-search" data-tour="search">
@@ -227,11 +232,10 @@ const handleTitleBarDoubleClick = () => {
 
     .home {
         height: calc(100% - 78px);
-
-        &:has(.home-content-full-window, .siren-page) {
-            display: flow-root;
-            height: 100%;
-        }
+    }
+    &.shell-full-window .home {
+        display: flow-root;
+        height: 100%;
     }
 }
 .globalWidget {

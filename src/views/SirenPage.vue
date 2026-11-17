@@ -308,15 +308,6 @@ watch(
 </template>
 
 <style scoped lang="scss">
-:global(#app:has(.siren-page) .home-content) {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-}
-
 .siren-page {
     --siren-ink: #191919;
     --siren-paper: #f2f2f0;
@@ -1047,57 +1038,6 @@ watch(
 }
 
 @media screen and (max-width: 760px), (orientation: portrait) and (max-width: 900px) {
-    :global(#app:has(.siren-page) .globalWidget) {
-        top: 17px;
-        left: 20px;
-    }
-
-    :global(#app:has(.siren-page) .globalWidget .widget-search),
-    :global(#app:has(.siren-page) .globalWidget .widget-visualizer) {
-        display: none;
-    }
-
-    :global(#app:has(.siren-page) .home-header) {
-        margin: 72px 20px 16px;
-        justify-content: flex-start;
-    }
-
-    :global(#app:has(.siren-page) .home-header .header-router) {
-        width: 100%;
-        margin-left: 0 !important;
-        padding-bottom: 8px;
-        display: flex !important;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-width: none;
-    }
-
-    :global(#app:has(.siren-page) .home-header .header-router::-webkit-scrollbar) {
-        display: none;
-    }
-
-    :global(#app:has(.siren-page) .home-header .header-router-right) {
-        position: static !important;
-        flex: 0 0 auto;
-    }
-
-    :global(#app:has(.siren-page) .home-header .primary-nav) {
-        flex: 0 0 auto;
-    }
-
-    :global(#app:has(.siren-page) .home-header .primary-nav a),
-    :global(#app:has(.siren-page) .home-header .header-router-right a) {
-        margin-right: 26px !important;
-    }
-
-    :global(#app:has(.siren-page) .home-header .router-tracker) {
-        display: none;
-    }
-
-    :global(#app:has(.siren-page) .home-content) {
-        padding: 0;
-    }
-
     .siren-page {
         width: 100%;
         min-height: 100vh;
