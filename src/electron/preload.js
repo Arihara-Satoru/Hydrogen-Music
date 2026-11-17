@@ -358,9 +358,12 @@ contextBridge.exposeInMainWorld("windowApi", {
   updateDockMenu,
   clearAllCacheData: () => ipcRenderer.invoke("clear-all-cache-data"),
   getPerformanceSnapshot,
-  saveAnimationReport: (json) => ipcRenderer.invoke("performance:save-animation-report", json),
-  startAnimationCpuProfile: () => ipcRenderer.invoke("performance:animation-cpu-start"),
-  stopAnimationCpuProfile: () => ipcRenderer.invoke("performance:animation-cpu-stop"),
+  ...(process.argv.includes('--hydrogen-animation-diagnostics') ? {
+    animationDiagnosticsEnabled: true,
+    saveAnimationReport: (json) => ipcRenderer.invoke("performance:save-animation-report", json),
+    startAnimationCpuProfile: () => ipcRenderer.invoke("performance:animation-cpu-start"),
+    stopAnimationCpuProfile: () => ipcRenderer.invoke("performance:animation-cpu-stop"),
+  } : {}),
   // 数据重置（修复旧版本数据残留问题）
   resetAllData: () => ipcRenderer.invoke("reset-all-data"),
   onResetLocalStorage: (callback) => {

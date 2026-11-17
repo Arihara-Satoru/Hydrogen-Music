@@ -420,6 +420,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   );
   ipcMain.removeHandler("performance:process-snapshot");
   ipcMain.removeHandler("performance:save-animation-report");
+  for (const action of ['start', 'stop']) ipcMain.removeHandler(`performance:animation-cpu-${action}`);
+  if (require('./animationDiagnosticGate.cjs').animationDiagnosticsAllowed(app)) {
   const animationCpuProfiler = require('./animationCpuProfiler.cjs').createAnimationCpuProfiler(win.webContents);
   for (const action of ['start', 'stop']) {
     const channel = `performance:animation-cpu-${action}`;
@@ -436,6 +438,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       return { error: String(error?.message || error) };
     }
   });
+  }
   ipcMain.handle("performance:process-snapshot", async () => ({
     main: await process.getProcessMemoryInfo(),
     rendererPid: win.webContents.getOSProcessId(),

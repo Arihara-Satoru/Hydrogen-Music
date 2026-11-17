@@ -317,7 +317,7 @@ if (!gotTheLock) {
     const mainWindowState = createMainWindowState();
     await createSplashWindow(mainWindowState.winOptions);
     // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
-    hasDevServer = !app.isPackaged && (await isDevServerReachable());
+    hasDevServer = !app.isPackaged && !require('./src/electron/animationDiagnosticGate.cjs').animationDiagnosticsAllowed(app) && (await isDevServerReachable());
     setSplashStatus("正在准备播放器...", 24);
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
     createWindow(mainWindowState);
@@ -509,7 +509,9 @@ const createWindow = (winstate = createMainWindowState()) => {
   createDockMenu();
 
   process.env.DIST = path.join(__dirname, "./");
-  const indexHtml = path.join(process.env.DIST, "dist/index.html");
+  const indexHtml = path.join(process.env.DIST,
+    require('./src/electron/animationDiagnosticGate.cjs').animationDiagnosticsAllowed(app)
+      ? "dist-animation-diagnostics/index.html" : "dist/index.html");
   const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
     minWidth: MAIN_WINDOW_MIN_WIDTH,
@@ -533,6 +535,8 @@ const createWindow = (winstate = createMainWindowState()) => {
     webPreferences: {
       //预加载脚本
       preload: path.resolve(__dirname, "./src/electron/preload.js"),
+      additionalArguments: require('./src/electron/animationDiagnosticGate.cjs').animationDiagnosticsAllowed(app)
+        ? ['--hydrogen-animation-diagnostics'] : [],
       webSecurity: false,
     },
   });

@@ -6,7 +6,7 @@ import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
 import SkeletonBox from './base/SkeletonBox.vue';
-import { recordPlayerAnimationState } from '../utils/playerAnimationRecorder';
+import { recordPlayerAnimationState } from '../utils/animationDiagnosticState';
 import { startMusic, pauseMusic, playLast, playNext, changeProgress, changeProgressByDragStart, changeProgressByDragEnd, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus, likeSong, isSongLiked, syncFavoritePlaylistLikelist } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
@@ -635,7 +635,7 @@ const addToPlaylist = () => {
 };
 
 // 仅录制器开启时留存标量状态，不读取布局或修改动画。
-watch([coverMotionState, coverMotionRun, coverReleased, coverImageLoaded, coverImageUnavailable], () => {
+if (import.meta.env.VITE_ANIMATION_DIAGNOSTICS === '1' && window.windowApi?.animationDiagnosticsEnabled) watch([coverMotionState, coverMotionRun, coverReleased, coverImageLoaded, coverImageUnavailable], () => {
     recordPlayerAnimationState('cover', { phase: coverMotionState.value, run: coverMotionRun.value,
         released: coverReleased.value, loaded: coverImageLoaded.value, unavailable: coverImageUnavailable.value,
         widget: widgetState.value, changing: playerChangeSong.value });

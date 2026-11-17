@@ -13,7 +13,6 @@ import { initTogetherSession, destroyTogetherSession } from './utils/listenToget
 import { installSpacePlaybackShortcut } from './utils/playbackKeyboard.mjs';
 import { pauseMusic, startMusic } from './utils/player';
 import { ensureDeviceRegistered } from './utils/musicUrlResolver';
-import { installPlayerAnimationRecorder } from './utils/playerAnimationRecorder';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -70,7 +69,11 @@ watch(() => playerStore.currentMusic, currentMusic => {
 });
 
 onMounted(() => {
-    disposeAnimationRecorder = installPlayerAnimationRecorder(playerStore);
+    if (import.meta.env.VITE_ANIMATION_DIAGNOSTICS === '1' && window.windowApi?.animationDiagnosticsEnabled) {
+        void import('./utils/playerAnimationRecorder').then(({ installPlayerAnimationRecorder }) => {
+            disposeAnimationRecorder = installPlayerAnimationRecorder(playerStore);
+        });
+    }
     disposeSpaceShortcut = installSpacePlaybackShortcut(window, () => {
         if (playerStore.playing) pauseMusic();
         else startMusic({ userInitiated: true });

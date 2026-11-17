@@ -10,6 +10,7 @@ lerna-debug.log*
 # Build output
 /node_modules/
 /dist/
+/dist-animation-diagnostics/
 /dist-ssr/
 /release/
 /release2/

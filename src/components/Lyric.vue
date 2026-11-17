@@ -7,7 +7,7 @@ import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
 import { vDelayedTooltip } from '../utils/delayedTooltip';
 import loudnessBadge from '../assets/img/loudness-badge.png';
 import { formatAudioInfo } from '../utils/quality';
-import { recordPlayerAnimationState } from '../utils/playerAnimationRecorder';
+import { recordPlayerAnimationState } from '../utils/animationDiagnosticState';
 
 const playerStore = usePlayerStore();
 const {
@@ -944,7 +944,7 @@ watch([playing, lyricShow], ([p, show]) => {
         }
     }
 });
-watch([lyricAreaReady, suppressLyricFlash, lyricRevealAnimating], () => {
+if (import.meta.env.VITE_ANIMATION_DIAGNOSTICS === '1' && window.windowApi?.animationDiagnosticsEnabled) watch([lyricAreaReady, suppressLyricFlash, lyricRevealAnimating], () => {
     recordPlayerAnimationState('lyric', { ready: lyricAreaReady.value, suppressed: suppressLyricFlash.value,
         animating: lyricRevealAnimating.value, widget: widgetState.value, lines: lyricsObjArr.value?.length ?? null });
 }, { flush: 'sync' });

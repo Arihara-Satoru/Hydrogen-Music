@@ -1,14 +1,13 @@
 import { watch } from 'vue';
+import { setAnimationDiagnosticSink } from './animationDiagnosticState';
 
 // 仅手动录制时采样；不读取逐帧 computedStyle/布局，不修改动画或播放状态。
 let active = null;
 let latest = null;
 const limit = 30000;
-export function recordPlayerAnimationState(source, data) {
-    active?.push('state', { source, ...data });
-}
 
 export function installPlayerAnimationRecorder(store) {
+    setAnimationDiagnosticSink((source, data) => active?.push('state', { source, ...data }));
     let indicator = null;
     let saving = false;
     let exported = false;
@@ -192,6 +191,7 @@ export function installPlayerAnimationRecorder(store) {
         stop();
         window.removeEventListener('keydown', keydown, true);
         delete window.__hydrogenAnimationRecorder;
+        setAnimationDiagnosticSink(null);
         indicator?.remove();
     };
 }
