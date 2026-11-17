@@ -2082,6 +2082,8 @@ const clearFmRecent = () => {
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
+      // Include the border in both layers' sizing so the image cannot outpaint the gradient.
+      background-origin: border-box;
       backdrop-filter: blur(10px);
       border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
       box-shadow: var(--shadow);
