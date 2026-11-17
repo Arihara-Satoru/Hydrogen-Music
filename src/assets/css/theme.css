@@ -123,7 +123,24 @@ body {
   color: var(--text);
 }
 
-/* The cover's palette only colors page backdrops; controls keep the normal theme contrast. */
+/* Elevated surfaces follow the cover with a quieter, lighter tint than the backdrop. */
+html.dynamic-theme {
+  --surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.28) 94%);
+  --panel: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.32) 92% / 0.98);
+  --surface-gradient: linear-gradient(155deg,
+    hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.24) 96%),
+    hsl(var(--ambient-hue-secondary) calc(var(--ambient-saturation-secondary) * 0.30) 90%));
+}
+
+html.dark.dynamic-theme {
+  --surface: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.24) 22%);
+  --panel: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.28) 24% / 0.98);
+  --surface-gradient: linear-gradient(155deg,
+    hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.22) 26%),
+    hsl(var(--ambient-hue-secondary) calc(var(--ambient-saturation-secondary) * 0.26) 20%));
+}
+
+/* Controls keep the normal theme contrast. */
 html.dynamic-theme .mainWindow,
 html.dynamic-theme .music-player {
   background-color: hsl(var(--ambient-hue) calc(var(--ambient-saturation) * 0.55) 91%) !important;
@@ -252,6 +269,13 @@ html.dark.dynamic-theme .recognition-panel .panel-corner {
 
 html.dark.dynamic-theme .recognition-eyebrow {
   color: hsl(var(--ambient-hue) var(--ambient-saturation) 65%) !important;
+}
+
+/* Recognition is an elevated reading surface, not another copy of the page backdrop. */
+html.dynamic-theme .recognition-panel,
+html.dark.dynamic-theme .recognition-panel {
+  background-color: var(--surface) !important;
+  background-image: var(--surface-gradient) !important;
 }
 
 /* Keep it simple: default everything to readable text on dark */

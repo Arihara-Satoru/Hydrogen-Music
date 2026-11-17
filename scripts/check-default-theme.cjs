@@ -48,6 +48,16 @@ app.whenReady().then(async () => {
     assert.equal(original, 'linear-gradient(rgba(176, 209, 217, 0.9) -20%, rgba(176, 209, 217, 0.4) 50%, rgba(176, 209, 217, 0.9) 120%)', 'Default light theme must retain the historical pale-blue gradient');
     await win.webContents.executeJavaScript('applyCustomTheme("#d06040")');
     assert.notEqual(await background(), original, 'Custom theme must override the default gradient');
+    const warmSurfaces = await surfaces();
+    for (const selector of ['.selector-option', '.recognition-panel', '.modal-container']) {
+      assert.notEqual(warmSurfaces[selector].background, lightSurfaces[selector].background, `${selector} must follow the active palette`);
+      assert.notEqual(warmSurfaces[selector].background, await background(), `${selector} must differ from the main backdrop`);
+    }
+    await win.webContents.executeJavaScript('applyCustomTheme("#4080d0")');
+    const coolSurfaces = await surfaces();
+    for (const selector of ['.selector-option', '.recognition-panel', '.modal-container']) {
+      assert.notEqual(coolSurfaces[selector].background, warmSurfaces[selector].background, `${selector} must update when the palette changes`);
+    }
     await win.webContents.executeJavaScript('clearDynamicTheme({ persist: false })');
     assert.equal(await background(), original, 'Disabling dynamic color or resetting custom color must restore the default gradient');
     assert.deepEqual(await surfaces(), lightSurfaces, 'Reset must also restore overlay surfaces');
@@ -56,6 +66,13 @@ app.whenReady().then(async () => {
     assert.match((await surfaces())['.recognition-panel'].background, /rgb\(33, 38, 43\)/, 'Recognition must retain the dark background');
     assert.notEqual(dark, original, 'Dark mode must retain its own background');
     await win.webContents.executeJavaScript('applyPalette({ hue: 30, saturation: 60 }, { persist: false })');
+    const darkWarmSurfaces = await surfaces();
+    await win.webContents.executeJavaScript('applyPalette({ hue: 220, saturation: 60 }, { persist: false })');
+    const darkCoolSurfaces = await surfaces();
+    for (const selector of ['.selector-option', '.recognition-panel', '.modal-container']) {
+      assert.notEqual(darkCoolSurfaces[selector].background, darkWarmSurfaces[selector].background, `${selector} must follow the dark palette`);
+      assert.notEqual(darkCoolSurfaces[selector].background, await background(), `${selector} must remain distinct in dark mode`);
+    }
     assert.notEqual((await surfaces())['.recognition-panel'].background, lightSurfaces['.recognition-panel'].background, 'Recognition must retain its dynamic palette override');
     assert.notEqual(await background(), dark, 'Dynamic palette must still override the dark background');
     await win.webContents.executeJavaScript('clearDynamicTheme({ persist: false })');
