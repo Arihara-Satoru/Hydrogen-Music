@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="UTF-8">
+<title>Selector regression fixture</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: #dfc4c8; }
+  #app { height: 100%; padding: 60px 32px 0; }
+  .view-control { background: #dfc4c8; }
+  .fixture-row { display: flex; justify-content: space-between; align-items: center; height: 66px; }
+  .fixture-row .selector { width: 200px; height: 34px; padding: 0; }
+  .fixture-black { background: black; width: 200px; height: 34px; }
+</style>
+<div id="app"></div>
+<script type="module">
+  import { createApp, ref, h } from 'vue';
+  import Selector from '/src/components/Selector.vue';
+  import '/src/assets/css/theme.css';
+  createApp({
+    components: { Selector },
+    setup() {
+      const quality = ref('高清无损');
+      const size = ref(480);
+      const qualityOptions = ['标准', '高品质', '无损', '高清无损'].map(value => ({ label: value, value }));
+      const sizeOptions = [480, 400, 240, 150, 135, 120, 110, 100, 93, 64].map(value => ({ label: String(value), value }));
+      const row = (label, value, options) => h('div', { class: 'fixture-row' }, [h('span', label), h(Selector, { modelValue: value.value, 'onUpdate:modelValue': v => value.value = v, options })]);
+      return () => h('main', { class: 'settings-page' }, [
+        h('div', { class: 'view-control' }, '设置'),
+        h('div', { class: 'settings-container' }, [
+          h('div', { style: 'height:100px' }),
+          row('音质选择', quality, qualityOptions),
+          ...Array.from({ length: 5 }, () => h('div', { class: 'fixture-row' }, [h('span', '设置项'), h('div', { class: 'fixture-black' })])),
+          row('图片大小', size, sizeOptions),
+          h('div', { style: 'height:1000px' }),
+        ]),
+      ]);
+    },
+  }).mount('#app');
+</script>
+</html>

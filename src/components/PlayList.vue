@@ -9,6 +9,7 @@
   import { usePlayerStore } from '../store/playerStore'
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
+  import { vDelayedTooltip } from '../utils/delayedTooltip'
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { playing, progress, playMode, currentMusic, currentIndex, listInfo, songList, shuffledList, shuffleIndex, songId, widgetState, playlistWidgetShow, lyricShow, showSongTranslation } = storeToRefs(playerStore)

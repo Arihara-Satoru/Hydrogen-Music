@@ -22,10 +22,9 @@
           :id="listId"
           role="listbox"
           :style="{
-            '--count': options.length < maxItems ? options.length : maxItems,
-            maxHeight: maxItems * 34 + 16 + 'px',
+            maxHeight: maxItems * 34 + 'px',
           }"
-          v-if="option"
+          v-show="option"
           ref="overlay"
         >
           <div
@@ -49,8 +48,7 @@
   </div>
 </template>
 <script setup>
-import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useId } from "vue";
-import { absolutePosition } from "../utils/domHandler";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useId, watch } from "vue";
 
 const props = defineProps({
   options: Array,
@@ -72,11 +70,59 @@ const current = computed(() =>
 );
 
 const handleEnter = (el) => {
-  if (select.value) {
-    el.style.minWidth = `${select.value.offsetWidth}px`;
-    absolutePosition(el, select.value);
+  const trigger = select.value;
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  let top = 0;
+  let bottom = window.innerHeight;
+  // Teleported menus must respect the trigger's clipping ancestors, not just the window.
+  for (let parent = trigger.parentElement; parent; parent = parent.parentElement) {
+    if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) {
+      const bounds = parent.getBoundingClientRect();
+      top = Math.max(top, bounds.top);
+      bottom = Math.min(bottom, bounds.bottom);
+    }
   }
+  if (rect.top < top || rect.bottom > bottom) {
+    option.value = false;
+    return;
+  }
+  const desiredHeight = Math.min(props.options.length, props.maxItems) * 34;
+  const below = Math.max(0, bottom - rect.bottom);
+  const above = Math.max(0, rect.top - top);
+  const openAbove = below < desiredHeight && above > below;
+  const height = Math.min(desiredHeight, openAbove ? above : below);
+  el.style.width = `${rect.width}px`;
+  el.style.maxHeight = `${height}px`;
+  el.style.top = `${openAbove ? rect.top - height : rect.bottom}px`;
+  el.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - rect.width))}px`;
+  el.dataset.placement = openAbove ? "top" : "bottom";
 };
+
+let positionFrame = null;
+const schedulePosition = (event) => {
+  // Scrolling the options does not move the trigger.
+  if (event?.target === overlay.value || !option.value || positionFrame !== null) return;
+  positionFrame = requestAnimationFrame(() => {
+    positionFrame = null;
+    if (option.value && overlay.value) handleEnter(overlay.value);
+  });
+};
+const stopPositionTracking = () => {
+  window.removeEventListener("scroll", schedulePosition, true);
+  window.removeEventListener("resize", schedulePosition);
+  if (positionFrame !== null) cancelAnimationFrame(positionFrame);
+  positionFrame = null;
+};
+watch(option, (visible) => {
+  if (visible) {
+    // Capture also receives scroll events from nested page/modal containers.
+    window.addEventListener("scroll", schedulePosition, { capture: true, passive: true });
+    window.addEventListener("resize", schedulePosition);
+  } else {
+    stopPositionTracking();
+  }
+}, { flush: "sync" });
 
 const changeOption = (e) => {
   emit("update:modelValue", e.value);
@@ -99,17 +145,28 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   window.removeEventListener("click", clickOutside);
+  stopPositionTracking();
 });
 onActivated(() => {
   window.addEventListener("click", clickOutside);
 });
 onDeactivated(() => {
   window.removeEventListener("click", clickOutside);
+  option.value = false;
+  stopPositionTracking();
 });
 
-const scrollActiveOption = () => nextTick(() =>
-  overlay.value?.children[activeIndex.value]?.scrollIntoView({ block: "nearest" })
-);
+const scrollActiveOption = () => nextTick(() => {
+  const list = overlay.value;
+  const item = list?.children[activeIndex.value];
+  if (!option.value || !list || !item) return;
+  const top = item.offsetTop;
+  const bottom = top + item.offsetHeight;
+  if (top < list.scrollTop) list.scrollTop = top;
+  else if (bottom > list.scrollTop + list.clientHeight) {
+    list.scrollTop = bottom - list.clientHeight;
+  }
+});
 const changeOptionsVisible = () => {
   option.value = !option.value;
   if (option.value) {
@@ -146,14 +203,19 @@ const handleKeydown = (event) => {
 }
 
 .selector-option {
-  position: absolute;
+  position: fixed;
   z-index: 2000;
-  overflow-y: overlay;
-  background: rgb(228, 240, 240);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: var(--panel);
+  color: var(--text);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
   line-height: 25px;
   user-select: none;
-  padding: 8px 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -180,7 +242,7 @@ const handleKeydown = (event) => {
 }
 
 .selector-option-item {
-  min-width: 200px;
+  min-width: 0;
   width: 100%;
   box-sizing: border-box;
   height: 34px;
@@ -209,42 +271,39 @@ const handleKeydown = (event) => {
   }
 }
 
-::-webkit-scrollbar-track {
-  border-radius: 0;
+.selector-option::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
-
-::-webkit-scrollbar {
-  -webkit-appearance: none;
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  cursor: pointer;
-  border-radius: 0;
-  background: rgba(0, 0, 0, 0.15);
-  transition: color 0.2s ease;
-}
-</style>
-<style lang="scss">
 .selector-enter-active,
 .selector-leave-active {
-  transition: height .225s, padding .225s;
+  // Reveal the fully laid-out content without resizing or stretching text.
+  transition: clip-path .18s ease-out;
   overflow: hidden;
-  box-sizing: content-box;
 }
 .selector-enter-from,
 .selector-leave-to {
-  height: 0;
-  &.selector-option {
-    padding: 0;
+  clip-path: inset(0 0 100% 0);
+  &[data-placement="top"] {
+    clip-path: inset(100% 0 0 0);
   }
 }
 .selector-enter-to,
 .selector-leave-from {
-  height: calc(var(--count) * 34px);
-  &.selector-option {
-    padding: 8px 0;
+  clip-path: inset(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .selector-enter-active,
+  .selector-leave-active {
+    transition: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .selector-option {
+    background: var(--panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 </style>

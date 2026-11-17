@@ -67,6 +67,7 @@
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run",
     "check:selector": "node scripts/check-selector.mjs",
+    "check:selector-browser": "electron scripts/check-selector-browser.cjs",
     "check:search-typewriter": "node scripts/check-search-typewriter.mjs"
   },
   "dependencies": {

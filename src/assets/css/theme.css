@@ -333,8 +333,8 @@ html.dark.dynamic-theme .recognition-eyebrow {
 
 /* Drop-down and overlays */
 .dark .selector-option {
-  background: #21262d !important;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important;
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 /* Selector options highlight (dark) */

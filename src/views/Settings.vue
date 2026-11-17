@@ -1997,6 +1997,8 @@ const clearFmRecent = () => {
 .settings-page {
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  min-height: 0;
   .view-control {
     margin-bottom: 15px;
     margin-left: -8px;
@@ -2054,9 +2056,11 @@ const clearFmRecent = () => {
     }
   }
   .settings-container {
-    margin: 0 auto;
-    padding-bottom: 140px;
-    width: 80%;
+    // Keep the content inset, but include both gutters in the native scroll area.
+    margin: 0;
+    padding: 0 10% 140px;
+    box-sizing: border-box;
+    width: 100%;
     height: calc(100% - 47px);
     overflow: auto;
     &::-webkit-scrollbar {
@@ -2445,7 +2449,7 @@ const clearFmRecent = () => {
               margin-right: 1px;
               width: 200px;
               height: 34px;
-              padding: 5px 1px;
+              padding: 0;
               background-color: transparent;
               color: black;
               border: none;
@@ -2459,6 +2463,9 @@ const clearFmRecent = () => {
                 opacity: 0.8;
                 box-shadow: none;
               }
+            }
+            input {
+              padding: 5px 1px;
             }
             .startup-preview-trigger {
               margin-right: 1px;
