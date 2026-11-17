@@ -7,7 +7,7 @@ import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import CoverBackdrop from '../components/CoverBackdrop.vue';
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, onUnmounted } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { useListenTogetherStore } from '../store/listenTogetherStore';
 import { getMusicCommentCount, getMusicComments } from '../api/song';
@@ -54,6 +54,25 @@ const coverBgUrl = computed(() => {
 const showCoverBackdrop = computed(() => {
     return !!playerStore.coverBlur && !playerStore.videoIsPlaying;
 });
+
+// 普通播放页与视频控制面板共用同一个入场入口，不能只在 widgetState 变化时重播封面。
+const panelsHidden = computed(() => playerStore.musicVideo && playerStore.videoIsPlaying && !playerStore.playerShow);
+const panelsVisible = computed(() => !playerStore.widgetState && !panelsHidden.value);
+const panelEntered = ref(false);
+// 竖屏不显示左侧外壳，减少动态效果也不播放展开，均不能等待不存在的 animationend。
+const skipPanelEntryQuery = window.matchMedia('(prefers-reduced-motion: reduce), (max-aspect-ratio: 5/6)');
+const skipPanelEntry = ref(skipPanelEntryQuery.matches);
+const updateSkipPanelEntry = event => { skipPanelEntry.value = event.matches; };
+skipPanelEntryQuery.addEventListener('change', updateSkipPanelEntry);
+onUnmounted(() => skipPanelEntryQuery.removeEventListener('change', updateSkipPanelEntry));
+watch(panelsVisible, () => { panelEntered.value = false; }, { flush: 'sync' });
+const onPanelEntryEnd = event => {
+    if (event.target === event.currentTarget && event.animationName.startsWith('player-in')) panelEntered.value = true;
+};
+// 视频画面返回时，等外壳停止改变歌词宽度再滚入，避免 ResizeObserver 立即取消入场。
+const lyricPanelVisible = computed(() => panelsVisible.value && (
+    !playerStore.musicVideo || !playerStore.videoIsPlaying || panelEntered.value || skipPanelEntry.value
+));
 
 // 当切到本地歌曲时，若右侧是评论区则自动切回歌词，避免无按钮无法关闭
 const currentTrack = computed(() => {
@@ -223,20 +242,23 @@ watch([currentTrack, isDj], ([song, djMode]) => {
             data-tour="player-cover"
             class="player-container"
             :class="{
-                'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow,
+                'player-active': panelsVisible,
+                'player-hide': panelsHidden,
                 'player-blur': playerStore.videoIsPlaying,
                 'cover-blur': showCoverBackdrop,
             }"
+            :panel-visible="panelsVisible"
+            @animationend="onPanelEntryEnd"
             :comment-count-badge="commentCountBadge"
             v-model:rightPanelMode="rightPanelMode"
         ></Player>
 
         <!-- 右侧面板 -->
-        <div class="right-panel" data-tour="player-lyrics" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
+        <div class="right-panel" data-tour="player-lyrics" :class="{ 'panel-hide': panelsHidden }">
             <Transition name="panel-switch" mode="out-in" :duration="{ enter: 400, leave: 300 }">
                 <div class="right-panel-content" :key="rightPanelMode">
                     <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
-                    <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
+                    <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`" :panel-visible="lyricPanelVisible"></Lyric>
                     <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments" @total-change="handleCommentTotalChange"></Comments>
                     <LyricSelector class="lyric-selector-container" v-else-if="rightPanelMode === 2" :key="`lyric-selector-${commentPanelKey}`"></LyricSelector>
                 </div>
@@ -315,18 +337,22 @@ watch([currentTrack, isDj], ([song, djMode]) => {
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;
-        width: 0;
-        height: 0;
+        width: 42vh;
+        height: 100%;
         background-color: rgba(255, 255, 255, 0.35);
-        opacity: 0;
-        animation: player-in var(--player-entry-duration) var(--player-entry-delay) cubic-bezier(0.4, 0, 0.12, 1) forwards;
+        opacity: 1;
         position: relative;
         z-index: 1;
         // 工具栏和播放列表浮层位于播放器右侧，不能裁切外溢内容。
         contain: layout;
         will-change: width, height, opacity;
+    }
+    .player-active {
+        // 两种入口均先展开外壳，再由同一条时间轴触发封面双闪与外扩。
+        animation: player-in var(--player-entry-duration) var(--player-entry-delay) cubic-bezier(0.4, 0, 0.12, 1) both;
         @keyframes player-in {
             0% {
+                width: 0;
                 height: 0;
                 opacity: 0;
             }

@@ -22,6 +22,10 @@ import { useListenTogetherStore } from '../store/listenTogetherStore';
 
 // 定义 props 和 emit
 const props = defineProps({
+    panelVisible: {
+        type: Boolean,
+        default: true,
+    },
     rightPanelMode: {
         type: Number,
         default: 0,
@@ -110,6 +114,8 @@ const isInFMMode = computed(() => {
 // 是否为电台(DJ)模式
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 const currentSong = computed(() => songList.value?.[currentIndex.value] || null);
+// 视频交互取决于当前歌曲是否已加载视频，而不是音频此刻是否正在播放。
+const videoCoverEnabled = computed(() => musicVideo.value && !!playerStore.currentMusicVideo?.path && playerStore.currentMusicVideo.id === songId.value);
 const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren');
 const isCurrentSongLiked = computed(() => isSongLiked(currentSong.value, likelist.value));
 
@@ -505,9 +511,9 @@ watch([coverImageLoaded, coverImageUnavailable, coverMotionState], ([loaded, una
     coverMotionRun.value++;
 }, { flush: 'post' });
 
-watch(widgetState, inWidget => {
-    // 重新进入播放页时，仍等待左侧面板展开完成，不沿用切歌的零延迟。
-    if (!inWidget) {
+watch(() => props.panelVisible, visible => {
+    // 从主界面或视频画面返回时都重播同一套入场，仍等待外壳展开，不沿用切歌的零延迟。
+    if (visible) {
         coverMotionState.value = 'entry';
         coverReleased.value = false;
         coverMotionRun.value++;
@@ -618,7 +624,10 @@ const toAddMusicVideo = () => {
     }
 };
 const backToVideo = () => {
-    if (videoIsPlaying.value) playerShow.value = false;
+    if (!videoCoverEnabled.value) return;
+    // 暂停或时间轴检查暂时收起视频时，也能返回当前视频画面；不会启动音视频播放。
+    videoIsPlaying.value = true;
+    playerShow.value = false;
 };
 
 const toggleChorus = () => {
@@ -648,7 +657,7 @@ if (import.meta.env.VITE_ANIMATION_DIAGNOSTICS === '1' && window.windowApi?.anim
             <div class="player-body">
             <div class="player-cover" :class="{ 'cover-replay-waiting': coverMotionState === 'waiting', 'cover-replay': coverMotionState === 'replay', 'cover-released': coverReleased }">
                 <div ref="coverStage" class="cover-stage">
-                    <div class="cover" :class="{ 'back-Video': videoIsPlaying }" @click="backToVideo()">
+                    <div class="cover" :class="{ 'back-Video': videoCoverEnabled }" @click="backToVideo()">
                         <div class="cover-artwork" :aria-busy="showCoverSkeleton">
                             <SkeletonBox v-if="showCoverSkeleton" class="cover-skeleton" width="100%" height="100%" border-radius="0" />
                             <img
@@ -2539,13 +2548,17 @@ if (import.meta.env.VITE_ANIMATION_DIAGNOSTICS === '1' && window.windowApi?.anim
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .player-container .player .player-cover .cover {
+        transition: none;
+    }
     .player-container .player .player-cover .cover img {
         transition: none;
         transform: none;
     }
     .player-container .player .player-cover .cover-stage {
-        animation: none;
-        transform: none;
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
     }
     .player-container .player .player-cover .cover-corners,
     .player-container .player .player-cover .c-border {

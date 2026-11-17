@@ -9,6 +9,10 @@ import loudnessBadge from '../assets/img/loudness-badge.png';
 import { formatAudioInfo } from '../utils/quality';
 import { recordPlayerAnimationState } from '../utils/animationDiagnosticState';
 
+const props = defineProps({
+    panelVisible: { type: Boolean, default: true },
+});
+
 const playerStore = usePlayerStore();
 const {
     playing,
@@ -545,7 +549,7 @@ const waitForStableLyricLayout = async token => {
 };
 
 const prepareLyricReveal = async () => {
-    if (!showLyricArea.value || widgetState.value) return;
+    if (!lyricAreaVisible.value) return;
 
     const token = createLyricRevealToken();
     suppressLyricFlash.value = true;
@@ -767,7 +771,7 @@ watch(
 
 // 首页的播放器由 v-show 隐藏，不能把零尺寸布局当作已经准备完成。
 const lyricAreaVisible = computed(() => {
-    return showLyricArea.value && !widgetState.value;
+    return showLyricArea.value && !widgetState.value && props.panelVisible;
 });
 
 // 当区域从隐藏 -> 显示时，统一走准备流程；隐藏时立即取消旧的 reveal 任务

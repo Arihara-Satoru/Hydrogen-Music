@@ -81,21 +81,23 @@ app.whenReady().then(async () => {
       const { ref, nextTick, computed, watch, toRefs } = Vue;
       const coverUrl = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#203c43"/><circle cx="300" cy="300" r="210" fill="#e8d880"/><circle cx="300" cy="300" r="140" fill="#203c43"/><text x="300" y="315" text-anchor="middle" fill="white" font-size="38">HYDROGEN</text></svg>');
       const state = Vue.reactive({ currentCoverUrl: coverUrl, currentSong: {id: 1}, songId: 1, currentIndex: 0,
-        playerChangeSong: false, videoIsPlaying: false, widgetState: false, backToVideo() {}, getDefaultCoverUrl: () => coverUrl });
+        playerChangeSong: false, videoIsPlaying: false, playerShow: true, widgetState: false, backToVideo() {}, getDefaultCoverUrl: () => coverUrl });
       const SkeletonBox = new Function('Vue', ${JSON.stringify(skeletonScript)})(Vue);
       SkeletonBox.__scopeId = 'data-v-cover-skeleton-check';
       let coverState;
       const Cover = { __scopeId: 'data-v-cover-check', components: { SkeletonBox }, setup: () => {
         const { songId, currentSong, currentIndex, currentCoverUrl, playerChangeSong, widgetState } = toRefs(state);
+        const props = { get panelVisible() { return !state.widgetState && (!state.videoIsPlaying || state.playerShow); } };
+        const videoCoverEnabled = computed(() => state.videoIsPlaying);
         const getDefaultCoverUrl = () => state.getDefaultCoverUrl();
         ${coverLoading}
-        coverState = { ...toRefs(state), coverImage, coverStage, coverImageKey, coverImageSrc, coverImageFailed, coverImageLoaded,
+        coverState = { ...toRefs(state), videoCoverEnabled, coverImage, coverStage, coverImageKey, coverImageSrc, coverImageFailed, coverImageLoaded,
           coverImageUnavailable, coverMotionState, coverMotionRun, coverReleased, onCoverCueEnd, showCoverSkeleton, onCoverImageLoad, onCoverImageError };
         return coverState;
       }, render: new Function('Vue', ${JSON.stringify(render)})(Vue) };
       const mountKey = ref(0), visible = ref(true);
-      Vue.createApp({ components: { Cover }, setup: () => ({ mountKey, visible }), template:
-        '<Transition name="player"><div class="musicPlayer" v-show="visible"><div class="music-player" data-v-music-check><div :key="mountKey" class="player-container" data-v-music-check data-v-cover-check><div class="player" data-v-cover-check><div class="player-body" data-v-cover-check><Cover /><div class="player-info" data-v-cover-check>Find the Pieces</div><div class="player-control" data-v-cover-check>00:00 — 04:06</div></div></div></div></div></div></Transition>'
+      Vue.createApp({ components: { Cover }, setup: () => ({ mountKey, visible, state }), template:
+        \`<Transition name="player"><div class="musicPlayer" v-show="visible"><div class="music-player" data-v-music-check><div :key="mountKey" class="player-container" :class="{ 'player-active': !state.widgetState && (!state.videoIsPlaying || state.playerShow), 'player-hide': state.videoIsPlaying && !state.playerShow }" data-v-music-check data-v-cover-check><div class="player" data-v-cover-check><div class="player-body" data-v-cover-check><Cover /><div class="player-info" data-v-cover-check>Find the Pieces</div><div class="player-control" data-v-cover-check>00:00 — 04:06</div></div></div></div></div></div></Transition>\`
       }).mount('#preview');
       const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = el => {
