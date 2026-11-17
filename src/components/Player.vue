@@ -698,7 +698,6 @@ const addToPlaylist = () => {
                     </div>
                     <div class="process">
                         <vue-slider
-                            :key="'player-progress-' + (songId || currentIndex)"
                             id="widget-progress"
                             class="music-progress"
                             @click="changeProgress(sliderProgress)"
@@ -706,7 +705,7 @@ const addToPlaylist = () => {
                             :min="0"
                             :max="safeSliderMax"
                             :interval="1"
-                            :duration="0"
+                            :duration="0.45"
                             tooltip="none"
                         ></vue-slider>
 
@@ -1799,6 +1798,16 @@ const addToPlaylist = () => {
                         height: 1.3vh !important;
                         box-shadow: 0 0 0 0.5px var(--text);
                         transition: 0.2s;
+                        :deep(.vue-slider-process),
+                        :deep(.vue-slider-dot) {
+                            transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+                        }
+                        @media (prefers-reduced-motion: reduce) {
+                            :deep(.vue-slider-process),
+                            :deep(.vue-slider-dot) {
+                                transition-duration: 0s !important;
+                            }
+                        }
                     }
 
                     .chorus-track-overlay {

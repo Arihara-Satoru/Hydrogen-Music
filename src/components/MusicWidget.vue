@@ -149,7 +149,8 @@
 <template>
   <div class="music-widget">
     <div class="music-progress-container">
-        <vue-slider :key="'widget-progress-' + (songId || currentIndex)" id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0" tooltip="none"></vue-slider>
+        <!-- 保留滑块实例，让切歌归零也能过渡；组件在拖动期间会自动禁用动画。 -->
+        <vue-slider id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.45" tooltip="none"></vue-slider>
         <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(sliderDuration)}}</div>
     </div>
     <div class="music-info">
@@ -291,6 +292,16 @@
             height: 2.5Px !important;
             background-color: rgb(223, 223, 223);
             transition: 0.2s;
+            :deep(.vue-slider-process),
+            :deep(.vue-slider-dot){
+                transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+            }
+            @media (prefers-reduced-motion: reduce){
+                :deep(.vue-slider-process),
+                :deep(.vue-slider-dot){
+                    transition-duration: 0s !important;
+                }
+            }
         }
         .music-time{
             padding: 0 2Px;
