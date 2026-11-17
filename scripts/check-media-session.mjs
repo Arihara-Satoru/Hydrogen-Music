@@ -27,6 +27,7 @@ for (const platform of ['win32', 'darwin', 'linux', 'browser']) {
       './router/router.js': mock(context, { default: { isReady: async () => {}, currentRoute: { value: { name: 'homepage' } } } }),
       './utils/theme': mock(context, { initTheme() {} }),
       './utils/dynamicTheme': mock(context, { initDynamicTheme() {} }),
+      './utils/chunkLoadRecovery': mock(context, { installChunkLoadRecovery() {} }),
     }
     const media = mock(context, { initMediaSession: () => { initializations++ } })
     const init = mock(context, { init() {} })

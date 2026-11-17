@@ -32,10 +32,19 @@ const notify = (store, info) => {
 let store = restart();
 notify(store, { version: '0.7.1' });
 assert.equal(store.toUpdate, true);
+const busy = ref(false);
 const close = runInNewContext(
   stripImports(read('../src/components/Update.vue').match(/<script setup>([\s\S]*?)<\/script>/)[1].trim()) + '\nclose;',
-  { ref, useOtherStore: () => store, setTimeout: callback => callback() },
+  {
+    ref, useOtherStore: () => store, setTimeout: callback => callback(),
+    useAppUpdate: () => ({ state: {}, busy, start() {}, label: ref('更新'), cancel() {}, openRelease() {} }),
+  },
 );
+busy.value = true;
+close();
+assert.equal(store.toUpdate, true, 'busy updates must not be dismissed or ignored');
+assert.equal(store.ignoredUpdateVersion, '');
+busy.value = false;
 close();
 await nextTick();
 assert.equal(store.toUpdate, false);

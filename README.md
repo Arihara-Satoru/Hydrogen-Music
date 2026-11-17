@@ -29,7 +29,7 @@
 
 ## 近期更新
 
-当前版本 **0.7.5**，完整版本记录见 [CHANGELOG.md](CHANGELOG.md)。近期重点包括：
+当前版本 **0.7.8**，完整版本记录见 [CHANGELOG.md](CHANGELOG.md)。近期重点包括：
 
 - **本地实时响度均衡**：统一使用 AudioWorklet 分析正在播放的音频，自动补偿音量、收敛强弱差异并保护峰值，无需额外下载或扫描整首歌曲。
 - **渐进式听歌识曲**：识别电脑正在播放的音乐，约 3 / 6 / 10 秒分阶段尝试，命中候选后提前结束；支持播放、收藏、搜索与本地历史管理。
@@ -215,6 +215,18 @@ pnpm start
 ### 常用回归检查
 
 ```shell
+# 日常默认：检查入口自测 + Node 逻辑及源码约束
+pnpm test
+
+# 查看所有检查及运行条件（不执行）
+pnpm check:list
+
+# 完整自动检查：媒体、生产产物及真实 Electron；按需自动构建一次
+pnpm check:all
+
+# 只运行指定检查，遇到失败继续执行并在最后汇总
+pnpm check --only listen-together,media-session
+
 # 听歌识曲与渐进识别
 pnpm run check:audio-recognition
 
@@ -233,7 +245,7 @@ pnpm run check:listen-together
 pnpm run build
 ```
 
-真实 Electron 音频链路检查需先执行 `pnpm run build`，再运行 `pnpm run check:loudness-audio`。歌单优化的验证边界与模拟基准见 [歌单性能与回归验证](docs/playlist-performance.md)；自动检查不能替代不同操作系统上的实机验证。
+分组命令、前置条件、手动检查与新增检查规则见 [检查脚本指南](scripts/README.md)。原有单项命令继续保留；直接运行 `pnpm run check:loudness-audio` 仍需先执行 `pnpm run build`，新的 `pnpm check:electron` 则会按需自动构建。歌单优化的验证边界与模拟基准见 [歌单性能与回归验证](docs/playlist-performance.md)；自动检查不能替代不同操作系统上的实机验证。
 
 ## 👷 打包客户端
 

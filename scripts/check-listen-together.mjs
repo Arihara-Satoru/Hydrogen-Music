@@ -250,7 +250,7 @@ await playerStoreSource.link(key => key === 'pinia'
     ? mock({ defineStore: (_id, config) => config })
     : mock({ getTogetherPersonalSnapshot: () => personal }))
 await playerStoreSource.evaluate()
-playerStoreSource.namespace.usePlayerStore.persist.storage.setItem('playerStore', JSON.stringify({ songId: 42, progress: 83, volume: .8, listInfo: { type: 'together' } }))
+playerStoreSource.namespace.usePlayerStore.selectedPersist.storage.setItem('playerStore', JSON.stringify({ songId: 42, progress: 83, volume: .8, listInfo: { type: 'together' } }))
 const resumed = JSON.parse(persisted.get('playerStore'))
 assert.equal(resumed.songId, 99); assert.equal(resumed.progress, 12); assert.equal(resumed.volume, .8)
 
