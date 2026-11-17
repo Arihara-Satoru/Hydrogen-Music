@@ -6,7 +6,7 @@ import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
 import SkeletonBox from './base/SkeletonBox.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus, likeSong, isSongLiked, syncFavoritePlaylistLikelist } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changeProgressByDragStart, changeProgressByDragEnd, changePlayMode, toggleChorusMode, setPlaybackRate, loadSongChorus, likeSong, isSongLiked, syncFavoritePlaylistLikelist } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
@@ -242,6 +242,17 @@ const safeSliderRange = computed(() => {
 });
 
 const safeSliderMax = ref(1);
+const isProgressSeeking = ref(false);
+const beginProgressSeek = () => {
+    isProgressSeeking.value = true;
+    changeProgressByDragStart();
+};
+const finishProgressSeek = async () => {
+    if (!isProgressSeeking.value) return;
+    changeProgressByDragEnd(sliderProgress.value);
+    await nextTick();
+    isProgressSeeking.value = false;
+};
 
 watch(
     () => [songId.value, safeSliderRange.value],
@@ -702,12 +713,15 @@ const addToPlaylist = () => {
                         <vue-slider
                             id="widget-progress"
                             class="music-progress"
-                            @click="changeProgress(sliderProgress)"
+                            @pointerdown.capture="beginProgressSeek"
+                            @click="finishProgressSeek"
+                            @drag-start="beginProgressSeek"
+                            @drag-end="finishProgressSeek"
                             v-model="sliderProgress"
                             :min="0"
                             :max="safeSliderMax"
-                            :interval="1"
-                            :duration="0.45"
+                            :interval="0.01"
+                            :duration="0.7"
                             tooltip="none"
                         ></vue-slider>
 
@@ -1807,7 +1821,7 @@ const addToPlaylist = () => {
                         transition: 0.2s;
                         :deep(.vue-slider-process),
                         :deep(.vue-slider-dot) {
-                            transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+                            transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
                         }
                         @media (prefers-reduced-motion: reduce) {
                             :deep(.vue-slider-process),

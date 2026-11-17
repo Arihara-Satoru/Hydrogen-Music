@@ -7,7 +7,7 @@
   import PlayList from './PlayList.vue'
   import OverflowMarquee from './base/OverflowMarquee.vue'
 
-  import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, getPlaybackPlaylistRoute, toggleChorusMode } from '../utils/player'
+  import { startMusic, pauseMusic, playLast, playNext, changeProgress, changeProgressByDragStart, changeProgressByDragEnd, changePlayMode, getPlaybackPlaylistRoute, toggleChorusMode } from '../utils/player'
   import { usePlayerStore } from '../store/playerStore'
   import { useOtherStore } from '../store/otherStore'
   import { resolveImageUrl } from '../utils/imageUtils'
@@ -50,6 +50,17 @@
   })
 
   const safeSliderMax = ref(1)
+  const isProgressSeeking = ref(false)
+  const beginProgressSeek = () => {
+    isProgressSeeking.value = true
+    changeProgressByDragStart()
+  }
+  const finishProgressSeek = async () => {
+    if (!isProgressSeeking.value) return
+    changeProgressByDragEnd(sliderProgress.value)
+    await nextTick()
+    isProgressSeeking.value = false
+  }
 
   watch(
     () => [songId.value, safeSliderRange.value],
@@ -150,7 +161,7 @@
   <div class="music-widget">
     <div class="music-progress-container">
         <!-- 保留滑块实例，让切歌归零也能过渡；组件在拖动期间会自动禁用动画。 -->
-        <vue-slider id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.45" tooltip="none"></vue-slider>
+        <vue-slider id="widget-progress" class="music-progress" @pointerdown.capture="beginProgressSeek" @click="finishProgressSeek" @drag-start="beginProgressSeek" @drag-end="finishProgressSeek" v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="0.01" :duration="0.7" tooltip="none"></vue-slider>
         <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(sliderDuration)}}</div>
     </div>
     <div class="music-info">
@@ -294,7 +305,7 @@
             transition: 0.2s;
             :deep(.vue-slider-process),
             :deep(.vue-slider-dot){
-                transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+                transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
             }
             @media (prefers-reduced-motion: reduce){
                 :deep(.vue-slider-process),

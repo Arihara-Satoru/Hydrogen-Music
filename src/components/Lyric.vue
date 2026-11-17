@@ -426,6 +426,7 @@ const setMaxHeight = change => {
         maxHeightVal.value = initMax
     }
     if (lyricScrollArea.value) lyricScrollArea.value.style.height = initMax + 'Px';
+    return { offset, total };
 };
 
 const setDefaultStyle = async token => {
@@ -438,8 +439,9 @@ const setDefaultStyle = async token => {
     if (!isLyricRevealTokenActive(token)) return;
     lyricEle.value = getLyricLineElements();
     invalidateLayoutCache();
-    setMaxHeight(true);
-    syncLyricPosition();
+    // 复用本轮读出的布局数据，避免写入容器高度后立即再读 DOM 触发重排。
+    const metrics = setMaxHeight(true);
+    syncLyricPosition(metrics);
 };
 
 function captureLyricLayoutSignature() {
@@ -498,8 +500,8 @@ const applyLyricLayout = async ({ waitForPaint = false, token } = {}) => {
         if (token !== undefined && !isLyricRevealTokenActive(token)) return;
         lyricEle.value = getLyricLineElements();
         invalidateLayoutCache();
-        setMaxHeight(true);
-        syncLyricPosition();
+        const metrics = setMaxHeight(true);
+        syncLyricPosition(metrics);
         if (waitForPaint) {
             await waitForLayoutCommit();
         }
@@ -839,9 +841,9 @@ const changeProgressLyc = async (time, index) => {
 };
 
 // 同步当前歌词位置的函数
-const syncLyricPosition = () => {
+const syncLyricPosition = (measuredMetrics) => {
     if (lycCurrentIndex.value !== null && lycCurrentIndex.value >= 0 && lyricEle.value && lyricEle.value[lycCurrentIndex.value]) {
-        const { offset, total } = getMeasuredLyricMetrics(lycCurrentIndex.value)
+        const { offset, total } = measuredMetrics || getMeasuredLyricMetrics(lycCurrentIndex.value)
         initMax = total || initMax
         initOffset = -(initMax - 260)
         lineOffset.value = initOffset - offset
