@@ -381,6 +381,17 @@ function getCoverThemePalette(data, width, height) {
 }
 
 module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
+  const autoLaunch = require('./autoLaunch.cjs').createAutoLaunchController(app);
+  for (const [channel, handler] of [
+    ['get-auto-launch-state', () => autoLaunch.getState()],
+    ['set-auto-launch-enabled', (enabled) => autoLaunch.setEnabled(enabled)],
+  ]) {
+    ipcMain.removeHandler(channel);
+    ipcMain.handle(channel, (event, ...args) => {
+      if (event.sender !== win.webContents) throw new Error('不允许访问自启设置');
+      return handler(...args);
+    });
+  }
   let manualUpdateCheckRunning = false;
   const setManualUpdateCheckInProgress =
     typeof lyricFunctions.setManualUpdateCheckInProgress === "function"

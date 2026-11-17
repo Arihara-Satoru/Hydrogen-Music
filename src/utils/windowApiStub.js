@@ -69,6 +69,8 @@
       },
     }),
     setSettings: noop,
+    getAutoLaunchState: noopResolve({ supported: false, enabled: false, reason: '请在桌面客户端中设置开机自启' }),
+    setAutoLaunchEnabled: noopResolve({ supported: false, enabled: false }),
     saveThemeSnapshot: noopResolve(true),
     getThemeSnapshot: noopResolve(null),
     getOtherAudioMonitorState: noopResolve({

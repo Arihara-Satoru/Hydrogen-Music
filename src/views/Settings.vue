@@ -44,6 +44,28 @@ const userStore = useUserStore();
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 const restartOnboarding = () => window.dispatchEvent(new Event("hydrogen:restart-onboarding"));
+const autoLaunchState = ref({ supported: false, enabled: false, reason: '正在读取系统设置' });
+const autoLaunchBusy = ref(false);
+const refreshAutoLaunch = async () => {
+  try {
+    autoLaunchState.value = await windowApi.getAutoLaunchState();
+  } catch (_) {
+    autoLaunchState.value = { supported: false, enabled: false, reason: '无法读取系统自启设置' };
+  }
+};
+const toggleAutoLaunch = async () => {
+  if (autoLaunchBusy.value || !autoLaunchState.value.supported) return;
+  autoLaunchBusy.value = true;
+  try {
+    autoLaunchState.value = await windowApi.setAutoLaunchEnabled(!autoLaunchState.value.enabled);
+    noticeOpen(autoLaunchState.value.enabled ? '开机自启已开启' : '开机自启已关闭', 2);
+  } catch (error) {
+    await refreshAutoLaunch();
+    noticeOpen('开机自启设置失败，请检查系统启动项权限', 2);
+  } finally {
+    autoLaunchBusy.value = false;
+  }
+};
 const currentUser = computed(() => userStore.user || {});
 const listenGradeLoading = ref(false);
 const listenGradeText = computed(() => {
@@ -455,6 +477,7 @@ const confirmKickDevice = (device) => {
 };
 
 onActivated(() => {
+  void refreshAutoLaunch();
   windowApi.registerShortcuts();
   void refreshLocalMusicVideoPool();
   windowApi.getSettings().then((settings) => {
@@ -1932,6 +1955,30 @@ const clearFmRecent = () => {
                   </div>
                   <Transition name="toggle">
                     <div class="toggle-on" v-show="appUpdateEnabled"></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">开机自启（立即生效）</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  role="switch"
+                  aria-label="开机自启"
+                  :tabindex="autoLaunchState.supported && !autoLaunchBusy ? 0 : -1"
+                  :aria-checked="autoLaunchState.enabled"
+                  :aria-disabled="!autoLaunchState.supported || autoLaunchBusy"
+                  :title="autoLaunchState.reason || '登录系统后自动启动 Hydrogen Music'"
+                  @click="toggleAutoLaunch"
+                  @keydown.enter.prevent="toggleAutoLaunch"
+                  @keydown.space.prevent="toggleAutoLaunch"
+                >
+                  <div class="toggle-off" :class="{ 'toggle-on-in': autoLaunchState.enabled }">
+                    {{ autoLaunchBusy ? '设置中…' : !autoLaunchState.supported ? '不可用' : autoLaunchState.enabled ? '已开启' : '已关闭' }}
+                  </div>
+                  <Transition name="toggle">
+                    <div class="toggle-on" v-show="autoLaunchState.enabled"></div>
                   </Transition>
                 </div>
               </div>
