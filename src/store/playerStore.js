@@ -122,7 +122,7 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     actions: {
     },
-    persist: {
+    selectedPersist: {
         storage: persistedPlayerStorage,
         pick: ['progress','volume','playbackRate','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','musicVideoMode','lyricBlur','showSongTranslation','audioVisualizer','coverBlur','dynamicTheme','customThemeColor','chorusMode']
     },

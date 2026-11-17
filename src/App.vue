@@ -13,6 +13,7 @@ import { initTogetherSession, destroyTogetherSession } from './utils/listenToget
 import { installSpacePlaybackShortcut } from './utils/playbackKeyboard.mjs';
 import { pauseMusic, startMusic } from './utils/player';
 import { ensureDeviceRegistered } from './utils/musicUrlResolver';
+import { installPlayerAnimationRecorder } from './utils/playerAnimationRecorder';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -50,6 +51,7 @@ const onboardingScope = computed(() => playerStore.widgetState ? '' : 'player');
 let disposeCheckUpdate = null;
 let disposeManualUpdateAvailable = null;
 let disposeSpaceShortcut = null;
+let disposeAnimationRecorder = null;
 
 watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
     if (customColor) {
@@ -68,6 +70,7 @@ watch(() => playerStore.currentMusic, currentMusic => {
 });
 
 onMounted(() => {
+    disposeAnimationRecorder = installPlayerAnimationRecorder(playerStore);
     disposeSpaceShortcut = installSpacePlaybackShortcut(window, () => {
         if (playerStore.playing) pauseMusic();
         else startMusic({ userInitiated: true });
@@ -90,6 +93,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    disposeAnimationRecorder?.();
     disposeSpaceShortcut?.();
     disposeSpaceShortcut = null;
     clearDynamicTheme();

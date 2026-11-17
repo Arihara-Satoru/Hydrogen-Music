@@ -7,6 +7,7 @@ import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
 import { vDelayedTooltip } from '../utils/delayedTooltip';
 import loudnessBadge from '../assets/img/loudness-badge.png';
 import { formatAudioInfo } from '../utils/quality';
+import { recordPlayerAnimationState } from '../utils/playerAnimationRecorder';
 
 const playerStore = usePlayerStore();
 const {
@@ -943,6 +944,10 @@ watch([playing, lyricShow], ([p, show]) => {
         }
     }
 });
+watch([lyricAreaReady, suppressLyricFlash, lyricRevealAnimating], () => {
+    recordPlayerAnimationState('lyric', { ready: lyricAreaReady.value, suppressed: suppressLyricFlash.value,
+        animating: lyricRevealAnimating.value, widget: widgetState.value, lines: lyricsObjArr.value?.length ?? null });
+}, { flush: 'sync' });
 </script>
 
 <template>

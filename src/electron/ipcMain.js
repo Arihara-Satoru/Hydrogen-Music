@@ -419,6 +419,23 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     otherAudioMonitor.getState(),
   );
   ipcMain.removeHandler("performance:process-snapshot");
+  ipcMain.removeHandler("performance:save-animation-report");
+  const animationCpuProfiler = require('./animationCpuProfiler.cjs').createAnimationCpuProfiler(win.webContents);
+  for (const action of ['start', 'stop']) {
+    const channel = `performance:animation-cpu-${action}`;
+    ipcMain.removeHandler(channel);
+    ipcMain.handle(channel, (event) => {
+      if (event.sender !== win.webContents) throw new Error('不允许的诊断来源');
+      return animationCpuProfiler[action]();
+    });
+  }
+  ipcMain.handle("performance:save-animation-report", async (event, json) => {
+    try {
+      return await require('./animationReport.cjs').saveAnimationReport({ event, win, dialog, app, json });
+    } catch (error) {
+      return { error: String(error?.message || error) };
+    }
+  });
   ipcMain.handle("performance:process-snapshot", async () => ({
     main: await process.getProcessMemoryInfo(),
     rendererPid: win.webContents.getOSProcessId(),
