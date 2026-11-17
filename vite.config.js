@@ -8,29 +8,27 @@ export default defineConfig({
   base: './',
   build: {
     target: 'es2018', // 更新到ES2018以支持async generator functions
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
         'desktop-lyric': resolve(__dirname, 'desktop-lyric.html')
-      }
-    },
-    // 启用更激进的压缩
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        // 生产环境只移除调试输出，保留 warn/error 以便排查线上问题
-        pure_funcs: ['console.log', 'console.info', 'console.debug'],
-        drop_debugger: true
       },
-      mangle: {
-        // 避免 eval 相关问题
-        eval: false
-      },
-      format: {
-        // 移除注释
+      output: {
+        // 使用内置 Oxc 压缩，避免额外启动 Terser worker。
+        minify: {
+          compress: {
+            target: 'es2018',
+            dropDebugger: true,
+            treeshake: {
+              // 仅移除调试输出，保留参数副作用以及 warn/error。
+              manualPureFunctions: ['console.log', 'console.info', 'console.debug']
+            }
+          }
+        },
         comments: false
       }
     },
+    minify: 'oxc',
     // 启用 CSS 代码分割
     cssCodeSplit: true,
     // 减少打包体积阈值警告

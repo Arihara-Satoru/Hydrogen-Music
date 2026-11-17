@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:build": "node scripts/check-build-optimization.mjs",
     "check:audio-recognition": "node scripts/check-audio-recognition.mjs && node scripts/check-progressive-recognition.mjs",
     "check:loudness-normalization": "node --experimental-vm-modules scripts/check-loudness-normalization.mjs && node scripts/check-adaptive-loudness.mjs",
     "check:loudness-audio": "node scripts/check-loudness-audio.cjs && node scripts/check-loudness-switching.cjs",
@@ -71,6 +72,7 @@
     "check:search-typewriter": "node scripts/check-search-typewriter.mjs"
   },
   "dependencies": {
+    "@vueuse/core": "^14.4.0",
     "axios": "^1.17.0",
     "dbus-next": "^0.10.2",
     "electron-store": "^11.0.2",
