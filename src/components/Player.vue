@@ -466,7 +466,8 @@ const coverMotionRun = ref(0);
 const coverReleased = ref(false);
 const coverImageKey = computed(() => `${songId.value ?? currentSong.value?.id ?? currentIndex.value}:${currentCoverUrl.value}`);
 const coverImageSrc = computed(() => coverImageFailed.value ? getDefaultCoverUrl() : currentCoverUrl.value || getDefaultCoverUrl());
-const showCoverSkeleton = computed(() => playerChangeSong.value || (!coverImageLoaded.value && !coverImageUnavailable.value));
+// 封面只等待自己的图片，不能被音频缓冲或歌词请求阻塞。
+const showCoverSkeleton = computed(() => !coverImageLoaded.value && !coverImageUnavailable.value);
 
 watch(coverImageKey, () => {
     coverImageLoaded.value = false;
@@ -484,9 +485,9 @@ watch(playerChangeSong, changing => {
     }
 }, { flush: 'sync' });
 
-watch([coverImageLoaded, coverImageUnavailable, playerChangeSong, coverMotionState], ([loaded, unavailable, changing]) => {
-    if (coverMotionState.value !== 'waiting' || changing || (!loaded && !unavailable)) return;
-    // 预加载可能在同一轮更新内把 changing 从 true 改回 false；等待态也参与监听，不能漏掉完成通知。
+watch([coverImageLoaded, coverImageUnavailable, coverMotionState], ([loaded, unavailable]) => {
+    if (coverMotionState.value !== 'waiting' || (!loaded && !unavailable)) return;
+    // 缓存图片和同曲重播可能没有新的 load 事件；等待态也参与监听，不能漏掉完成通知。
     coverMotionState.value = 'replay';
     coverReleased.value = false;
     coverMotionRun.value++;
@@ -636,8 +637,9 @@ const addToPlaylist = () => {
                                 ref="coverImage"
                                 :key="`${coverImageKey}:${coverImageFailed}`"
                                 :src="coverImageSrc"
-                                :class="{ 'cover-image-ready': coverImageLoaded, 'cover-change': playerChangeSong }"
+                                :class="{ 'cover-image-ready': coverImageLoaded }"
                                 alt=""
+                                decoding="async"
                                 @load="onCoverImageLoad"
                                 @error="onCoverImageError"
                             />
@@ -1496,6 +1498,11 @@ const addToPlaylist = () => {
                 // 缩放层独立于切歌和视频悬停反馈，不改变封面占位或下方信息布局。
                 transform: scale(1.04);
             }
+            &.cover-replay-waiting .cover-stage,
+            &.cover-replay .cover-stage {
+                // 切歌回到准备态也做过渡；首次打开仍按面板入场时间轴定位。
+                transition: transform var(--cover-settle-duration) cubic-bezier(0.4, 0, 0.12, 1);
+            }
             &.cover-released {
                 .cover-stage {
                     animation: cover-settle var(--cover-settle-duration) cubic-bezier(0.4, 0, 0.12, 1) forwards;
@@ -1504,6 +1511,10 @@ const addToPlaylist = () => {
                     animation: cover-corners-expand var(--cover-settle-duration) cubic-bezier(0.4, 0, 0.12, 1) forwards,
                         cover-corner-breathe 3.6s var(--cover-settle-duration) ease-in-out infinite;
                 }
+            }
+            &.cover-replay.cover-released .cover-stage {
+                animation: none;
+                transform: scale(1);
             }
             .cover {
                 padding: 1.5vh;
@@ -1534,10 +1545,6 @@ const addToPlaylist = () => {
                     transition: opacity 0.15s ease, transform 0.1s cubic-bezier(0.3, 0.79, 0.55, 0.99);
                     &.cover-image-ready {
                         opacity: 1;
-                    }
-                    &.cover-change {
-                        opacity: 0;
-                        transform: scale(0.95);
                     }
                 }
             }

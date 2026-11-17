@@ -222,7 +222,7 @@ app.whenReady().then(async () => {
           cueDelay: getCue().effect.getTiming().delay,
           coverChange: document.querySelector('.cover img').classList.contains('cover-change'), changing, reopened };
       })()`);
-      assert.ok(switchState.reused && switchState.changing && !switchState.coverChange, `${label}: preserve song-change and hide/reopen behavior`);
+      assert.ok(switchState.reused && !switchState.changing && !switchState.coverChange, `${label}: artwork visibility is independent of playback loading`);
       assertAttached(switchState.reopened, `${label}: replay after reopening`);
       close(switchState.reopened.cover.width, samples[899].cover.width, `${label}: restore enlarged opening frame`);
       assert.ok(Math.abs(switchState.cueDelay - 900) < 0.01, `${label}: cue follows the shared shell timeline`);
@@ -318,7 +318,7 @@ app.whenReady().then(async () => {
           shellUnchanged: shell === document.querySelector('.player-container').getAnimations()[0] && shell.currentTime === shellTime,
           cueDelay: getCue().effect.getTiming().delay };
       })()`);
-      assert.equal(loaded.stillChanging.skeleton, true, 'Keep skeleton until the song-change fade is released');
+      assert.equal(loaded.stillChanging.skeleton, false, 'Loaded artwork does not wait for audio or lyrics');
       assert.equal(loaded.settled.skeleton, false, 'Remove skeleton once the new cover is ready');
       assert.equal(loaded.settled.busy, 'false', 'Stop loading state after success');
       assert.ok(loaded.ready, 'Reveal the loaded image');
@@ -397,7 +397,7 @@ app.whenReady().then(async () => {
           shellUnchanged: shell === document.querySelector('.player-container').getAnimations()[0] && shell.currentTime === shellTime };
       })()`);
       assert.ok(repeated.newCue && repeated.reused && repeated.shellUnchanged, `Replay ${cycle + 1}: new cover animation, same image/stage/panel`);
-      assert.ok(repeated.waiting.skeleton, 'Same-song reload also preserves the skeleton');
+      assert.ok(!repeated.waiting.skeleton, 'Same-song reload retains already loaded artwork without flashing a skeleton');
       assertAttached(repeated.waiting, 'Reset an interrupted replay to the attached loading frame', 'artwork');
       assertAttached(repeated.start, 'Restart the same-song replay attached', 'artwork');
       assert.ok(!repeated.start.skeleton && repeated.flashing.corners.every(corner => corner.opacity === 1), 'Replay starts once per song-change release');
@@ -502,7 +502,8 @@ app.whenReady().then(async () => {
     close(reduced.sample.corners[2].bottom, reduced.sample.stage.bottom, 'Reduced motion keeps the opposite corners expanded');
     const reducedSkeleton = await win.webContents.executeJavaScript(`(async () => {
       state.playerChangeSong = true; await nextTick();
-      return getComputedStyle(document.querySelector('.cover-skeleton'), '::after').animationName;
+      const skeleton = document.querySelector('.cover-skeleton');
+      return skeleton ? getComputedStyle(skeleton, '::after').animationName : 'none';
     })()`);
     assert.equal(reducedSkeleton, 'none', 'Reduced motion also disables skeleton shimmer');
     const reducedReplay = await win.webContents.executeJavaScript(`(async () => {
