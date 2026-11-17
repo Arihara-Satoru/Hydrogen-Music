@@ -50,10 +50,17 @@ function normalizeSearchArtists(rawArtists, fallbackArtistName = '') {
 }
 
 function normalizeSearchDuration(raw = {}) {
-    const duration = raw.dt ?? raw.duration ?? raw.timelength ?? raw.timelen ?? raw.time_length ?? raw.timeLength ?? raw.duration_ms ?? raw.audio_info?.duration ?? raw.audio_info?.duration_128 ?? raw.audio_info?.duration_320 ?? raw.audio_info?.duration_flac ?? 0
-    const parsed = Number(duration)
-    if (!Number.isFinite(parsed) || parsed <= 0) return 0
-    return parsed < 1000 ? parsed * 1000 : parsed
+    // 搜索响应存在大小写及嵌套结构差异；跳过无效占位值，继续寻找有效时长。
+    for (const source of [raw, raw.base, raw.audio_info]) {
+        if (!source) continue
+        for (const key of ['dt', 'duration_ms', 'duration', 'Duration', 'timelength', 'TimeLength', 'timelen', 'time_length', 'timeLength', 'duration_128', 'duration_320', 'duration_flac']) {
+            const parsed = Number(source[key])
+            if (!Number.isFinite(parsed) || parsed <= 0) continue
+            if (key === 'dt' || key === 'duration_ms') return parsed
+            return parsed < 1000 ? parsed * 1000 : parsed
+        }
+    }
+    return 0
 }
 
 function normalizeSearchSong(item = {}) {

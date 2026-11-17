@@ -70,6 +70,26 @@ assert.equal(song.ar[0].name, '歌手')
 assert.equal(song.ar[0].id, '7')
 assert.equal(song.dt, 180000)
 assert.equal(song.al.picUrl, 'https://example.test/480.jpg')
+// Search duration aliases, empty placeholders and nested payloads must normalize to milliseconds.
+for (const [fields, expected] of [
+  [{ Duration: 261 }, 261000],
+  [{ Duration: '261' }, 261000],
+  [{ TimeLength: 261000 }, 261000],
+  [{ dt: 0, duration: '', Duration: 261 }, 261000],
+  [{ duration: 'invalid', Duration: 261 }, 261000],
+  [{ base: { duration: 261 } }, 261000],
+  [{ audio_info: { duration: 0, duration_128: 261 } }, 261000],
+  [{ dt: 261000, Duration: 180 }, 261000],
+  [{ dt: 500 }, 500],
+  [{ duration_ms: 500 }, 500],
+  [{ duration: -1, Duration: 'invalid' }, 0],
+  [{}, 0],
+]) {
+  responder = async () => ({ status: 1, data: { lists: [{ FileHash: 'DURATION', ...fields }] } })
+  const normalized = (await search({ keywords: '雨爱', type: 1 })).result.songs[0]
+  assert.equal(normalized.dt, expected, JSON.stringify(fields))
+  assert.equal(normalized.duration, expected, JSON.stringify(fields))
+}
 for (const response of [{ data: { lists: [] } }, { data: { info: [] } }, { list: [] }]) {
   responder = async () => response
   assert.equal((await search({})).result.songs.length, 0)
