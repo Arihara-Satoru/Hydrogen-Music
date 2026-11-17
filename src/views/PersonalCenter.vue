@@ -367,7 +367,7 @@ label { display: grid; gap: 7px; font-size: 12px; color: var(--muted-text); min-
 input, textarea, select { width: 100%; min-width: 0; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--account-line); color: var(--text); background: var(--layer); border-radius: 2px; font: inherit; font-size: 13px; line-height: 1.5; transition: border-color .15s ease, background-color .15s ease; }
 input, select { min-height: 38px; }
 input::placeholder, textarea::placeholder { color: var(--muted-text); }
-select option { background: var(--bg); color: var(--text); }
+select option { background: var(--surface); color: var(--text); }
 textarea { resize: vertical; min-height: 84px; }
 button { min-height: 36px; padding: 7px 14px; border: 1px solid var(--account-line); background: transparent; color: var(--text); border-radius: 2px; cursor: pointer; font: inherit; font-size: 12px; line-height: 1.5; transition: background-color .15s ease, border-color .15s ease; }
 button:hover:not(:disabled) { background: var(--layer); border-color: var(--border); }

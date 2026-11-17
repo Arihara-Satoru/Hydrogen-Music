@@ -164,7 +164,7 @@ onUnmounted(() => {
 }
 
 .modal-container {
-    background: white;
+    background: var(--surface-gradient);
     border-radius: 12px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
     max-height: 90vh;
@@ -221,7 +221,7 @@ onUnmounted(() => {
 
 .modal-close:hover {
     color: #333;
-    background: #f5f5f5;
+    background: var(--layer);
 }
 
 .modal-close:disabled {

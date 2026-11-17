@@ -466,7 +466,7 @@ onBeforeUnmount(() => {
     scrollbar-width: thin;
     box-sizing: border-box;
     padding: 20px 22px;
-    background: var(--bg);
+    background: var(--surface-gradient);
     border: 1px solid var(--border);
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
     border-radius: 0;
