@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { createContext, runInContext } from 'node:vm'
 import { performance } from 'node:perf_hooks'
+import { measureDecodedLoudness } from '../src/utils/adaptiveLoudness.worklet.js'
 
-const source = await readFile('src/utils/adaptiveLoudness.worklet.js', 'utf8')
+const source = (await readFile('src/utils/adaptiveLoudness.worklet.js', 'utf8')).replace(/^export /gm, '')
 
 function createProcessor(sampleRate = 48000, initialGain = 0.25) {
     let Processor
@@ -41,6 +42,31 @@ function createProcessor(sampleRate = 48000, initialGain = 0.25) {
         },
     }
 }
+
+// The same opening should start at its measured level, from the very first samples.
+for (const amplitude of [0.02, 0.4, 0.95]) {
+    const meter = createProcessor()
+    meter.processor.port.onmessage({ data: { type: 'probe', id: 7 } })
+    assert.equal(meter.render(0.4, amplitude).peak, 0, 'the probe must never be audible')
+    assert.equal(meter.messages.length, 0, 'do not accept a partial measurement')
+    assert.equal(meter.render(0.25, amplitude).peak, 0, 'stay silent after the estimate until playback starts')
+    const [{ probeId, seed }] = meter.messages
+    assert.equal(probeId, 7)
+    const data = Float32Array.from({ length: 48000 }, (_, frame) => amplitude * Math.sin(2 * Math.PI * 1000 * frame / 48000))
+    const pcm = { sampleRate: 48000, length: data.length, numberOfChannels: 2, getChannelData: () => data }
+    assert.ok(Math.abs(measureDecodedLoudness(pcm, 0).gain - seed.gain) < 0.001, 'preloaded and streaming estimates agree')
+    assert.equal(measureDecodedLoudness(pcm, 0.5), null, 'short tail must not be treated as a stable estimate')
+    meter.processor.port.onmessage({ data: { type: 'startup', seed } })
+    meter.processor.port.onmessage({ data: { type: 'running', value: true } })
+    assert.equal(meter.processor.calibrating, false, 'the valid seed bypasses startup calibration')
+    const first = meter.render(0.1, amplitude)
+    const steady = meter.render(1.2, amplitude)
+    assert.ok(Math.abs(20 * Math.log10(first.rms / steady.rms)) < 0.25, 'no initial swell after a successful probe')
+}
+const silentProbe = createProcessor()
+silentProbe.processor.port.onmessage({ data: { type: 'probe', id: 1 } })
+silentProbe.render(1, 0.002)
+assert.equal(silentProbe.messages.length, 0, 'quiet intros do not seed a boost')
 
 const convergence = []
 for (const rate of [44100, 48000, 96000]) {

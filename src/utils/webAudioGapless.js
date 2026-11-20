@@ -1,4 +1,4 @@
-import { createAdaptiveLoudness, PROTECTED_LOUDNESS_GAIN } from './adaptiveLoudness.mjs'
+import { createAdaptiveLoudness, measureDecodedLoudness, PROTECTED_LOUDNESS_GAIN } from './adaptiveLoudness.mjs'
 
 const DEFAULT_AUDIO_FETCH_TIMEOUT_MS = 45000
 
@@ -44,6 +44,8 @@ class WebAudioBufferPlayer {
         this._loudnessGain.connect(this._gain)
         this._gain.connect(this._context.destination)
         this._adaptive = null
+        this._startupMeasurement = null
+        this._startupNeeded = true
         this._processingRevision = 0
         this._playRevision = 0
         this._source = null
@@ -82,7 +84,7 @@ class WebAudioBufferPlayer {
         const request = ++this._processingRevision
         if (enabled && !this._adaptive) {
             this._loudnessGain.gain.setValueAtTime(PROTECTED_LOUDNESS_GAIN, this._context.currentTime)
-            const adaptive = await createAdaptiveLoudness(this._context, this._src)
+            const adaptive = await createAdaptiveLoudness(this._context, this._src, this._playing)
             if (this._state === 'unloaded' || request !== this._processingRevision) {
                 adaptive.dispose()
                 return
@@ -101,6 +103,13 @@ class WebAudioBufferPlayer {
         if (this._adaptive) this._loudnessGain.connect(this._adaptive.node)
         output.connect(this._gain)
         this.__hmLoudnessMode = this._adaptive ? (this._adaptive.realtime ? 'realtime' : 'protected') : 'off'
+    }
+
+    preAnalyzeLoudness(offset = 0) {
+        if (this._startupMeasurement?.offset !== offset) {
+            this._startupMeasurement = { offset, seed: measureDecodedLoudness(this._buffer, offset) }
+        }
+        return this._startupMeasurement.seed
     }
 
     loop(value) {
@@ -132,6 +141,7 @@ class WebAudioBufferPlayer {
 
         const nextOffset = this._clampOffset(value)
         this._adaptive?.reset()
+        this._startupNeeded = true
         this._offset = nextOffset
         if (this._playing) {
             this._stopSource()
@@ -172,6 +182,7 @@ class WebAudioBufferPlayer {
         try { this._loudnessGain.disconnect() } catch (_) {}
         this._events.clear()
         this._buffer = null
+        this._startupMeasurement = null
     }
 
     fade(from, to, durationMs = 0) {
@@ -251,6 +262,7 @@ class WebAudioBufferPlayer {
             this._playing = false
             this._adaptive?.setRunning(false)
             this._offset = 0
+            this._startupNeeded = true
             this._emit('end')
         }
         return source
@@ -265,6 +277,11 @@ class WebAudioBufferPlayer {
         this._offset = this._clampOffset(offset)
         this._startedAt = this._context.currentTime
         this._playing = true
+        if (this._startupNeeded && this._adaptive?.realtime) {
+            const seed = this.preAnalyzeLoudness(this._offset)
+            if (seed) this._adaptive.startup(seed)
+        }
+        this._startupNeeded = false
         this._adaptive?.setRunning(true)
         source.start(0, this._offset)
     }

@@ -1273,7 +1273,7 @@ const clearFmRecent = () => {
               </div>
             </div>
             <div class="option">
-              <div class="option-name" id="loudness-normalization-label" title="本地实时分析音频，自动补偿音量、减小强弱差异并保护峰值。不使用上游响度数据，不额外下载或扫描整首歌曲；无法分析时使用保守音量保护。">响度均衡</div>
+              <div class="option-name" id="loudness-normalization-label" title="本地实时分析音频，自动补偿音量并保护峰值。尽量在出声前完成起音分析；无法及时测量时以保守音量播放。不扫描整首歌曲。">响度均衡</div>
               <div class="option-operation">
                 <div
                   class="toggle"

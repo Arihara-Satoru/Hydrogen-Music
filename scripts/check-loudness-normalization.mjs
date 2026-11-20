@@ -14,6 +14,7 @@ async function load(path, dependencies = {}, extraExports = '') {
 }
 const adaptive = await load('src/utils/adaptiveLoudness.mjs', {
     './adaptiveLoudness.worklet.js?url': mock({ default: 'adaptive-worklet.js' }),
+    './adaptiveLoudness.worklet.js': await load('src/utils/adaptiveLoudness.worklet.js'),
 })
 const gapless = await load('src/utils/webAudioGapless.js', { './adaptiveLoudness.mjs': adaptive })
 const loudness = await load('src/utils/loudnessNormalization.mjs', { './webAudioGapless': gapless, './adaptiveLoudness.mjs': adaptive })
@@ -202,6 +203,15 @@ for (let i = 0; i < 129; i++) {
 const evictedCache = await adaptive.namespace.createAdaptiveLoudness(audioContext, 'source:cache:128')
 assert.equal(evictedCache.node.options.processorOptions.initialGain, PROTECTED_LOUDNESS_GAIN)
 evictedCache.dispose()
+const { getStartupLoudness, rememberStartupLoudness } = adaptive.namespace
+const seed = { gain: 1.6, energy: 0.01, peak: 0.2 }
+rememberStartupLoudness('source:startup:128', 0, 1, seed)
+assert.equal(getStartupLoudness('source:startup:128', 0, 1), seed, 'opening measurement can restore a boost')
+assert.equal(getStartupLoudness('source:startup:128', 1, 1), null, 'never transfer an opening measurement to a different position')
+assert.equal(getStartupLoudness('source:startup:128', 0, 2), null, 'do not reuse estimates from another playback rate')
+assert.equal(getStartupLoudness('source:startup:flac', 0, 1), null)
+for (let i = 0; i < 128; i++) rememberStartupLoudness(`source:startup:${i}`, 1, 1, seed)
+assert.equal(getStartupLoudness('source:startup:128', 0, 1), null, 'startup cache is also bounded')
 assert.equal(moduleLoads, 1)
 const failedContext = { ...audioContext, audioWorklet: { addModule: async () => { throw new Error('expected worklet load failure') } } }
 const warnings = []
@@ -297,7 +307,7 @@ assert.equal(streamWorklet.options.processorOptions.initialGain, PROTECTED_LOUDN
 assert.ok(streamWorklet.messages.some(message => message.type === 'running' && message.value))
 active.pause()
 assert.equal(streamWorklet.messages.at(-1).value, false)
-active.emit('seek')
+active.seek(0.5)
 assert.equal(streamWorklet.messages.at(-1).type, 'reset')
 processingWatcher.callback(); await settle()
 assert.equal(worklets.at(-1), streamWorklet, 're-applying the switch reuses one processor')

@@ -668,6 +668,7 @@ async function preloadGaplessSong() {
       player.unload?.();
       return null;
     }
+    if (loudnessNormalization.value) player.preAnalyzeLoudness(0);
 
     gaplessPreload = {
       key: preloadKey,
@@ -1864,6 +1865,7 @@ export function play(
   const previousPlayback = currentMusic.value;
   loudnessNormalizationActive.value = false;
   const pauseToken = playbackPauseToken;
+  const requestToken = playbackRequestToken;
   // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
   stopProgressSampling();
   if (previousPlayback && !keepPreviousPlayback) {
@@ -1952,6 +1954,41 @@ export function play(
     syncExternalPlaybackState();
   };
 
+  const setupStartGate = (playback) => {
+    let ready = false;
+    let pending = false;
+    let startToken = shouldAutoplay ? pauseToken : null;
+    const wantsStart = () => startToken === playbackPauseToken && requestToken === playbackRequestToken;
+    const startWhenReady = async () => {
+      const token = startToken;
+      const canStart = () => wantsStart() && token === startToken
+        && currentMusic.value === playback && playback.state?.() !== "unloaded";
+      if (!ready || pending || !canStart() || playback.playing?.()) return;
+      pending = true;
+      try {
+        if (!playOptions.roomSync && playback.prepareLoudnessStart) {
+          try { await playback.prepareLoudnessStart(); }
+          catch (error) { console.warn("起音响度分析失败，继续播放", error); }
+        }
+        if (canStart()) {
+          if (playback.__hmLoudnessMode === "realtime") playback.volume(0);
+          void playback.play?.();
+        }
+      } finally {
+        pending = false;
+        if (token !== startToken) void startWhenReady();
+      }
+    };
+    playback.__hmRequestStart = () => {
+      startToken = playbackPauseToken;
+      void startWhenReady();
+    };
+    return {
+      wantsStart,
+      ready() { ready = true; void startWhenReady(); },
+    };
+  };
+
   if (preloadedPlayer) {
     const playback = markRaw(preloadedPlayer);
     currentMusic.value = playback;
@@ -1961,15 +1998,11 @@ export function play(
     playback.on?.("play", () => handlePlaybackStart(playback));
     playback.on?.("pause", () => handlePlaybackPause(playback));
     playback.on?.("end", () => handlePlaybackEnd(playback));
+    const startGate = setupStartGate(playback);
     applyLoadedState(playback);
     // Match the streaming path: pause during asynchronous worklet setup must cancel autoplay.
     if (shouldAutoplay) syncPlaybackStarted();
-    void applyPlaybackAudioProcessing(playback, shouldAutoplay).then(() => {
-      if (currentMusic.value !== playback || playback.state?.() === "unloaded"
-        || !shouldAutoplay || pauseToken !== playbackPauseToken) return;
-      playback.play?.();
-      syncPlaybackStarted();
-    });
+    void applyPlaybackAudioProcessing(playback, startGate.wantsStart()).then(startGate.ready);
     return;
   }
 
@@ -2008,7 +2041,7 @@ export function play(
         noticeOpen(loudnessNormalization.value
           ? "当前音频无法分析响度，已启用保守音量保护"
           : "当前音频不支持音效处理，已恢复普通播放", 2);
-        play(url, shouldAutoplay && pauseToken === playbackPauseToken, normalizedSeek, null, {
+        play(url, startGate.wantsStart(), normalizedSeek, null, {
           ...playOptions,
           audioProcessingUnavailable: true,
         });
@@ -2019,6 +2052,7 @@ export function play(
     },
   }));
   currentMusic.value = playback;
+  const startGate = setupStartGate(playback);
   playback.__hmAudioProcessingUnavailable = playOptions.audioProcessingUnavailable === true;
   if (playback.__hmAudioProcessingUnavailable) {
     prepareProtectedPlayback(playback);
@@ -2031,9 +2065,8 @@ export function play(
     if (currentMusic.value !== playback || playback.state?.() === "unloaded") return;
     applyPlaybackRate(playback);
     applyLoadedState(playback);
-    await applyPlaybackAudioProcessing(playback, shouldAutoplay && pauseToken === playbackPauseToken);
-    if (currentMusic.value === playback && playback.state?.() !== "unloaded"
-      && shouldAutoplay && pauseToken === playbackPauseToken) playback.play();
+    await applyPlaybackAudioProcessing(playback, startGate.wantsStart());
+    startGate.ready();
   });
   playback.on("play", () => handlePlaybackStart(playback));
   playback.on("pause", () => handlePlaybackPause(playback));
@@ -2291,6 +2324,7 @@ export function loadMusicVideo(id) {
 export function addSong(id, index, autoplay, isLocal, playbackOptions = {}) {
   if (interceptTogetherControl('external')) return;
   const requestToken = ++playbackRequestToken;
+  currentMusic.value?.cancelLoudnessStart?.();
   // 主动切歌：从头开始播放，不恢复上次进度
   loadLast = false;
   clearChorusPlaybackState({
@@ -2943,7 +2977,7 @@ export function startMusic(options = {}) {
   }
   const cancelFadingPause =
     playing.value &&
-    currentMusic.value &&
+    currentMusic.value?.playing?.() &&
     (options?.source === "other-audio-resume" ||
       (options?.userInitiated === true && wasWaitingForOtherAudio));
   playbackPauseToken++;
@@ -2962,7 +2996,7 @@ export function startMusic(options = {}) {
     playModeOne = false;
     return;
   }
-  if (!playing.value) {
+  if (!playing.value || (currentMusic.value?.__hmRequestStart && !currentMusic.value.playing?.())) {
     if (!currentMusic.value || typeof currentMusic.value.play !== "function") {
       addSong(
         songId.value || currentSong.id,
@@ -2973,8 +3007,13 @@ export function startMusic(options = {}) {
       );
       return;
     }
-    currentMusic.value.play();
-    syncPlaybackStarted(currentMusic.value, { restoreVolume: true });
+    if (currentMusic.value.__hmRequestStart) {
+      currentMusic.value.__hmRequestStart();
+      syncPlaybackStarted();
+    } else {
+      currentMusic.value.play();
+      syncPlaybackStarted(currentMusic.value, { restoreVolume: true });
+    }
   }
   if (lyricShow.value) {
     isLyricDelay.value = false;
@@ -3030,18 +3069,24 @@ export function pauseMusic(options = {}) {
   const playback = currentMusic.value;
   if (playing.value && playback) {
     const pauseToken = ++playbackPauseToken;
-    playback.fade(volume.value, 0, 200);
-    playback.once("fade", () => {
-      if (
-        currentMusic.value !== playback ||
-        pauseToken !== playbackPauseToken
-      )
-        return;
-      playback.pause();
-      playback.volume?.(volume.value);
+    if (playback.__hmRequestStart && !playback.playing?.()) {
+      if (playback.state?.() === "loaded") playback.pause?.();
       playing.value = false;
-      persistPlaybackProgress();
-    });
+      syncExternalPlaybackState();
+    } else {
+      playback.fade(volume.value, 0, 200);
+      playback.once("fade", () => {
+        if (
+          currentMusic.value !== playback ||
+          pauseToken !== playbackPauseToken
+        )
+          return;
+        playback.pause();
+        playback.volume?.(volume.value);
+        playing.value = false;
+        persistPlaybackProgress();
+      });
+    }
   }
   if (videoIsPlaying.value) {
     musicVideoDOM.value?.pause?.();

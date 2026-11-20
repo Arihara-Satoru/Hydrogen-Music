@@ -31,9 +31,10 @@ app.whenReady().then(async () => {
             await import('/src/utils/windowApiStub.js');
             const { default: pinia } = await import('/src/store/pinia.js');
             const { usePlayerStore } = await import('/src/store/playerStore.js');
-            const { play, addSong, stopTogetherPlayback } = await import('/src/utils/player.js');
+            const { play, addSong, startMusic, pauseMusic, stopTogetherPlayback } = await import('/src/utils/player.js');
             const { Howler } = await import('howler');
             const { getAudioContext, createDecodedAudioPlayer } = await import('/src/utils/webAudioGapless.js');
+            const { getStartupLoudness, LOUDNESS_PROBE_TIMEOUT_MS } = await import('/src/utils/adaptiveLoudness.mjs');
             const store = usePlayerStore(pinia);
             const bytes = new Uint8Array(44 + 48000 * 4 * 5), view = new DataView(bytes.buffer);
             const text = (offset, value) => [...value].forEach((ch, i) => bytes[offset + i] = ch.charCodeAt(0));
@@ -41,6 +42,11 @@ app.whenReady().then(async () => {
             view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 2, true);
             view.setUint32(24, 48000, true); view.setUint32(28, 192000, true);
             view.setUint16(32, 4, true); view.setUint16(34, 16, true); text(36, 'data'); view.setUint32(40, bytes.length - 44, true);
+            const silentUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+            for (let frame = 0; frame < 48000 * 5; frame++) {
+                const sample = Math.round(30000 * Math.sin(2 * Math.PI * 1000 * frame / 48000));
+                view.setInt16(44 + frame * 4, sample, true); view.setInt16(46 + frame * 4, sample, true);
+            }
             const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
             window.windowApi.toFileUrl = () => url;
             store.$patch({ songList: Array.from({ length: 4 }, (_, index) => ({
@@ -96,6 +102,46 @@ app.whenReady().then(async () => {
                 decodedGate.release();
                 await delay(50);
 
+                // User presses play before a paused track has even finished loading.
+                play(url, false, 0.75);
+                const measured = store.currentMusic;
+                const media = measured._sounds[0]._node;
+                const original = measured.play.bind(measured);
+                let beforePlay;
+                measured.play = (...args) => {
+                    beforePlay = { visible: measured.seek(), native: media.currentTime,
+                        gain: getStartupLoudness(url, 0.75, 1)?.gain };
+                    return original(...args);
+                };
+                startMusic({ userInitiated: true });
+                await until(() => !media.paused && media.currentTime > 0.85, 'before audible play');
+                const probing = { playing: measured.playing(), seek: measured.seek() };
+                await until(() => beforePlay && measured.playing(), 'play after successful analysis');
+
+                play(url, true, 0.75);
+                const replay = store.currentMusic;
+                const replayMedia = replay._sounds[0]._node;
+                const nativePlay = replayMedia.play.bind(replayMedia);
+                let replayPlayCalls = 0;
+                replayMedia.play = () => { replayPlayCalls++; return nativePlay(); };
+                await until(() => replay.playing(), 'cached playback');
+
+                play(silentUrl, true);
+                const silent = store.currentMusic;
+                const silentMedia = silent._sounds[0]._node;
+                await until(() => !silentMedia.paused && !silent.playing(), 'silent probe');
+                const waitingSince = performance.now();
+                await until(() => silent.playing(), 'timeout starts silent intro from the beginning');
+                const timeout = { seek: silent.seek(), waited: performance.now() - waitingSince, cached: !!getStartupLoudness(silentUrl, 0, 1), limit: LOUDNESS_PROBE_TIMEOUT_MS };
+
+                play(silentUrl, true, 0.4);
+                const paused = store.currentMusic;
+                const pausedMedia = paused._sounds[0]._node;
+                await until(() => !pausedMedia.paused && !paused.playing(), 'probe before pause');
+                pauseMusic();
+                await delay(50);
+                const canceledProbe = { mediaPaused: pausedMedia.paused, playing: paused.playing(), seek: paused.seek(), uiPlaying: store.playing };
+
                 // Repeated actual addSong calls during loading, start and fade-in.
                 play(url, true);
                 for (let i = 0; i < 48; i++) {
@@ -110,7 +156,8 @@ app.whenReady().then(async () => {
                 Howler.unload();
                 await getAudioContext().close();
                 URL.revokeObjectURL(url);
-                return { unloaded, late, canceledError, decodedPlayCalls, rapid, errors: window.qaErrors };
+                URL.revokeObjectURL(silentUrl);
+                return { unloaded, late, canceledError, decodedPlayCalls, rapid, probing, beforePlay, replayPlayCalls, timeout, canceledProbe, errors: window.qaErrors };
             };
             window.qaReady = true;
         </script>`
@@ -144,10 +191,19 @@ app.whenReady().then(async () => {
         assert.deepEqual(result.late, { sounds: 0, queued: 0, processing: 0 }, 'ignore a queued load event after unload')
         assert.deepEqual(result.canceledError, { samePlayback: true, howls: 0 }, 'a canceled load error must not recreate playback in CORS fallback mode')
         assert.equal(result.decodedPlayCalls, 0, 'decoded autoplay must also be canceled by unload')
+        assert.deepEqual(result.probing, { playing: false, seek: 0.75 }, 'only the silent probe advances before the estimate is ready')
+        assert.ok(Math.abs(result.beforePlay.visible - 0.75) < 0.03 && Math.abs(result.beforePlay.native - 0.75) < 0.03, 'the audible play starts at the requested offset')
+        assert.ok(result.beforePlay.gain > 0.16 && result.beforePlay.gain < 0.25, 'the loud opening must be measured and attenuated before play')
+        assert.equal(result.replayPlayCalls, 1, 'a compatible estimate skips the silent play on replay')
+        assert.ok(result.timeout.waited > result.timeout.limit - 250 && result.timeout.waited < result.timeout.limit + 500)
+        assert.ok(!result.timeout.cached && result.timeout.seek < 0.1, 'timeout neither caches silence nor skips the intro')
+        const { seek, ...pauseState } = result.canceledProbe
+        assert.ok(Math.abs(seek - 0.4) < 0.03)
+        assert.deepEqual(pauseState, { mediaPaused: true, playing: false, uiPlaying: false })
         assert.deepEqual(result.rapid, { id: 4, active: true, howls: 1, sounds: 1, mode: 'realtime' })
         assert.deepEqual(result.errors, [], 'no uncaught errors or rejected promises')
         assert.deepEqual(errors, [], 'no audio-processing failures')
-        console.log('Chromium real-player rapid switching: canceled setup, queued load/error, decoded autoplay and 48 addSong calls passed')
+        console.log('Chromium real player: measurement before playback, rewind, silence timeout, pause cancellation, queued events and 48 rapid switches passed')
     } finally {
         clearTimeout(watchdog)
         win?.destroy()

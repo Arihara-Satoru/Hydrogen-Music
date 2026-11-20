@@ -1,22 +1,83 @@
 import { getAudioContext } from './webAudioGapless'
-import { createAdaptiveLoudness, PROTECTED_LOUDNESS_GAIN } from './adaptiveLoudness.mjs'
+import { createAdaptiveLoudness, getStartupLoudness, rememberStartupLoudness, PROTECTED_LOUDNESS_GAIN } from './adaptiveLoudness.mjs'
 
 export function prepareHowlAudioProcessing(playback) {
     // ponytail: the main player uses one HTML5 sound per Howl; route new sounds at creation if concurrent instances are added.
     const elements = (playback._sounds || []).map(sound => sound._node).filter(Boolean)
     const graphs = []
+    const url = Array.isArray(playback._src) ? playback._src[0] : playback._src
     let revision = 0
     let unloaded = false
+    let started = false
+    let probing = null
     playback.__hmAudioProcessingPrepared = true
     const setRunning = value => graphs.forEach(graph => graph.adaptive?.setRunning(value))
-    playback.on?.('play', () => setRunning(true))
+    playback.on?.('play', () => { started = true; setRunning(true) })
     playback.on?.('pause', () => setRunning(false))
     playback.on?.('end', () => setRunning(false))
-    playback.on?.('seek', () => graphs.forEach(graph => graph.adaptive?.reset()))
+
+    const seek = playback.seek
+    const stopProbe = seed => {
+        if (!probing) return
+        const { element, offset, adaptive } = probing
+        probing = null
+        element.pause()
+        // Howler also restores its playback offset on play(). A media element
+        // can become unseekable after a load failure; still release the probe.
+        try { if (element.currentTime !== offset) element.currentTime = offset } catch (_) {}
+        adaptive.startup(seed)
+    }
+    playback.cancelLoudnessStart = () => stopProbe(null)
+    playback.seek = function (...args) {
+        const getter = !args.length || (args.length === 1 && args[0] === playback._sounds[0]?._id)
+        if (probing && getter) return probing.offset
+        if (!getter && typeof args[0] === 'number' && args[0] >= 0) {
+            stopProbe(null)
+            graphs.forEach(graph => graph.adaptive?.reset())
+        }
+        return seek.apply(this, args)
+    }
+    const pause = playback.pause
+    playback.pause = function (...args) {
+        stopProbe(null)
+        return pause.apply(this, args)
+    }
+
+    playback.prepareLoudnessStart = async () => {
+        const adaptive = graphs[0]?.adaptive
+        const element = elements[0]
+        if (started || !adaptive?.realtime || !element?.play || !element?.pause) return
+        const offset = Number(playback.seek()) || 0
+        const rate = playback.rate()
+        const cached = getStartupLoudness(url, offset, rate)
+        if (cached) {
+            adaptive.startup(cached)
+            return
+        }
+        // Use the already buffered media element, but bypass Howler's playback
+        // events/timers. The worklet outputs silence; the real play starts at offset.
+        const request = { element, offset, adaptive }
+        probing = request
+        const result = adaptive.probe()
+        try {
+            element.playbackRate = rate
+            Promise.resolve(element.play()).catch(() => {
+                if (probing === request) stopProbe(null)
+            })
+        } catch (_) {
+            stopProbe(null)
+        }
+        const seed = await result
+        if (probing === request) {
+            stopProbe(seed)
+            if (playback.rate() === rate) rememberStartupLoudness(url, offset, rate, seed)
+        }
+    }
 
     playback.setLoudnessNormalization = async (enabled) => {
         const request = ++revision
         if (unloaded || (!enabled && graphs.length === 0)) return
+        if (!enabled) stopProbe(null)
         const context = getAudioContext()
         if (context.state === 'suspended') await context.resume()
         if (unloaded || request !== revision) return
@@ -53,8 +114,7 @@ export function prepareHowlAudioProcessing(playback) {
         for (const graph of graphs) {
             if (enabled && !graph.adaptive) {
                 graph.gain.gain.setValueAtTime(PROTECTED_LOUDNESS_GAIN, context.currentTime)
-                const key = Array.isArray(playback._src) ? playback._src[0] : playback._src
-                const adaptive = await createAdaptiveLoudness(context, key)
+                const adaptive = await createAdaptiveLoudness(context, url, playback.playing?.() === true)
                 if (unloaded || request !== revision) {
                     adaptive.dispose()
                     return
@@ -80,6 +140,7 @@ export function prepareHowlAudioProcessing(playback) {
     const unload = playback.unload
     playback.unload = function (...args) {
         unloaded = true
+        stopProbe(null)
         for (const { source, gain, volumeGain, adaptive } of graphs) {
             adaptive?.dispose()
             source.disconnect()

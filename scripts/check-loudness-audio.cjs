@@ -44,12 +44,15 @@ app.whenReady().then(async () => {
         const workletUrl = pathToFileURL(path.join(assets, worklet)).href
         const adaptiveSource = fs.readFileSync(path.resolve(__dirname, '../src/utils/adaptiveLoudness.mjs'), 'utf8')
             .replace(/^import .*$/m, `const workletUrl = ${JSON.stringify(workletUrl)}`)
+            .replace(/^export \{.*$/m, '')
+            .replace(/^export /gm, '')
+        const meterSource = fs.readFileSync(path.resolve(__dirname, '../src/utils/adaptiveLoudness.worklet.js'), 'utf8')
             .replace(/^export /gm, '')
         const gaplessSource = fs.readFileSync(path.resolve(__dirname, '../src/utils/webAudioGapless.js'), 'utf8')
             .replace(/^import .*$/gm, '').replace(/^export /gm, '')
         const loudnessSource = fs.readFileSync(path.resolve(__dirname, '../src/utils/loudnessNormalization.mjs'), 'utf8')
             .replace(/^import .*$/gm, '').replace(/^export /gm, '')
-        await win.webContents.executeJavaScript(`${adaptiveSource}\n${gaplessSource}\n${loudnessSource}\nvoid 0`)
+        await win.webContents.executeJavaScript(`${meterSource}\n${adaptiveSource}\n${gaplessSource}\n${loudnessSource}\nvoid 0`)
         const result = await win.webContents.executeJavaScript(`(async () => {
             const seconds = 20;
             const rate = 48000;
@@ -122,6 +125,7 @@ app.whenReady().then(async () => {
             const protectedVolume = native.get.call(fallback._sounds[0]._node);
             fallback.unload();
             const decoded = await createDecodedAudioPlayer(url);
+            const openingGain = decoded.preAnalyzeLoudness().gain;
             await decoded.setLoudnessNormalization(true);
             const decodedMode = decoded.__hmLoudnessMode;
             await decoded.play();
@@ -129,10 +133,11 @@ app.whenReady().then(async () => {
             decoded.seek(0.5);
             decoded.unload();
             await getAudioContext().close();
-            return { mode, decodedMode, disabledMode, userVolume, nativeVolume, protectedVolume };
+            return { mode, decodedMode, openingGain, disabledMode, userVolume, nativeVolume, protectedVolume };
         })()`)
         assert.equal(routing.mode, 'realtime')
         assert.equal(routing.decodedMode, 'realtime')
+        assert.ok(routing.openingGain > 0.25 && routing.openingGain < 0.3, 'already decoded PCM gives a usable opening estimate without playback')
         assert.equal(routing.disabledMode, 'off')
         assert.equal(routing.userVolume, 0.3)
         assert.equal(routing.nativeVolume, 1)
